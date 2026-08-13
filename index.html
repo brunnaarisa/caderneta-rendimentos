@@ -608,10 +608,6 @@
         <label for="pickBank">Banco / corretora</label>
         <select id="pickBank"></select>
       </div>
-      <div class="field" id="customBankField" hidden>
-        <label for="pickBankCustom">Nome do banco/corretora</label>
-        <input type="text" id="pickBankCustom" placeholder="ex: Banco XP">
-      </div>
       <div class="field">
         <label for="pickProduct">Investimento disponível</label>
         <select id="pickProduct"></select>
@@ -825,31 +821,19 @@
   const winnerBalanceEl = document.getElementById('winnerBalance');
 
   const pickBankSelect = document.getElementById('pickBank');
-  const customBankField = document.getElementById('customBankField');
-  const pickBankCustomInput = document.getElementById('pickBankCustom');
   const pickProductSelect = document.getElementById('pickProduct');
 
   function populateBankSelect() {
-    const banks = Object.keys(BANK_CATALOG);
-    pickBankSelect.innerHTML = banks.map(b => `<option value="${b}">${b}</option>`).join('')
-      + `<option value="${CUSTOM_KEY}">Outro banco/corretora…</option>`;
+    pickBankSelect.innerHTML = Object.keys(BANK_CATALOG).map(b => `<option value="${b}">${b}</option>`).join('');
   }
 
   function populateProductSelect() {
-    const bank = pickBankSelect.value;
-    if (bank === CUSTOM_KEY) {
-      pickProductSelect.innerHTML = `<option value="${CUSTOM_KEY}">Investimento personalizado</option>`;
-      return;
-    }
-    const products = BANK_CATALOG[bank] || [];
+    const products = BANK_CATALOG[pickBankSelect.value] || [];
     pickProductSelect.innerHTML = products.map((p, i) => `<option value="${i}">${p.name}</option>`).join('')
-      + `<option value="${CUSTOM_KEY}">Outro investimento…</option>`;
+      + `<option value="${CUSTOM_KEY}">Outro investimento neste banco…</option>`;
   }
 
-  pickBankSelect.addEventListener('change', () => {
-    customBankField.hidden = pickBankSelect.value !== CUSTOM_KEY;
-    populateProductSelect();
-  });
+  pickBankSelect.addEventListener('change', populateProductSelect);
 
   populateBankSelect();
   populateProductSelect();
@@ -1315,13 +1299,7 @@
   });
 
   addCompareBtn.addEventListener('click', () => {
-    let bankName;
-    if (pickBankSelect.value === CUSTOM_KEY) {
-      bankName = pickBankCustomInput.value.trim();
-      if (!bankName) { pickBankCustomInput.focus(); return; }
-    } else {
-      bankName = pickBankSelect.value;
-    }
+    const bankName = pickBankSelect.value;
 
     let product;
     if (pickProductSelect.value === CUSTOM_KEY) {
@@ -1345,8 +1323,6 @@
     });
     save();
     renderCompare();
-
-    if (pickBankSelect.value === CUSTOM_KEY) pickBankCustomInput.value = '';
   });
 
   renderPots();
