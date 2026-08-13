@@ -91,6 +91,20 @@
   }
   h1 { font-size: 1.9rem; margin: 0 0 0.35rem; letter-spacing: -0.01em; }
   .subtitle { color: var(--ink-soft); font-size: 0.98rem; margin: 0; max-width: 36rem; }
+  .clear-all-btn {
+    display: inline-block;
+    background: none;
+    border: none;
+    color: var(--ink-soft);
+    font-size: 0.78rem;
+    cursor: pointer;
+    padding: 0;
+    margin-top: 0.7rem;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .clear-all-btn:hover { color: var(--vinho); }
+  .clear-all-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
   .cdi-stamp {
     margin-top: 1.35rem;
@@ -532,6 +546,7 @@
     <p class="eyebrow">Suas caixinhas &amp; cofrinhos</p>
     <h1>Caderneta de Rendimentos</h1>
     <p class="subtitle">Cadastre onde seu dinheiro está guardado e veja, na hora, quanto ele deve render nos próximos meses — como uma caderneta de poupança, só que sua.</p>
+    <button type="button" id="clearAllBtn" class="clear-all-btn">🗑 Limpar tudo e começar do zero</button>
 
     <div class="cdi-stamp">
       <span class="label">CDI atual</span>
@@ -544,11 +559,25 @@
 
   <section class="block">
     <h2>Onde seu dinheiro está hoje</h2>
-    <p class="section-sub">Adicione cada caixinha, cofrinho ou conta onde você tem dinheiro aplicado agora, com o valor e a taxa de cada uma.</p>
-    <div class="ledger" id="potsList"></div>
-    <div class="add-row">
+    <p class="section-sub">Escolha o banco/corretora e o investimento onde seu dinheiro está guardado agora, e informe o valor.</p>
+
+    <div class="picker">
+      <div class="field">
+        <label for="potBank">Banco / corretora</label>
+        <select id="potBank"></select>
+      </div>
+      <div class="field">
+        <label for="potProduct">Investimento</label>
+        <select id="potProduct"></select>
+      </div>
+      <div class="field">
+        <label for="potAmount">Valor aplicado (R$)</label>
+        <input type="number" id="potAmount" step="0.01" min="0">
+      </div>
       <button class="add-btn" id="addPot" type="button">+ Adicionar caixinha</button>
     </div>
+
+    <div class="ledger" id="potsList"></div>
   </section>
 
   <section class="summary">
@@ -948,6 +977,9 @@
   const cdiInput = document.getElementById('cdiRate');
   const cdiCaption = document.getElementById('cdiCaption');
   const refreshCdiBtn = document.getElementById('refreshCdiBtn');
+  const potBankSelect = document.getElementById('potBank');
+  const potProductSelect = document.getElementById('potProduct');
+  const potAmountInput = document.getElementById('potAmount');
   const addPotBtn = document.getElementById('addPot');
   const monthsRange = document.getElementById('monthsRange');
   const monthsVal = document.getElementById('monthsVal');
@@ -1016,6 +1048,17 @@
   populateCombineBankSelect();
   populateCombineProductSelect();
 
+  function populatePotBankSelect() {
+    potBankSelect.innerHTML = Object.keys(BANK_CATALOG).map(b => `<option value="${b}">${b}</option>`).join('');
+  }
+  function populatePotProductSelect() {
+    const products = BANK_CATALOG[potBankSelect.value] || [];
+    potProductSelect.innerHTML = products.map((p, i) => `<option value="${i}">${p.name}</option>`).join('');
+  }
+  potBankSelect.addEventListener('change', populatePotProductSelect);
+  populatePotBankSelect();
+  populatePotProductSelect();
+
   cdiInput.value = state.cdiAnnual;
   monthsRange.value = state.months;
   monthsVal.textContent = state.months;
@@ -1058,6 +1101,13 @@
   }
 
   refreshCdiBtn.addEventListener('click', fetchLiveCDI);
+
+  document.getElementById('clearAllBtn').addEventListener('click', () => {
+    if (confirm('Isso vai apagar todas as caixinhas, comparações e combinações salvas neste navegador. Tem certeza?')) {
+      localStorage.removeItem(STORAGE_KEY);
+      location.reload();
+    }
+  });
 
   cdiInput.addEventListener('input', () => {
     state.cdiAnnual = parseFloat(cdiInput.value) || 0;
@@ -1601,8 +1651,25 @@
   }
 
   addPotBtn.addEventListener('click', () => {
-    state.pots.push({ id: crypto.randomUUID(), name: 'Nova caixinha', amount: 1000, mode: 'cdi', rate: 100 });
-    save(); renderPots();
+    const bankName = potBankSelect.value;
+    const idx = parseInt(potProductSelect.value, 10);
+    const template = (BANK_CATALOG[bankName] || [])[idx];
+    const amt = parseFloat(potAmountInput.value) || 0;
+    if (!template || amt <= 0) { potAmountInput.focus(); return; }
+
+    state.pots.push({
+      id: crypto.randomUUID(),
+      name: `${bankName} — ${template.name}`,
+      amount: amt,
+      mode: template.mode,
+      rate: template.rate,
+      cap: template.cap ?? null,
+      excessMode: template.excessMode,
+      excessRate: template.excessRate
+    });
+    save();
+    renderPots();
+    potAmountInput.value = '';
   });
 
   monthsRange.addEventListener('input', () => {
