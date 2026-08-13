@@ -642,9 +642,28 @@
         <label for="potBank">Banco / corretora</label>
         <select id="potBank"></select>
       </div>
-      <div class="field">
+      <div class="field" id="potCustomBankField" hidden>
+        <label for="potCustomBank">Nome do banco/corretora</label>
+        <input type="text" id="potCustomBank" placeholder="ex: Banco XP">
+      </div>
+      <div class="field" id="potProductField">
         <label for="potProduct">Investimento</label>
         <select id="potProduct"></select>
+      </div>
+      <div class="field" id="potCustomNameField" hidden>
+        <label for="potCustomName">Nome do investimento</label>
+        <input type="text" id="potCustomName" placeholder="ex: CDB negociado">
+      </div>
+      <div class="field" id="potCustomModeField" hidden>
+        <label for="potCustomMode">Como rende</label>
+        <select id="potCustomMode">
+          <option value="cdi">% do CDI</option>
+          <option value="fixed">Taxa fixa a.m.</option>
+        </select>
+      </div>
+      <div class="field" id="potCustomRateField" hidden>
+        <label for="potCustomRate">Taxa</label>
+        <input type="number" id="potCustomRate" step="0.01" min="0" value="100">
       </div>
       <div class="field">
         <label for="potAmount">Valor aplicado (R$)</label>
@@ -1117,7 +1136,16 @@
   const cdiCaption = document.getElementById('cdiCaption');
   const refreshCdiBtn = document.getElementById('refreshCdiBtn');
   const potBankSelect = document.getElementById('potBank');
+  const potCustomBankField = document.getElementById('potCustomBankField');
+  const potCustomBankInput = document.getElementById('potCustomBank');
+  const potProductField = document.getElementById('potProductField');
   const potProductSelect = document.getElementById('potProduct');
+  const potCustomNameField = document.getElementById('potCustomNameField');
+  const potCustomNameInput = document.getElementById('potCustomName');
+  const potCustomModeField = document.getElementById('potCustomModeField');
+  const potCustomModeSelect = document.getElementById('potCustomMode');
+  const potCustomRateField = document.getElementById('potCustomRateField');
+  const potCustomRateInput = document.getElementById('potCustomRate');
   const potAmountInput = document.getElementById('potAmount');
   const addPotBtn = document.getElementById('addPot');
   const monthsRange = document.getElementById('monthsRange');
@@ -1195,16 +1223,28 @@
   populateCombineBankSelect();
   updateCombinePickerMode();
 
+  const POT_CUSTOM_BANK = '__custom_bank__';
+
   function populatePotBankSelect() {
-    potBankSelect.innerHTML = Object.keys(BANK_CATALOG).map(b => `<option value="${b}">${b}</option>`).join('');
+    potBankSelect.innerHTML = Object.keys(BANK_CATALOG).map(b => `<option value="${b}">${b}</option>`).join('')
+      + `<option value="${POT_CUSTOM_BANK}">Outro (digitar manualmente)…</option>`;
   }
   function populatePotProductSelect() {
     const products = BANK_CATALOG[potBankSelect.value] || [];
     potProductSelect.innerHTML = products.map((p, i) => `<option value="${i}">${p.name}</option>`).join('');
   }
-  potBankSelect.addEventListener('change', populatePotProductSelect);
+  function updatePotPickerMode() {
+    const isCustom = potBankSelect.value === POT_CUSTOM_BANK;
+    potCustomBankField.hidden = !isCustom;
+    potProductField.hidden = isCustom;
+    potCustomNameField.hidden = !isCustom;
+    potCustomModeField.hidden = !isCustom;
+    potCustomRateField.hidden = !isCustom;
+    if (!isCustom) populatePotProductSelect();
+  }
+  potBankSelect.addEventListener('change', updatePotPickerMode);
   populatePotBankSelect();
-  populatePotProductSelect();
+  updatePotPickerMode();
 
   cdiInput.value = state.cdiAnnual;
   monthsRange.value = state.months;
@@ -1880,25 +1920,47 @@
   }
 
   addPotBtn.addEventListener('click', () => {
-    const bankName = potBankSelect.value;
-    const idx = parseInt(potProductSelect.value, 10);
-    const template = (BANK_CATALOG[bankName] || [])[idx];
     const amt = parseFloat(potAmountInput.value) || 0;
-    if (!template || amt <= 0) { potAmountInput.focus(); return; }
+    if (amt <= 0) { potAmountInput.focus(); return; }
 
-    state.pots.push({
-      id: crypto.randomUUID(),
-      name: `${bankName} — ${template.name}`,
-      amount: amt,
-      mode: template.mode,
-      rate: template.rate,
-      cap: template.cap ?? null,
-      excessMode: template.excessMode,
-      excessRate: template.excessRate,
-      note: template.note
-    });
-    save();
-    renderPots();
+    if (potBankSelect.value === POT_CUSTOM_BANK) {
+      const bankName = potCustomBankInput.value.trim();
+      if (!bankName) { potCustomBankInput.focus(); return; }
+      const productName = potCustomNameInput.value.trim() || 'Investimento personalizado';
+
+      state.pots.push({
+        id: crypto.randomUUID(),
+        name: `${bankName} — ${productName}`,
+        amount: amt,
+        mode: potCustomModeSelect.value,
+        rate: parseFloat(potCustomRateInput.value) || 0,
+        cap: null
+      });
+      save();
+      renderPots();
+      potCustomBankInput.value = '';
+      potCustomNameInput.value = '';
+    } else {
+      const bankName = potBankSelect.value;
+      const idx = parseInt(potProductSelect.value, 10);
+      const template = (BANK_CATALOG[bankName] || [])[idx];
+      if (!template) return;
+
+      state.pots.push({
+        id: crypto.randomUUID(),
+        name: `${bankName} — ${template.name}`,
+        amount: amt,
+        mode: template.mode,
+        rate: template.rate,
+        cap: template.cap ?? null,
+        excessMode: template.excessMode,
+        excessRate: template.excessRate,
+        note: template.note
+      });
+      save();
+      renderPots();
+    }
+
     potAmountInput.value = '';
   });
 
