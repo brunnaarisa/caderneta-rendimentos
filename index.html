@@ -607,6 +607,7 @@
       <div class="winner-bank" id="winnerBank">—</div>
       <div class="winner-product" id="winnerProduct">—</div>
       <div class="cap-info" id="winnerCapInfo"></div>
+      <div class="cap-info" id="winnerNote"></div>
 
       <div class="receipt" id="winnerReceipt">
         <div class="receipt-row">
@@ -719,7 +720,7 @@
   </section>
 
   <footer>
-    <p>A taxa CDI no topo é buscada automaticamente da <a href="https://dadosabertos.bcb.gov.br/dataset/4389-taxa-de-juros---cdi" target="_blank" rel="noopener">API pública do Banco Central</a> (série 4389) sempre que a página é aberta. As taxas do catálogo de bancos/corretoras (13 instituições, incluindo caixinhas, CDB, LCI/LCA, fundos DI e Tesouro Selic) foram pesquisadas e checadas uma a uma em 13/08/2026 — bancos mudam essas ofertas com frequência, e taxas de LCI/LCA em especial variam por emissor específico, então confira a condição real antes de investir.</p>
+    <p><strong>Sobre a precisão dos dados:</strong> a taxa CDI no topo é buscada automaticamente da <a href="https://dadosabertos.bcb.gov.br/dataset/4389-taxa-de-juros---cdi" target="_blank" rel="noopener">API pública do Banco Central</a> a cada visita, então essa parte está sempre certa. Já as taxas do catálogo de bancos/corretoras (13 instituições) foram pesquisadas e checadas uma a uma em 13/08/2026, com fonte — mas <strong>este site não tem como buscar essas taxas ao vivo</strong> (não existe uma API pública unificada com as ofertas de todos os bancos). Elas ficam desatualizadas com o tempo, principalmente LCI/LCA e CDBs de plataformas como XP/Rico/BTG, que mudam a qualquer momento. Sempre que uma opção tiver uma ressalva escrita (ex: "confira a ficha do título"), é justamente porque aquele número pode não ser exato — use como ponto de partida, não como confirmação, e confira a condição real no app do banco antes de aplicar.</p>
     <p>Valores brutos ou líquidos estimados por juros compostos a partir das taxas informadas — não descontam taxas de administração/custódia, e a comparação de IR usa a tabela regressiva padrão de renda fixa (22,5% até 180 dias; 20% de 181 a 360; 17,5% de 361 a 720; 15% acima disso). Não é recomendação de investimento.</p>
     <p>Seus dados ficam salvos apenas neste navegador — nada é enviado para nenhum servidor.</p>
   </footer>
@@ -732,89 +733,110 @@
   const CDI_SERIES_URL = 'https://api.bcb.gov.br/dados/serie/bcdata.sgs.4389/dados/ultimos/1?formato=json';
 
   // Catálogo de referência: banco/corretora -> investimentos típicos disponíveis lá.
-  // Taxas são estimativas de mercado, editáveis depois de adicionar.
+  // Taxas verificadas em 13/08/2026 (ver rodapé). `note`, quando presente, é uma
+  // ressalva ESPECÍFICA sobre o que conferir antes de aplicar — não é enfeite.
   const BANK_CATALOG = {
     'Nubank': [
       { name: 'Caixinha 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
       { name: 'Caixinha Turbo 115% do CDI (padrão, até R$5 mil, 31 dias)', mode: 'cdi', rate: 115, exempt: false,
-        cap: 5000, excessMode: 'cdi', excessRate: 100 },
+        cap: 5000, excessMode: 'cdi', excessRate: 100,
+        note: 'Precisa movimentar R$900 na conta pra desbloquear; a validade é de 31 dias corridos e renova só com novo aporte.' },
       { name: 'Caixinha Turbo 120% do CDI (Ultravioleta/Nubank+, até R$10 mil)', mode: 'cdi', rate: 120, exempt: false,
-        cap: 10000, excessMode: 'cdi', excessRate: 100 },
-      { name: 'LCI/LCA Nubank ~95% do CDI (estimativa)', mode: 'cdi', rate: 95, exempt: true },
-      { name: 'Nu Reserva Imediata (fundo DI) ~108% do CDI histórico, sem FGC', mode: 'cdi', rate: 108, exempt: false },
+        cap: 10000, excessMode: 'cdi', excessRate: 100,
+        note: 'Só pra clientes Ultravioleta ou Nubank+.' },
+      { name: 'LCI/LCA Nubank ~95% do CDI', mode: 'cdi', rate: 95, exempt: true,
+        note: 'Taxa varia por título específico disponível no momento — confira a carência (mínimo legal: 270 dias LCI / 365 dias LCA) e o valor mínimo no app antes de aplicar.' },
+      { name: 'Nu Reserva Imediata (fundo DI)', mode: 'cdi', rate: 108, exempt: false,
+        note: 'Rentabilidade histórica de ~108% do CDI — não é uma taxa contratada, pode variar mês a mês, e o fundo não tem cobertura do FGC.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'Banco Inter': [
       { name: 'Caixinha / Meu Porquinho 80% do CDI', mode: 'cdi', rate: 80, exempt: false },
       { name: 'CDB Inter (avulso) 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
       { name: 'Poupança Inter', mode: 'fixed', rate: 0.50, exempt: true },
-      { name: 'LCI Inter ~92% do CDI', mode: 'cdi', rate: 92, exempt: true },
-      { name: 'LCA Inter liquidez diária ~110% do CDI (oferta observada, confirme condição atual)', mode: 'cdi', rate: 110, exempt: true },
+      { name: 'LCI/LCA Inter (liquidez diária) 92% do CDI', mode: 'cdi', rate: 92, exempt: true,
+        note: 'Isenta de IR — o "110% do CDI" que aparece em comparativos é só a forma de expressar essa isenção em termos de CDB, não é uma taxa extra. Títulos com liquidez diária costumam esgotar rápido: confira disponibilidade e valor mínimo no app antes de aplicar.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'C6 Bank': [
       { name: 'Cofrinho / CDB C6 102% do CDI', mode: 'cdi', rate: 102, exempt: false },
       { name: 'Poupança C6', mode: 'fixed', rate: 0.50, exempt: true },
-      { name: 'LCI/LCA C6 ~91% do CDI (estimativa)', mode: 'cdi', rate: 91, exempt: true },
+      { name: 'LCI/LCA C6 ~91% do CDI', mode: 'cdi', rate: 91, exempt: true,
+        note: 'Taxa varia por título — confira a carência e o valor mínimo do título disponível no app antes de aplicar.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'PicPay': [
       { name: 'Cofrinho Turbinado 121% do CDI (até R$10 mil; acima disso, 102%)', mode: 'cdi', rate: 121, exempt: false,
-        cap: 10000, excessMode: 'cdi', excessRate: 102 },
+        cap: 10000, excessMode: 'cdi', excessRate: 102,
+        note: 'Pra manter a taxa turbinada, precisa receber pelo menos R$999/mês em Pix e transferências na conta.' },
       { name: 'Saldo da conta 102% do CDI', mode: 'cdi', rate: 102, exempt: false },
       { name: 'CDB PicPay 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
-      { name: 'LCA PicPay (via Eqi Investimentos) ~91% do CDI (estimativa)', mode: 'cdi', rate: 91, exempt: true },
+      { name: 'LCA PicPay (via Eqi Investimentos) ~91% do CDI', mode: 'cdi', rate: 91, exempt: true,
+        note: 'Oferecida por uma corretora parceira (Eqi Investimentos) — taxa, carência e disponibilidade variam por título; confira antes de aplicar.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'Mercado Pago': [
       { name: 'Saldo da conta 105% do CDI', mode: 'cdi', rate: 105, exempt: false },
       { name: 'Cofrinho 120% do CDI (com depósito de R$1.000+/mês, até R$5 mil bonificados)', mode: 'cdi', rate: 120, exempt: false,
-        cap: 5000, excessMode: 'cdi', excessRate: 105 },
+        cap: 5000, excessMode: 'cdi', excessRate: 105,
+        note: 'Precisa manter aportes de pelo menos R$1.000/mês no Cofrinho pra continuar valendo a taxa bonificada.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'Banco do Brasil': [
-      { name: 'Cofrinho BB (BB RF Simples Reserva, sem FGC) 91% do CDI', mode: 'cdi', rate: 91, exempt: false },
+      { name: 'Cofrinho BB (BB RF Simples Reserva) 91% do CDI', mode: 'cdi', rate: 91, exempt: false,
+        note: 'É um fundo, não CDB — não tem cobertura do FGC.' },
       { name: 'Poupança BB', mode: 'fixed', rate: 0.50, exempt: true },
-      { name: 'LCI/LCA BB ~88% do CDI (estimativa, bancões 2026)', mode: 'cdi', rate: 88, exempt: true },
+      { name: 'LCI/LCA BB ~88% do CDI', mode: 'cdi', rate: 88, exempt: true,
+        note: 'Bancos tradicionais costumam oferecer taxas de LCI/LCA menores que fintechs — confira o título específico, carência e valor mínimo no app.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'Itaú': [
       { name: 'Cofrinhos Itaú 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
       { name: 'Poupança Itaú', mode: 'fixed', rate: 0.50, exempt: true },
-      { name: 'LCI/LCA Itaú ~88% do CDI (estimativa, bancões 2026)', mode: 'cdi', rate: 88, exempt: true },
+      { name: 'LCI/LCA Itaú ~88% do CDI', mode: 'cdi', rate: 88, exempt: true,
+        note: 'Bancos tradicionais costumam oferecer taxas de LCI/LCA menores que fintechs — confira o título específico, carência e valor mínimo no app.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'Bradesco': [
       { name: 'Cofrinho / CDB Bradesco 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
       { name: 'Poupança Bradesco', mode: 'fixed', rate: 0.50, exempt: true },
-      { name: 'LCI/LCA Bradesco ~88% do CDI (estimativa, bancões 2026)', mode: 'cdi', rate: 88, exempt: true },
+      { name: 'LCI/LCA Bradesco ~88% do CDI', mode: 'cdi', rate: 88, exempt: true,
+        note: 'Bancos tradicionais costumam oferecer taxas de LCI/LCA menores que fintechs — confira o título específico, carência e valor mínimo no app.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'Santander': [
       { name: 'CDB Santander 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
       { name: 'Poupança Santander', mode: 'fixed', rate: 0.50, exempt: true },
-      { name: 'LCI/LCA Santander ~88% do CDI (estimativa, bancões 2026)', mode: 'cdi', rate: 88, exempt: true },
+      { name: 'LCI/LCA Santander ~88% do CDI', mode: 'cdi', rate: 88, exempt: true,
+        note: 'Bancos tradicionais costumam oferecer taxas de LCI/LCA menores que fintechs — confira o título específico, carência e valor mínimo no app.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'Caixa Econômica Federal': [
       { name: 'CDB Caixa 95% do CDI', mode: 'cdi', rate: 95, exempt: false },
       { name: 'Poupança Caixa', mode: 'fixed', rate: 0.50, exempt: true },
-      { name: 'LCI Caixa ~88% do CDI (estimativa, bancões 2026)', mode: 'cdi', rate: 88, exempt: true },
+      { name: 'LCI Caixa ~88% do CDI', mode: 'cdi', rate: 88, exempt: true,
+        note: 'Bancos tradicionais costumam oferecer taxas de LCI/LCA menores que fintechs — confira o título específico, carência e valor mínimo no app.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'XP Investimentos': [
-      { name: 'CDB XP ~106% do CDI (varia por prazo/emissor)', mode: 'cdi', rate: 106, exempt: false },
-      { name: 'LCI/LCA (prateleira XP) ~95% do CDI (estimativa, varia por emissor)', mode: 'cdi', rate: 95, exempt: true },
+      { name: 'CDB XP ~106% do CDI', mode: 'cdi', rate: 106, exempt: false,
+        note: 'XP é uma plataforma que revende títulos de vários bancos emissores — a taxa exata varia por prazo e emissor disponível no momento; confira a ficha do título antes de aplicar.' },
+      { name: 'LCI/LCA (prateleira XP) ~95% do CDI', mode: 'cdi', rate: 95, exempt: true,
+        note: 'Taxa, carência e valor mínimo variam por título de terceiros — confira a ficha completa na plataforma antes de aplicar.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'Rico': [
-      { name: 'CDB (prateleira Rico) ~100% do CDI (varia por emissor)', mode: 'cdi', rate: 100, exempt: false },
-      { name: 'LCI/LCA (prateleira Rico) ~93% do CDI (estimativa, varia por emissor)', mode: 'cdi', rate: 93, exempt: true },
+      { name: 'CDB (prateleira Rico) ~100% do CDI', mode: 'cdi', rate: 100, exempt: false,
+        note: 'Rico é uma plataforma que revende títulos de vários bancos emissores — a taxa exata varia por prazo e emissor disponível no momento; confira a ficha do título antes de aplicar.' },
+      { name: 'LCI/LCA (prateleira Rico) ~93% do CDI', mode: 'cdi', rate: 93, exempt: true,
+        note: 'Taxa, carência e valor mínimo variam por título de terceiros — confira a ficha completa na plataforma antes de aplicar.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'BTG Pactual': [
-      { name: 'CDB BTG ~100% do CDI', mode: 'cdi', rate: 100, exempt: false },
-      { name: 'LCI/LCA (prateleira BTG) ~93% do CDI (estimativa, varia por emissor)', mode: 'cdi', rate: 93, exempt: true },
+      { name: 'CDB BTG ~100% do CDI', mode: 'cdi', rate: 100, exempt: false,
+        note: 'BTG também revende títulos de outros bancos emissores — a taxa exata varia por prazo e emissor disponível no momento; confira a ficha do título antes de aplicar.' },
+      { name: 'LCI/LCA (prateleira BTG) ~93% do CDI', mode: 'cdi', rate: 93, exempt: true,
+        note: 'Taxa, carência e valor mínimo variam por título de terceiros — confira a ficha completa na plataforma antes de aplicar.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ]
   };
@@ -923,7 +945,7 @@
       allocation.push({
         id: crypto.randomUUID(), bank: t.bank, name: t.product.name, mode: t.product.mode,
         rate: t.product.rate, exempt: t.product.exempt, cap: t.product.cap ?? null,
-        excessMode: t.product.excessMode, excessRate: t.product.excessRate, amount: alloc
+        excessMode: t.product.excessMode, excessRate: t.product.excessRate, note: t.product.note, amount: alloc
       });
       remaining -= alloc;
     }
@@ -952,6 +974,7 @@
   const winnerBankEl = document.getElementById('winnerBank');
   const winnerProductEl = document.getElementById('winnerProduct');
   const winnerCapInfoEl = document.getElementById('winnerCapInfo');
+  const winnerNoteEl = document.getElementById('winnerNote');
   const winnerReceipt = document.getElementById('winnerReceipt');
   const winnerGrossEl = document.getElementById('winnerGross');
   const winnerIrRow = document.getElementById('winnerIrRow');
@@ -1301,6 +1324,7 @@
       winnerBankEl.textContent = 'Digite um valor acima';
       winnerProductEl.textContent = 'Assim que você digitar quanto tem pra guardar, mostramos a melhor opção automaticamente.';
       winnerCapInfoEl.textContent = '';
+      winnerNoteEl.textContent = '';
       winnerReceipt.style.display = 'none';
       winnerBalanceEl.textContent = '—';
       lastWinnerNetGain = null;
@@ -1317,6 +1341,7 @@
       } else {
         winnerCapInfoEl.textContent = '';
       }
+      winnerNoteEl.textContent = best.opt.note || '';
 
       winnerReceipt.style.display = '';
       winnerGrossEl.textContent = fmtBRL.format(best.grossGain);
@@ -1362,6 +1387,12 @@
           ? `Limite ${fmtBRL.format(opt.cap)}: excedente rende ${opt.excessRate}${opt.excessMode === 'fixed' ? '% a.m.' : '% do CDI'}`
           : `Limite: ${fmtBRL.format(opt.cap)} (valor atual está dentro)`;
         nameCell.appendChild(capInfo);
+      }
+      if (opt.note) {
+        const noteInfo = document.createElement('div');
+        noteInfo.className = 'cap-info';
+        noteInfo.textContent = opt.note;
+        nameCell.appendChild(noteInfo);
       }
 
       nameTd.appendChild(nameCell);
@@ -1448,6 +1479,12 @@
       nameLine.className = 'combine-name';
       nameLine.textContent = item.name;
       nameCell.appendChild(nameLine);
+      if (item.note) {
+        const noteInfo = document.createElement('div');
+        noteInfo.className = 'cap-info';
+        noteInfo.textContent = item.note;
+        nameCell.appendChild(noteInfo);
+      }
       nameTd.appendChild(nameCell);
       tr.appendChild(nameTd);
 
@@ -1553,7 +1590,8 @@
       rate: template.rate,
       cap: template.cap ?? null,
       excessMode: template.excessMode,
-      excessRate: template.excessRate
+      excessRate: template.excessRate,
+      note: template.note
     });
     save();
     renderPots();
@@ -1593,6 +1631,7 @@
       cap: template.cap ?? null,
       excessMode: template.excessMode,
       excessRate: template.excessRate,
+      note: template.note,
       amount: amt
     });
     save();
