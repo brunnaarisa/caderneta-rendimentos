@@ -543,6 +543,8 @@
   </header>
 
   <section class="block">
+    <h2>Onde seu dinheiro está hoje</h2>
+    <p class="section-sub">Adicione cada caixinha, cofrinho ou conta onde você tem dinheiro aplicado agora, com o valor e a taxa de cada uma.</p>
     <div class="ledger" id="potsList"></div>
     <div class="add-row">
       <button class="add-btn" id="addPot" type="button">+ Adicionar caixinha</button>
@@ -729,7 +731,7 @@
 
 <script>
 (function () {
-  const STORAGE_KEY = 'caderneta-rendimentos-v8';
+  const STORAGE_KEY = 'caderneta-rendimentos-v9';
   const fmtBRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
   const CUSTOM_KEY = '__custom__';
   const CDI_SERIES_URL = 'https://api.bcb.gov.br/dados/serie/bcdata.sgs.4389/dados/ultimos/1?formato=json';
@@ -822,14 +824,10 @@
     ]
   };
 
+  // Used only as a fallback if saved data is missing/corrupted — a brand new
+  // visitor always starts from a blank slate, not from demo data.
   function defaultCompareOptions() {
-    return [
-      { id: crypto.randomUUID(), bank: 'Nubank', name: 'Caixinha 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
-      { id: crypto.randomUUID(), bank: 'Banco do Brasil', name: 'Cofrinho BB (BB RF Simples Reserva, sem FGC) 91% do CDI', mode: 'cdi', rate: 91, exempt: false },
-      { id: crypto.randomUUID(), bank: 'Banco do Brasil', name: 'Poupança BB', mode: 'fixed', rate: 0.50, exempt: true },
-      { id: crypto.randomUUID(), bank: 'PicPay', name: 'Cofrinho Turbinado 121% do CDI (até R$10 mil; acima disso, 102%)', mode: 'cdi', rate: 121, exempt: false, cap: 10000, excessMode: 'cdi', excessRate: 102 },
-      { id: crypto.randomUUID(), bank: 'XP Investimentos', name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
-    ];
+    return [];
   }
 
   function defaultState() {
@@ -837,11 +835,8 @@
       cdiAnnual: 13.90,
       cdiFetchedDate: null,
       months: 3,
-      pots: [
-        { id: crypto.randomUUID(), name: 'Caixinha Turbo Nubank', amount: 4500, mode: 'cdi', rate: 115, cap: 5000, excessMode: 'cdi', excessRate: 100 },
-        { id: crypto.randomUUID(), name: 'Cofrinho BB (BB RF Simples Reserva)', amount: 55000, mode: 'cdi', rate: 91 }
-      ],
-      compareAmount: 59500,
+      pots: [],
+      compareAmount: 0,
       compareOptions: defaultCompareOptions(),
       combination: []
     };
@@ -852,8 +847,8 @@
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return defaultState();
       const parsed = JSON.parse(raw);
-      if (!parsed.pots || !parsed.pots.length) return defaultState();
-      if (!parsed.compareOptions || !parsed.compareOptions.length) parsed.compareOptions = defaultCompareOptions();
+      if (!Array.isArray(parsed.pots)) return defaultState();
+      if (!Array.isArray(parsed.compareOptions)) parsed.compareOptions = defaultCompareOptions();
       parsed.compareOptions.forEach(o => { if (!o.bank) o.bank = 'Outros'; });
       if (typeof parsed.compareAmount !== 'number') parsed.compareAmount = parsed.pots.reduce((a, p) => a + p.amount, 0);
       if (!Array.isArray(parsed.combination)) parsed.combination = [];
@@ -1210,6 +1205,14 @@
       row._yieldEl = result.querySelector('[data-yield]');
       potsList.appendChild(row);
     });
+
+    if (state.pots.length === 0) {
+      const empty = document.createElement('p');
+      empty.style.cssText = 'color: var(--ink-soft); font-size: 0.88rem; padding: 1rem 0;';
+      empty.textContent = 'Nenhuma caixinha ainda — clique em "+ Adicionar caixinha" abaixo pra começar.';
+      potsList.appendChild(empty);
+    }
+
     renderResults();
   }
 
@@ -1218,6 +1221,7 @@
     let totalMonth1 = 0;
 
     [...potsList.children].forEach(row => {
+      if (!row._pot) return; // skip the "no caixinhas yet" placeholder message
       const pot = row._pot;
       const gain = potMonth1Gain(pot);
       row._yieldEl.textContent = '+ ' + fmtBRL.format(gain);
