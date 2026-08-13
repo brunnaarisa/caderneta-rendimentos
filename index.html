@@ -783,7 +783,7 @@
       renderResults();
 
       cdiCaption.className = 'cdi-caption ok';
-      cdiCaption.textContent = `✓ Atualizado automaticamente do Banco Central em ${entry.data}.`;
+      cdiCaption.textContent = `✓ Valor mais recente publicado pelo Banco Central: ${entry.data}. (O CDI sai com 1–2 dias úteis de atraso — não existe valor "de hoje" disponível ainda.)`;
     } catch (e) {
       if (state.cdiFetchedDate) {
         cdiCaption.className = 'cdi-caption warn';
