@@ -689,6 +689,17 @@
     </div>
     <p class="allocation-status" id="allocationStatus"></p>
 
+    <h3 style="font-size: 0.98rem; margin: 1.5rem 0 0.35rem;">Projeção da combinação</h3>
+    <p class="section-sub">Como esse total combinado evolui mês a mês — usa os mesmos <span class="mono" id="combineMonthsLabel">3</span> meses definidos lá em cima, em "Projeção da sua caderneta".</p>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Mês</th><th>Saldo total</th><th>Rendimento do mês</th><th>Acumulado</th></tr>
+        </thead>
+        <tbody id="combineProjBody"></tbody>
+      </table>
+    </div>
+
     <div class="winner-card combine-card" id="combineCard">
       <span class="winner-stamp combine-stamp">total combinado</span>
       <div class="receipt">
@@ -946,6 +957,8 @@
   const autoSuggestBtn = document.getElementById('autoSuggestBtn');
   const combineBody = document.getElementById('combineBody');
   const allocationStatusEl = document.getElementById('allocationStatus');
+  const combineMonthsLabel = document.getElementById('combineMonthsLabel');
+  const combineProjBody = document.getElementById('combineProjBody');
   const combineGrossEl = document.getElementById('combineGross');
   const combineIrEl = document.getElementById('combineIr');
   const combineNetEl = document.getElementById('combineNet');
@@ -985,6 +998,7 @@
   monthsVal.textContent = state.months;
   compareAmountInput.value = state.compareAmount;
   compareMonthsLabel.textContent = state.months;
+  combineMonthsLabel.textContent = state.months;
 
   // ---------- Live CDI fetch (Banco Central, série 4389) ----------
   async function fetchLiveCDI() {
@@ -1189,36 +1203,47 @@
     renderProjection();
   }
 
-  function renderProjection() {
-    projBody.innerHTML = '';
-    const months = state.months;
-    // each pot's balance is tracked as { capPart, excessPart } so the two
-    // sub-amounts compound at their own rate independently
-    let subBalances = state.pots.map(p => splitAmount(p.amount, p.cap));
+  // Shared by any "list of amounts that grow over time" table: each item's
+  // balance is tracked as { capPart, excessPart } so the two sub-amounts
+  // compound at their own rate independently, month by month.
+  function computeMonthSeries(items, months) {
+    let subBalances = items.map(it => splitAmount(it.amount, it.cap));
     let cumulative = 0;
-
+    const rows = [];
     for (let m = 1; m <= months; m++) {
       let monthGain = 0;
       subBalances = subBalances.map((sb, i) => {
-        const pot = state.pots[i];
-        const capGain = sb.capPart * potMonthlyRate(pot);
-        const excessGain = sb.excessPart > 0 ? sb.excessPart * excessMonthlyRate(pot) : 0;
+        const it = items[i];
+        const capGain = sb.capPart * monthlyRateFor(it.mode, it.rate);
+        const excessGain = sb.excessPart > 0 ? sb.excessPart * excessMonthlyRate(it) : 0;
         monthGain += capGain + excessGain;
         return { capPart: sb.capPart + capGain, excessPart: sb.excessPart + excessGain };
       });
       cumulative += monthGain;
       const totalBal = subBalances.reduce((a, sb) => a + sb.capPart + sb.excessPart, 0);
-
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>Mês ${m}</td><td class="mono">${fmtBRL.format(totalBal)}</td><td class="mono gain">+ ${fmtBRL.format(monthGain)}</td><td class="mono gain">+ ${fmtBRL.format(cumulative)}</td>`;
-      projBody.appendChild(tr);
+      rows.push({ month: m, totalBal, monthGain, cumulative });
     }
+    return rows;
+  }
 
-    if (months === 0 || state.pots.length === 0) {
+  function fillMonthTable(tbody, rows, emptyMessage) {
+    tbody.innerHTML = '';
+    rows.forEach(r => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td colspan="4" style="text-align:center; color:var(--ink-soft);">Adicione uma caixinha para ver a projeção.</td>`;
-      projBody.appendChild(tr);
+      tr.innerHTML = `<td>Mês ${r.month}</td><td class="mono">${fmtBRL.format(r.totalBal)}</td><td class="mono gain">+ ${fmtBRL.format(r.monthGain)}</td><td class="mono gain">+ ${fmtBRL.format(r.cumulative)}</td>`;
+      tbody.appendChild(tr);
+    });
+    if (rows.length === 0) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td colspan="4" style="text-align:center; color:var(--ink-soft);">${emptyMessage}</td>`;
+      tbody.appendChild(tr);
     }
+  }
+
+  function renderProjection() {
+    const months = state.months;
+    const rows = state.pots.length ? computeMonthSeries(state.pots, months) : [];
+    fillMonthTable(projBody, rows, 'Adicione uma caixinha para ver a projeção.');
 
     renderCompare();
   }
@@ -1507,6 +1532,9 @@
       combineBody.appendChild(tr);
     }
 
+    const projRows = state.combination.length ? computeMonthSeries(state.combination, months) : [];
+    fillMonthTable(combineProjBody, projRows, 'Adicione itens à combinação para ver a projeção mês a mês.');
+
     const target = state.compareAmount;
     const diff = target - totalAllocated;
     if (state.combination.length === 0) {
@@ -1549,6 +1577,7 @@
     state.months = parseInt(monthsRange.value, 10);
     monthsVal.textContent = state.months;
     compareMonthsLabel.textContent = state.months;
+    combineMonthsLabel.textContent = state.months;
     save(); renderProjection();
   });
 
