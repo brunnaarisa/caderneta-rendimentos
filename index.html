@@ -383,6 +383,17 @@
   .cap-info { font-size: 0.7rem; color: var(--ink-soft); max-width: 13rem; }
   .cap-info.over { color: var(--ouro); }
 
+  .catalog-freshness {
+    display: inline-block;
+    font-size: 0.76rem;
+    margin: 0 0 1.1rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 3px;
+  }
+  .catalog-freshness.fresh { color: var(--ink-soft); }
+  .catalog-freshness.stale { color: var(--ouro); background: var(--ouro-soft); }
+  .catalog-freshness.very-stale { color: var(--vinho); background: var(--vinho-soft); font-weight: 600; }
+
   /* ---------- Winner result card ---------- */
   .winner-card {
     border: 1.5px solid var(--ouro);
@@ -595,6 +606,7 @@
   <section class="block" id="compareSection">
     <h2>Qual opção compensa mais?</h2>
     <p class="section-sub">Digite quanto você tem pra guardar — já mostramos automaticamente qual banco/corretora rende mais, e outras boas alternativas, já descontando o Imposto de Renda de quem não é isento.</p>
+    <p class="catalog-freshness" id="catalogFreshness"></p>
 
     <div class="compare-amount">
       <span>Valor a comparar</span>
@@ -731,6 +743,10 @@
   const STORAGE_KEY = 'caderneta-rendimentos-v9';
   const fmtBRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
   const CDI_SERIES_URL = 'https://api.bcb.gov.br/dados/serie/bcdata.sgs.4389/dados/ultimos/1?formato=json';
+
+  // Update this date every time BANK_CATALOG below is re-researched/verified —
+  // it drives the staleness badge, since this static site can't check it live.
+  const CATALOG_VERIFIED_DATE = '2026-08-13';
 
   // Catálogo de referência: banco/corretora -> investimentos típicos disponíveis lá.
   // Taxas verificadas em 13/08/2026 (ver rodapé). `note`, quando presente, é uma
@@ -1645,8 +1661,27 @@
     renderCombine();
   });
 
+  function renderCatalogFreshness() {
+    const el = document.getElementById('catalogFreshness');
+    if (!el) return;
+    const verified = new Date(CATALOG_VERIFIED_DATE + 'T00:00:00');
+    const days = Math.floor((Date.now() - verified.getTime()) / 86400000);
+    const verifiedLabel = verified.toLocaleDateString('pt-BR');
+    if (days <= 30) {
+      el.className = 'catalog-freshness fresh';
+      el.textContent = `✓ Catálogo de bancos/corretoras verificado em ${verifiedLabel} (há ${days} dia${days === 1 ? '' : 's'}).`;
+    } else if (days <= 90) {
+      el.className = 'catalog-freshness stale';
+      el.textContent = `⚠ Catálogo verificado pela última vez em ${verifiedLabel} — há ${days} dias. As taxas podem já ter mudado; confira antes de decidir.`;
+    } else {
+      el.className = 'catalog-freshness very-stale';
+      el.textContent = `⚠ Catálogo desatualizado: última verificação em ${verifiedLabel}, há ${days} dias. É bem provável que algumas taxas já tenham mudado — não confie nesses números sem conferir no banco.`;
+    }
+  }
+
   renderPots();
   fetchLiveCDI();
+  renderCatalogFreshness();
 })();
 </script>
 </body>
