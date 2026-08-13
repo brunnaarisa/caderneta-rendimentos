@@ -721,7 +721,7 @@
   </section>
 
   <footer>
-    <p>A taxa CDI no topo é buscada automaticamente da <a href="https://dadosabertos.bcb.gov.br/dataset/4389-taxa-de-juros---cdi" target="_blank" rel="noopener">API pública do Banco Central</a> (série 4389) sempre que a página é aberta. As taxas do catálogo de bancos/corretoras (ex: % do CDI de cada CDB/cofrinho) foram checadas uma a uma em 13/08/2026 — bancos mudam essas ofertas com frequência (a maioria revisa a % do CDI a qualquer momento), então confira a condição real antes de investir.</p>
+    <p>A taxa CDI no topo é buscada automaticamente da <a href="https://dadosabertos.bcb.gov.br/dataset/4389-taxa-de-juros---cdi" target="_blank" rel="noopener">API pública do Banco Central</a> (série 4389) sempre que a página é aberta. As taxas do catálogo de bancos/corretoras (13 instituições, incluindo caixinhas, CDB, LCI/LCA, fundos DI e Tesouro Selic) foram pesquisadas e checadas uma a uma em 13/08/2026 — bancos mudam essas ofertas com frequência, e taxas de LCI/LCA em especial variam por emissor específico, então confira a condição real antes de investir.</p>
     <p>Valores brutos ou líquidos estimados por juros compostos a partir das taxas informadas — não descontam taxas de administração/custódia, e a comparação de IR usa a tabela regressiva padrão de renda fixa (22,5% até 180 dias; 20% de 181 a 360; 17,5% de 361 a 720; 15% acima disso). Não é recomendação de investimento.</p>
     <p>Seus dados ficam salvos apenas neste navegador — nada é enviado para nenhum servidor.</p>
   </footer>
@@ -743,53 +743,81 @@
         cap: 5000, excessMode: 'cdi', excessRate: 100 },
       { name: 'Caixinha Turbo 120% do CDI (Ultravioleta/Nubank+, até R$10 mil)', mode: 'cdi', rate: 120, exempt: false,
         cap: 10000, excessMode: 'cdi', excessRate: 100 },
-      { name: 'LCI Nubank ~95% do CDI (estimativa)', mode: 'cdi', rate: 95, exempt: true }
+      { name: 'LCI/LCA Nubank ~95% do CDI (estimativa)', mode: 'cdi', rate: 95, exempt: true },
+      { name: 'Nu Reserva Imediata (fundo DI) ~108% do CDI histórico, sem FGC', mode: 'cdi', rate: 108, exempt: false },
+      { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'Banco Inter': [
       { name: 'Caixinha / Meu Porquinho 80% do CDI', mode: 'cdi', rate: 80, exempt: false },
       { name: 'CDB Inter (avulso) 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
-      { name: 'Poupança Inter', mode: 'fixed', rate: 0.50, exempt: true }
+      { name: 'Poupança Inter', mode: 'fixed', rate: 0.50, exempt: true },
+      { name: 'LCI Inter ~92% do CDI', mode: 'cdi', rate: 92, exempt: true },
+      { name: 'LCA Inter liquidez diária ~110% do CDI (oferta observada, confirme condição atual)', mode: 'cdi', rate: 110, exempt: true },
+      { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'C6 Bank': [
       { name: 'Cofrinho / CDB C6 102% do CDI', mode: 'cdi', rate: 102, exempt: false },
-      { name: 'Poupança C6', mode: 'fixed', rate: 0.50, exempt: true }
+      { name: 'Poupança C6', mode: 'fixed', rate: 0.50, exempt: true },
+      { name: 'LCI/LCA C6 ~91% do CDI (estimativa)', mode: 'cdi', rate: 91, exempt: true },
+      { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'PicPay': [
       { name: 'Cofrinho Turbinado 121% do CDI (até R$10 mil; acima disso, 102%)', mode: 'cdi', rate: 121, exempt: false,
         cap: 10000, excessMode: 'cdi', excessRate: 102 },
       { name: 'Saldo da conta 102% do CDI', mode: 'cdi', rate: 102, exempt: false },
-      { name: 'CDB PicPay 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
+      { name: 'CDB PicPay 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
+      { name: 'LCA PicPay (via Eqi Investimentos) ~91% do CDI (estimativa)', mode: 'cdi', rate: 91, exempt: true },
+      { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
+    ],
+    'Mercado Pago': [
+      { name: 'Saldo da conta 105% do CDI', mode: 'cdi', rate: 105, exempt: false },
+      { name: 'Cofrinho 120% do CDI (com depósito de R$1.000+/mês, até R$5 mil bonificados)', mode: 'cdi', rate: 120, exempt: false,
+        cap: 5000, excessMode: 'cdi', excessRate: 105 },
+      { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'Banco do Brasil': [
       { name: 'Cofrinho BB (BB RF Simples Reserva, sem FGC) 91% do CDI', mode: 'cdi', rate: 91, exempt: false },
-      { name: 'Poupança BB', mode: 'fixed', rate: 0.50, exempt: true }
+      { name: 'Poupança BB', mode: 'fixed', rate: 0.50, exempt: true },
+      { name: 'LCI/LCA BB ~88% do CDI (estimativa, bancões 2026)', mode: 'cdi', rate: 88, exempt: true },
+      { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'Itaú': [
       { name: 'Cofrinhos Itaú 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
-      { name: 'Poupança Itaú', mode: 'fixed', rate: 0.50, exempt: true }
+      { name: 'Poupança Itaú', mode: 'fixed', rate: 0.50, exempt: true },
+      { name: 'LCI/LCA Itaú ~88% do CDI (estimativa, bancões 2026)', mode: 'cdi', rate: 88, exempt: true },
+      { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'Bradesco': [
       { name: 'Cofrinho / CDB Bradesco 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
-      { name: 'Poupança Bradesco', mode: 'fixed', rate: 0.50, exempt: true }
+      { name: 'Poupança Bradesco', mode: 'fixed', rate: 0.50, exempt: true },
+      { name: 'LCI/LCA Bradesco ~88% do CDI (estimativa, bancões 2026)', mode: 'cdi', rate: 88, exempt: true },
+      { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'Santander': [
       { name: 'CDB Santander 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
-      { name: 'Poupança Santander', mode: 'fixed', rate: 0.50, exempt: true }
+      { name: 'Poupança Santander', mode: 'fixed', rate: 0.50, exempt: true },
+      { name: 'LCI/LCA Santander ~88% do CDI (estimativa, bancões 2026)', mode: 'cdi', rate: 88, exempt: true },
+      { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'Caixa Econômica Federal': [
-      { name: 'Poupança Caixa', mode: 'fixed', rate: 0.50, exempt: true }
+      { name: 'CDB Caixa 95% do CDI', mode: 'cdi', rate: 95, exempt: false },
+      { name: 'Poupança Caixa', mode: 'fixed', rate: 0.50, exempt: true },
+      { name: 'LCI Caixa ~88% do CDI (estimativa, bancões 2026)', mode: 'cdi', rate: 88, exempt: true },
+      { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'XP Investimentos': [
       { name: 'CDB XP ~106% do CDI (varia por prazo/emissor)', mode: 'cdi', rate: 106, exempt: false },
-      { name: 'LCI/LCA XP ~96% do CDI (estimativa)', mode: 'cdi', rate: 96, exempt: true },
+      { name: 'LCI/LCA (prateleira XP) ~95% do CDI (estimativa, varia por emissor)', mode: 'cdi', rate: 95, exempt: true },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'Rico': [
       { name: 'CDB (prateleira Rico) ~100% do CDI (varia por emissor)', mode: 'cdi', rate: 100, exempt: false },
+      { name: 'LCI/LCA (prateleira Rico) ~93% do CDI (estimativa, varia por emissor)', mode: 'cdi', rate: 93, exempt: true },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'BTG Pactual': [
       { name: 'CDB BTG ~100% do CDI', mode: 'cdi', rate: 100, exempt: false },
+      { name: 'LCI/LCA (prateleira BTG) ~93% do CDI (estimativa, varia por emissor)', mode: 'cdi', rate: 93, exempt: true },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ]
   };
