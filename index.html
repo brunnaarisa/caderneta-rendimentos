@@ -503,7 +503,7 @@
     letter-spacing: 0.02em;
     margin-bottom: 0.3rem;
   }
-  .picker .field select, .picker .field input {
+  .picker .field select, .picker .field input:not([type="checkbox"]) {
     font-size: 0.9rem;
     background: var(--paper-raised);
     border: 1px solid var(--line-strong);
@@ -514,6 +514,7 @@
     font-family: ui-sans-serif, system-ui, sans-serif;
   }
   .picker .field select:focus, .picker .field input:focus { outline: none; border-color: var(--focus); }
+  .picker .field input[type="checkbox"] { width: auto; accent-color: var(--verde); flex-shrink: 0; }
   .picker .add-btn { flex: 0 0 auto; }
 
   footer {
