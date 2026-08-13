@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Política de Privacidade — Caderneta de Rendimentos</title>
+<meta name="theme-color" content="#1b6b4a">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%90%B7%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --paper: #f3efe4;
+    --ink: #1f2a22;
+    --ink-soft: #5c6459;
+    --line: #d9d2be;
+    --verde: #1b6b4a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #141f1a; --ink: #ede7d9; --ink-soft: #9aa79c; --line: #2b3a32; --verde: #52b184;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #141f1a; --ink: #ede7d9; --ink-soft: #9aa79c; --line: #2b3a32; --verde: #52b184;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.6;
+    padding: 2.5rem 1.25rem 4rem;
+  }
+  .wrap { max-width: 38rem; margin: 0 auto; }
+  h1 { font-family: ui-serif, Georgia, serif; font-size: 1.6rem; margin: 0 0 0.3rem; }
+  .updated { color: var(--ink-soft); font-size: 0.85rem; margin: 0 0 2rem; }
+  h2 { font-family: ui-serif, Georgia, serif; font-size: 1.1rem; margin: 2rem 0 0.6rem; }
+  p { color: var(--ink-soft); }
+  a { color: var(--verde); }
+  .back { display: inline-block; margin-top: 2.5rem; font-size: 0.9rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Política de Privacidade</h1>
+  <p class="updated">Última atualização: 13 de agosto de 2026</p>
+
+  <p>A <strong>Caderneta de Rendimentos</strong> é uma calculadora de investimentos simples, feita pra ajudar você a ver quanto seu dinheiro rende. Esta política explica, de forma direta, como (não) tratamos seus dados.</p>
+
+  <h2>Não coletamos nenhum dado seu</h2>
+  <p>O aplicativo não tem servidor, não tem cadastro, login ou conta de usuário. Tudo o que você digita — valores, nomes de caixinhas, comparações que você monta — fica salvo <strong>apenas no armazenamento local do seu próprio navegador ou aparelho</strong> (a tecnologia se chama <code>localStorage</code>). Essa informação nunca é enviada pra nenhum servidor nosso, porque nenhum servidor nosso existe. Se você desinstalar o app ou limpar os dados do navegador, essas informações somem — não temos como recuperá-las, porque nunca as tivemos.</p>
+
+  <h2>As únicas conexões externas que o app faz</h2>
+  <p>Pra mostrar a taxa CDI atualizada, o app se conecta diretamente à <a href="https://dadosabertos.bcb.gov.br/dataset/4389-taxa-de-juros---cdi" target="_blank" rel="noopener">API pública do Banco Central do Brasil</a> — uma fonte de dados oficial e aberta. Essa conexão só busca a taxa; não envia nenhuma informação sua para o Banco Central.</p>
+
+  <h2>Nenhum rastreamento, nenhum anúncio</h2>
+  <p>Não usamos cookies de rastreamento, não usamos Google Analytics nem qualquer ferramenta parecida, e não exibimos anúncios de terceiros que coletem dados sobre você.</p>
+
+  <h2>Permissões do aplicativo</h2>
+  <p>O app pode pedir acesso a "compartilhar" quando você usa o botão de compartilhamento — isso só abre o menu de compartilhamento nativo do seu aparelho (WhatsApp, e-mail, etc.), controlado inteiramente pelo sistema operacional. Nenhum outro dado ou permissão é necessário.</p>
+
+  <h2>Isso não é recomendação financeira</h2>
+  <p>Os cálculos são estimativas baseadas em taxas públicas e em um catálogo de referência que pode ficar desatualizado — sempre confira as condições reais com o banco ou corretora antes de investir. Este app não é um consultor financeiro licenciado.</p>
+
+  <h2>Dúvidas</h2>
+  <p>Se tiver alguma dúvida sobre esta política, entre em contato através do repositório do projeto: <a href="https://github.com/brunnaarisa/caderneta-rendimentos" target="_blank" rel="noopener">github.com/brunnaarisa/caderneta-rendimentos</a>.</p>
+
+  <a class="back" href="index.html">← Voltar pra Caderneta de Rendimentos</a>
+</div>
+</body>
+</html>

@@ -6,6 +6,13 @@
 <title>Caderneta de Rendimentos</title>
 <meta name="description" content="Veja quanto suas caixinhas e cofrinhos rendem, e compare com outros bancos e corretoras — com a taxa CDI atualizada automaticamente pelo Banco Central.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%90%B7%3C/text%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="theme-color" content="#1b6b4a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Caderneta">
 <style>
   /* ---------- Tokens ---------- */
   :root {
@@ -871,7 +878,7 @@
   <footer>
     <p><strong>Sobre a precisão dos dados:</strong> a taxa CDI no topo é buscada automaticamente da <a href="https://dadosabertos.bcb.gov.br/dataset/4389-taxa-de-juros---cdi" target="_blank" rel="noopener">API pública do Banco Central</a> a cada visita, então essa parte está sempre certa. Já as taxas do catálogo de bancos/corretoras (13 instituições) foram pesquisadas e checadas uma a uma em 13/08/2026, com fonte — mas <strong>este site não tem como buscar essas taxas ao vivo</strong> (não existe uma API pública unificada com as ofertas de todos os bancos). Elas ficam desatualizadas com o tempo, principalmente LCI/LCA e CDBs de plataformas como XP/Rico/BTG, que mudam a qualquer momento. Sempre que uma opção tiver uma ressalva escrita (ex: "confira a ficha do título"), é justamente porque aquele número pode não ser exato — use como ponto de partida, não como confirmação, e confira a condição real no app do banco antes de aplicar.</p>
     <p>Valores brutos ou líquidos estimados por juros compostos a partir das taxas informadas — não descontam taxas de administração/custódia, e a comparação de IR usa a tabela regressiva padrão de renda fixa (22,5% até 180 dias; 20% de 181 a 360; 17,5% de 361 a 720; 15% acima disso). Não é recomendação de investimento.</p>
-    <p>Seus dados ficam salvos apenas neste navegador — nada é enviado para nenhum servidor.</p>
+    <p>Seus dados ficam salvos apenas neste navegador — nada é enviado para nenhum servidor. <a href="privacidade.html">Política de privacidade</a>.</p>
   </footer>
 </div>
 
@@ -1989,6 +1996,12 @@
   fetchLiveCDI();
   renderCatalogFreshness();
   renderCdiHistoryChart();
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => { /* offline support is a bonus, not critical */ });
+    });
+  }
 })();
 </script>
 </body>
