@@ -147,6 +147,23 @@
   .cdi-caption.ok { color: var(--verde); }
   .cdi-caption.warn { color: var(--vinho); }
 
+  .cdi-chart-container { margin-top: 1rem; }
+  .cdi-chart-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); margin: 0 0 0.4rem; }
+  .cdi-chart-svg { width: 100%; height: 80px; display: block; }
+  .cdi-chart-line { fill: none; stroke: var(--verde); stroke-width: 2; }
+  .cdi-chart-area { fill: var(--verde-soft); stroke: none; }
+  .cdi-chart-axis { stroke: var(--line); stroke-width: 1; }
+  .cdi-chart-dot { fill: var(--verde); }
+  .cdi-chart-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.72rem;
+    color: var(--ink-soft);
+    margin-top: 0.3rem;
+    font-variant-numeric: tabular-nums;
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", monospace;
+  }
+
   /* ---------- Section headers ---------- */
   section.block { margin-bottom: 2.5rem; }
   section.block > h2 { font-size: 1.05rem; margin: 0 0 0.3rem; }
@@ -460,6 +477,22 @@
     color: var(--ink);
   }
 
+  .share-row { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; margin-top: 1.2rem; }
+  .share-btn {
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--ink);
+    background: var(--paper-raised);
+    border: 1px solid var(--ouro);
+    border-radius: 3px;
+    padding: 0.5rem 0.9rem;
+    cursor: pointer;
+  }
+  .share-btn:hover { background: var(--paper); }
+  .share-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .share-status { font-size: 0.78rem; color: var(--verde); }
+
   /* compact bruto/IR/líquido breakdown inside a table cell */
   .gain-cell { display: flex; flex-direction: column; align-items: flex-end; gap: 0.05rem; }
   .gain-cell .gross-line { font-size: 0.7rem; color: var(--ink-soft); }
@@ -517,6 +550,43 @@
   .picker .field input[type="checkbox"] { width: auto; accent-color: var(--verde); flex-shrink: 0; }
   .picker .add-btn { flex: 0 0 auto; }
 
+  /* ---------- Explainer accordion ---------- */
+  .explainer {
+    border-bottom: 1px solid var(--line);
+    padding: 0.9rem 0;
+  }
+  .explainer:first-of-type { border-top: 1px solid var(--line); }
+  .explainer summary {
+    cursor: pointer;
+    font-family: ui-serif, Georgia, serif;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--ink);
+    list-style: none;
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+  }
+  .explainer summary::-webkit-details-marker { display: none; }
+  .explainer summary::before {
+    content: '+';
+    color: var(--verde);
+    font-family: ui-monospace, monospace;
+    font-weight: 700;
+    width: 1rem;
+    flex-shrink: 0;
+  }
+  .explainer[open] summary::before { content: '–'; }
+  .explainer summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .explainer p {
+    margin: 0.7rem 0 0 1.5rem;
+    font-size: 0.9rem;
+    color: var(--ink-soft);
+    line-height: 1.55;
+    max-width: 40rem;
+  }
+  .explainer p strong { color: var(--ink); }
+
   footer {
     margin-top: 2.5rem;
     font-size: 0.76rem;
@@ -547,6 +617,12 @@
       <span class="unit">% ao ano</span>
       <button type="button" id="refreshCdiBtn" class="refresh-btn" title="Buscar taxa atual agora">↻ atualizar</button>
       <span class="cdi-caption" id="cdiCaption">Buscando taxa atual do Banco Central…</span>
+    </div>
+
+    <div class="cdi-chart-container" id="cdiChartContainer" hidden>
+      <p class="cdi-chart-title">Evolução do CDI (últimos 6 meses)</p>
+      <div id="cdiChartSvgWrap"></div>
+      <div class="cdi-chart-labels" id="cdiChartLabels"></div>
     </div>
   </header>
 
@@ -640,6 +716,11 @@
 
       <div class="winner-figures">
         <div><div class="k">Saldo final (aplicado + líquido)</div><div class="v" id="winnerBalance">—</div></div>
+      </div>
+
+      <div class="share-row">
+        <button type="button" class="share-btn" id="shareResultBtn">📤 Compartilhar esse resultado</button>
+        <span class="share-status" id="shareStatus"></span>
       </div>
     </div>
 
@@ -755,6 +836,31 @@
       </div>
       <p class="vs-winner" id="combineVsWinner"></p>
     </div>
+  </section>
+
+  <section class="block" id="explainerSection">
+    <h2>Como funciona</h2>
+    <p class="section-sub">Um resumo rápido dos termos que aparecem na calculadora, pra quem não é do mundo dos investimentos.</p>
+
+    <details class="explainer">
+      <summary>O que é o CDI?</summary>
+      <p>É a taxa de referência que a maioria dos investimentos "pós-fixados" no Brasil acompanha — quase todo banco anuncia sua caixinha/CDB como "% do CDI". Se um investimento paga <strong>100% do CDI</strong>, ele rende exatamente essa taxa; se paga <strong>115% do CDI</strong>, rende 15% a mais que ela. A taxa muda com o tempo (acompanha de perto a Selic, definida pelo Banco Central), por isso este site busca o valor mais recente automaticamente.</p>
+    </details>
+
+    <details class="explainer">
+      <summary>Por que o Imposto de Renda varia entre as opções?</summary>
+      <p>A maioria dos investimentos de renda fixa (CDB, Tesouro, fundos DI) segue uma <strong>tabela regressiva</strong>: quanto mais tempo o dinheiro fica investido, menor o imposto sobre o rendimento — de 22,5% (até 180 dias) até 15% (acima de 720 dias). Só é cobrado sobre o que você ganhou, nunca sobre o valor aplicado. Já <strong>Poupança, LCI e LCA são isentas</strong> — não pagam nada de IR sobre o rendimento, o que às vezes compensa mesmo com uma taxa nominal menor.</p>
+    </details>
+
+    <details class="explainer">
+      <summary>Caixinha, cofrinho, CDB, LCI/LCA, Tesouro Selic — qual a diferença?</summary>
+      <p><strong>Caixinha/cofrinho</strong> é só o nome bonito que os bancos digitais dão pra um CDB (ou fundo) simples, com resgate fácil pelo app. <strong>CDB</strong> (Certificado de Depósito Bancário) é você emprestando dinheiro pro banco, que paga de volta com juros — protegido pelo FGC até R$250 mil por CPF/banco. <strong>LCI/LCA</strong> são parecidas com CDB, mas o dinheiro financia o setor imobiliário ou o agronegócio, e por isso são isentas de IR — geralmente têm um prazo mínimo de carência (270 dias). <strong>Tesouro Selic</strong> é você emprestando dinheiro pro governo federal — considerado o investimento mais seguro do país, disponível em qualquer corretora com o mesmo rendimento.</p>
+    </details>
+
+    <details class="explainer">
+      <summary>O que significa "limite de valor" numa caixinha turbinada?</summary>
+      <p>Alguns bancos oferecem uma taxa mais alta só até um certo valor (ex: Caixinha Turbo do Nubank rende 115% do CDI até R$5 mil). O que passar desse limite não entra nessa taxa especial — ou fica travado pra novos depósitos (o saldo continua rendendo alto, só não aceita mais dinheiro), ou passa a render uma taxa menor automaticamente, dependendo do banco. Este site já calcula isso automaticamente sempre que uma opção tem essa condição.</p>
+    </details>
   </section>
 
   <footer>
@@ -1025,6 +1131,7 @@
   const winnerGainEl = document.getElementById('winnerGain');
   const winnerBalanceEl = document.getElementById('winnerBalance');
   let lastWinnerNetGain = null; // net gain of the single best option, for the combine section to compare against
+  let lastWinnerSummary = null; // full snapshot of the current winner, used by the share button
 
   const combineBankSelect = document.getElementById('combineBank');
   const combineCustomBankField = document.getElementById('combineCustomBankField');
@@ -1130,11 +1237,85 @@
 
   refreshCdiBtn.addEventListener('click', fetchLiveCDI);
 
+  // Draws a small line chart of the last ~6 months of daily CDI values,
+  // fetched straight from the same Banco Central series used for the live rate.
+  async function renderCdiHistoryChart() {
+    const container = document.getElementById('cdiChartContainer');
+    const svgWrap = document.getElementById('cdiChartSvgWrap');
+    const labelsEl = document.getElementById('cdiChartLabels');
+    if (!container) return;
+    try {
+      const res = await fetch('https://api.bcb.gov.br/dados/serie/bcdata.sgs.4389/dados/ultimos/130?formato=json', { cache: 'no-store' });
+      if (!res.ok) throw new Error('status ' + res.status);
+      const raw = await res.json();
+      const points = (Array.isArray(raw) ? raw : [])
+        .map(d => ({ date: d.data, value: parseFloat(d.valor) }))
+        .filter(p => p.date && isFinite(p.value))
+        .reverse(); // API returns newest-first; a chart reads left-to-right chronologically
+
+      if (points.length < 2) throw new Error('dados insuficientes');
+
+      const values = points.map(p => p.value);
+      const minV = Math.min(...values);
+      const maxV = Math.max(...values);
+      const pad = (maxV - minV) * 0.2 || 0.5;
+      const yMin = minV - pad;
+      const yMax = maxV + pad;
+
+      const W = 600, H = 80, PADX = 6, PADY = 8;
+      const stepX = (W - PADX * 2) / (points.length - 1);
+      const xAt = i => PADX + i * stepX;
+      const yAt = v => H - PADY - ((v - yMin) / (yMax - yMin || 1)) * (H - PADY * 2);
+
+      const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xAt(i).toFixed(1)} ${yAt(p.value).toFixed(1)}`).join(' ');
+      const areaD = `${pathD} L ${xAt(points.length - 1).toFixed(1)} ${H - PADY} L ${xAt(0).toFixed(1)} ${H - PADY} Z`;
+      const last = points[points.length - 1];
+
+      svgWrap.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="cdi-chart-svg" role="img" aria-label="Gráfico da evolução do CDI de ${points[0].date} a ${last.date}, variando de ${minV.toFixed(2)}% a ${maxV.toFixed(2)}% ao ano">
+        <line x1="${PADX}" y1="${H - PADY}" x2="${W - PADX}" y2="${H - PADY}" class="cdi-chart-axis"></line>
+        <path d="${areaD}" class="cdi-chart-area"></path>
+        <path d="${pathD}" class="cdi-chart-line"></path>
+        <circle cx="${xAt(points.length - 1)}" cy="${yAt(last.value)}" r="3" class="cdi-chart-dot"></circle>
+      </svg>`;
+      labelsEl.innerHTML = `<span>${points[0].date} · ${points[0].value.toFixed(2)}%</span><span>${last.date} · ${last.value.toFixed(2)}%</span>`;
+      container.hidden = false;
+    } catch (e) {
+      container.hidden = true;
+    }
+  }
+
   document.getElementById('clearAllBtn').addEventListener('click', () => {
     if (confirm('Isso vai apagar todas as caixinhas, comparações e combinações salvas neste navegador. Tem certeza?')) {
       localStorage.removeItem(STORAGE_KEY);
       location.reload();
     }
+  });
+
+  const shareStatusEl = document.getElementById('shareStatus');
+  document.getElementById('shareResultBtn').addEventListener('click', async () => {
+    if (!lastWinnerSummary) {
+      shareStatusEl.textContent = 'Digite um valor pra comparar primeiro.';
+      return;
+    }
+    const s = lastWinnerSummary;
+    const text = `Descobri que colocando ${fmtBRL.format(s.amount)} no ${s.bank} (${s.product}) por ${s.months} ${s.months === 1 ? 'mês' : 'meses'}, eu teria ${fmtBRL.format(s.netGain)} de rendimento líquido — saldo final de ${fmtBRL.format(s.netBalance)}!\n\nCalculado na Caderneta de Rendimentos:`;
+    const url = location.href.split('?')[0].split('#')[0];
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'Caderneta de Rendimentos', text, url });
+      } catch (e) { /* usuário cancelou o compartilhamento — tudo bem */ }
+      return;
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(text + ' ' + url);
+        shareStatusEl.textContent = '✓ Copiado! Cole onde quiser compartilhar.';
+        setTimeout(() => { shareStatusEl.textContent = ''; }, 4000);
+        return;
+      } catch (e) { /* cai no fallback abaixo */ }
+    }
+    shareStatusEl.textContent = 'Não consegui copiar automaticamente — copie o link da página pra compartilhar.';
   });
 
   cdiInput.addEventListener('input', () => {
@@ -1394,6 +1575,7 @@
       winnerReceipt.style.display = 'none';
       winnerBalanceEl.textContent = '—';
       lastWinnerNetGain = null;
+      lastWinnerSummary = null;
     } else {
       const best = ranked[0];
       winnerBankEl.textContent = best.opt.bank || 'Outro';
@@ -1423,6 +1605,13 @@
       winnerGainEl.textContent = fmtBRL.format(best.netGain);
       winnerBalanceEl.textContent = fmtBRL.format(best.netBalance);
       lastWinnerNetGain = best.netGain;
+      lastWinnerSummary = {
+        bank: best.opt.bank || 'Outro',
+        product: best.opt.name,
+        amount, months,
+        netGain: best.netGain,
+        netBalance: best.netBalance
+      };
     }
 
     // "outras boas opções" — the next 5 best alternatives after the winner
@@ -1757,6 +1946,7 @@
   renderPots();
   fetchLiveCDI();
   renderCatalogFreshness();
+  renderCdiHistoryChart();
 })();
 </script>
 </body>
