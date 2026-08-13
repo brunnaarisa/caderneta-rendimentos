@@ -532,7 +532,7 @@
     </div>
 
     <h3 style="font-size: 0.98rem; margin: 0 0 0.35rem;">Comparar com outras opções</h3>
-    <p class="section-sub">Escolha um banco ou corretora e, depois, o investimento disponível nele.</p>
+    <p class="section-sub">Escolha um banco ou corretora e, depois, o investimento disponível nele. <strong>Cada linha da tabela abaixo simula 100% do "valor a comparar" aplicado só naquela opção</strong> — são cenários alternativos, não fatias para somar entre si.</p>
 
     <div class="picker">
       <div class="field">
@@ -569,7 +569,7 @@
   </section>
 
   <footer>
-    <p>A taxa CDI no topo é buscada automaticamente da <a href="https://dadosabertos.bcb.gov.br/dataset/4389-taxa-de-juros---cdi" target="_blank" rel="noopener">API pública do Banco Central</a> (série 4389) sempre que a página é aberta. As taxas do catálogo de bancos/corretoras (ex: % do CDI de cada CDB) são estimativas de mercado verificadas em 13/08/2026 — bancos mudam essas ofertas com frequência, então confira a condição real antes de investir.</p>
+    <p>A taxa CDI no topo é buscada automaticamente da <a href="https://dadosabertos.bcb.gov.br/dataset/4389-taxa-de-juros---cdi" target="_blank" rel="noopener">API pública do Banco Central</a> (série 4389) sempre que a página é aberta. As taxas do catálogo de bancos/corretoras (ex: % do CDI de cada CDB/cofrinho) foram checadas uma a uma em 13/08/2026 — bancos mudam essas ofertas com frequência (a maioria revisa a % do CDI a qualquer momento), então confira a condição real antes de investir.</p>
     <p>Valores brutos ou líquidos estimados por juros compostos a partir das taxas informadas — não descontam taxas de administração/custódia, e a comparação de IR usa a tabela regressiva padrão de renda fixa (22,5% até 180 dias; 20% de 181 a 360; 17,5% de 361 a 720; 15% acima disso). Não é recomendação de investimento.</p>
     <p>Seus dados ficam salvos apenas neste navegador — nada é enviado para nenhum servidor.</p>
   </footer>
@@ -577,7 +577,7 @@
 
 <script>
 (function () {
-  const STORAGE_KEY = 'caderneta-rendimentos-v5';
+  const STORAGE_KEY = 'caderneta-rendimentos-v6';
   const fmtBRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
   const CUSTOM_KEY = '__custom__';
   const CDI_SERIES_URL = 'https://api.bcb.gov.br/dados/serie/bcdata.sgs.4389/dados/ultimos/1?formato=json';
@@ -589,60 +589,63 @@
       { name: 'Caixinha 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
       { name: 'Caixinha Turbo 115% do CDI (padrão, até R$5 mil, 31 dias)', mode: 'cdi', rate: 115, exempt: false },
       { name: 'Caixinha Turbo 120% do CDI (Ultravioleta/Nubank+, até R$10 mil)', mode: 'cdi', rate: 120, exempt: false },
-      { name: 'LCI Nubank ~95% do CDI', mode: 'cdi', rate: 95, exempt: true }
+      { name: 'LCI Nubank ~95% do CDI (estimativa)', mode: 'cdi', rate: 95, exempt: true }
     ],
     'Banco Inter': [
-      { name: 'CDB Inter 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
+      { name: 'Caixinha / Meu Porquinho 80% do CDI', mode: 'cdi', rate: 80, exempt: false },
+      { name: 'CDB Inter (avulso) 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
       { name: 'Poupança Inter', mode: 'fixed', rate: 0.50, exempt: true }
     ],
     'C6 Bank': [
-      { name: 'Cofrinho C6 ~102% do CDI', mode: 'cdi', rate: 102, exempt: false },
+      { name: 'Cofrinho / CDB C6 102% do CDI', mode: 'cdi', rate: 102, exempt: false },
       { name: 'Poupança C6', mode: 'fixed', rate: 0.50, exempt: true }
     ],
     'PicPay': [
+      { name: 'Cofrinho Turbinado 121% do CDI', mode: 'cdi', rate: 121, exempt: false },
+      { name: 'Saldo da conta 102% do CDI', mode: 'cdi', rate: 102, exempt: false },
       { name: 'CDB PicPay 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'Banco do Brasil': [
-      { name: 'Poupança BB', mode: 'fixed', rate: 0.50, exempt: true },
-      { name: 'CDB BB ~90% do CDI', mode: 'cdi', rate: 90, exempt: false }
+      { name: 'Cofrinho BB (BB RF Simples Reserva, sem FGC) 91% do CDI', mode: 'cdi', rate: 91, exempt: false },
+      { name: 'Poupança BB', mode: 'fixed', rate: 0.50, exempt: true }
     ],
     'Itaú': [
-      { name: 'Poupança Itaú', mode: 'fixed', rate: 0.50, exempt: true },
-      { name: 'CDB Itaú ~85% do CDI', mode: 'cdi', rate: 85, exempt: false }
+      { name: 'Cofrinhos Itaú 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
+      { name: 'Poupança Itaú', mode: 'fixed', rate: 0.50, exempt: true }
     ],
     'Bradesco': [
-      { name: 'Poupança Bradesco', mode: 'fixed', rate: 0.50, exempt: true },
-      { name: 'CDB Bradesco ~85% do CDI', mode: 'cdi', rate: 85, exempt: false }
+      { name: 'Cofrinho / CDB Bradesco 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
+      { name: 'Poupança Bradesco', mode: 'fixed', rate: 0.50, exempt: true }
     ],
     'Santander': [
-      { name: 'Poupança Santander', mode: 'fixed', rate: 0.50, exempt: true },
-      { name: 'CDB Santander ~88% do CDI', mode: 'cdi', rate: 88, exempt: false }
+      { name: 'CDB Santander 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
+      { name: 'Poupança Santander', mode: 'fixed', rate: 0.50, exempt: true }
     ],
     'Caixa Econômica Federal': [
       { name: 'Poupança Caixa', mode: 'fixed', rate: 0.50, exempt: true }
     ],
     'XP Investimentos': [
-      { name: 'CDB XP ~108% do CDI', mode: 'cdi', rate: 108, exempt: false },
-      { name: 'LCI/LCA XP ~96% do CDI', mode: 'cdi', rate: 96, exempt: true },
-      { name: 'Tesouro Selic', mode: 'cdi', rate: 100, exempt: false }
+      { name: 'CDB XP ~106% do CDI (varia por prazo/emissor)', mode: 'cdi', rate: 106, exempt: false },
+      { name: 'LCI/LCA XP ~96% do CDI (estimativa)', mode: 'cdi', rate: 96, exempt: true },
+      { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'Rico': [
-      { name: 'CDB Rico ~106% do CDI', mode: 'cdi', rate: 106, exempt: false },
-      { name: 'Tesouro Selic', mode: 'cdi', rate: 100, exempt: false }
+      { name: 'CDB (prateleira Rico) ~100% do CDI (varia por emissor)', mode: 'cdi', rate: 100, exempt: false },
+      { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'BTG Pactual': [
-      { name: 'CDB BTG ~106% do CDI', mode: 'cdi', rate: 106, exempt: false },
-      { name: 'Tesouro Selic', mode: 'cdi', rate: 100, exempt: false }
+      { name: 'CDB BTG ~100% do CDI', mode: 'cdi', rate: 100, exempt: false },
+      { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ]
   };
 
   function defaultCompareOptions() {
     return [
-      { id: crypto.randomUUID(), bank: 'Nubank', name: 'Caixinha / CDB 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
+      { id: crypto.randomUUID(), bank: 'Nubank', name: 'Caixinha 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
+      { id: crypto.randomUUID(), bank: 'Banco do Brasil', name: 'Cofrinho BB (BB RF Simples Reserva, sem FGC) 91% do CDI', mode: 'cdi', rate: 91, exempt: false },
       { id: crypto.randomUUID(), bank: 'Banco do Brasil', name: 'Poupança BB', mode: 'fixed', rate: 0.50, exempt: true },
-      { id: crypto.randomUUID(), bank: 'Banco do Brasil', name: 'CDB BB ~90% do CDI', mode: 'cdi', rate: 90, exempt: false },
-      { id: crypto.randomUUID(), bank: 'XP Investimentos', name: 'LCI/LCA XP ~96% do CDI', mode: 'cdi', rate: 96, exempt: true },
-      { id: crypto.randomUUID(), bank: 'XP Investimentos', name: 'Tesouro Selic', mode: 'cdi', rate: 100, exempt: false }
+      { id: crypto.randomUUID(), bank: 'PicPay', name: 'Cofrinho Turbinado 121% do CDI', mode: 'cdi', rate: 121, exempt: false },
+      { id: crypto.randomUUID(), bank: 'XP Investimentos', name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ];
   }
 
@@ -653,7 +656,7 @@
       months: 3,
       pots: [
         { id: crypto.randomUUID(), name: 'Caixinha Nubank', amount: 4500, mode: 'cdi', rate: 100 },
-        { id: crypto.randomUUID(), name: 'Cofrinho BB', amount: 55000, mode: 'fixed', rate: 0.50 }
+        { id: crypto.randomUUID(), name: 'Cofrinho BB (BB RF Simples Reserva)', amount: 55000, mode: 'cdi', rate: 91 }
       ],
       compareAmount: 59500,
       compareOptions: defaultCompareOptions()
