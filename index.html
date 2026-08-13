@@ -577,7 +577,7 @@
 
 <script>
 (function () {
-  const STORAGE_KEY = 'caderneta-rendimentos-v6';
+  const STORAGE_KEY = 'caderneta-rendimentos-v7';
   const fmtBRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
   const CUSTOM_KEY = '__custom__';
   const CDI_SERIES_URL = 'https://api.bcb.gov.br/dados/serie/bcdata.sgs.4389/dados/ultimos/1?formato=json';
@@ -655,7 +655,7 @@
       cdiFetchedDate: null,
       months: 3,
       pots: [
-        { id: crypto.randomUUID(), name: 'Caixinha Nubank', amount: 4500, mode: 'cdi', rate: 100 },
+        { id: crypto.randomUUID(), name: 'Caixinha Turbo Nubank', amount: 4500, mode: 'cdi', rate: 115 },
         { id: crypto.randomUUID(), name: 'Cofrinho BB (BB RF Simples Reserva)', amount: 55000, mode: 'cdi', rate: 91 }
       ],
       compareAmount: 59500,
