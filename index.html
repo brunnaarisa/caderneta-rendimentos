@@ -354,10 +354,6 @@
     color: var(--ink-soft);
     font-family: ui-sans-serif, system-ui, sans-serif;
   }
-  .rate-cell { display: flex; flex-direction: column; align-items: flex-end; gap: 0.2rem; }
-  .exempt-cell { display: flex; justify-content: center; }
-  .exempt-cell input[type="checkbox"] { accent-color: var(--verde); width: 1rem; height: 1rem; }
-
   .pill {
     display: inline-block;
     padding: 0.1rem 0.5rem;
@@ -370,20 +366,6 @@
   .pill-exempt { background: var(--verde-soft); color: var(--verde); }
   .pill-taxed { background: var(--line); color: var(--ink-soft); }
 
-  tr.best-row td { background: var(--ouro-soft); }
-  .best-tag {
-    display: inline-block;
-    border: 1.5px solid var(--ouro);
-    color: var(--ouro);
-    font-size: 0.62rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    padding: 0.08rem 0.4rem;
-    border-radius: 2px;
-    transform: rotate(-2deg);
-    margin-left: 0.5rem;
-  }
   .compare-remove {
     background: none; border: none; color: var(--vinho); cursor: pointer;
     font-size: 0.85rem; opacity: 0.7; padding: 0;
@@ -392,14 +374,12 @@
   .ir-note { font-size: 0.76rem; color: var(--ink-soft); margin-top: 0.7rem; }
 
   .name-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 0.15rem; width: max-content; }
-  table.compare-table td .name-cell input { width: 11rem; max-width: 100%; }
   .bank-label {
     font-size: 0.66rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--ink-soft);
   }
-  tr.group-start td { border-top: 2px solid var(--line-strong); padding-top: 1.1rem; }
   .cap-info { font-size: 0.7rem; color: var(--ink-soft); max-width: 13rem; }
   .cap-info.over { color: var(--ouro); }
 
@@ -614,11 +594,11 @@
 
   <section class="block" id="compareSection">
     <h2>Qual opção compensa mais?</h2>
-    <p class="section-sub">Simulamos o mesmo valor, pelo mesmo prazo, em bancos e corretoras diferentes — já descontando o Imposto de Renda de quem não é isento, pra comparar de igual pra igual.</p>
+    <p class="section-sub">Digite quanto você tem pra guardar — já mostramos automaticamente qual banco/corretora rende mais, e outras boas alternativas, já descontando o Imposto de Renda de quem não é isento.</p>
 
     <div class="compare-amount">
       <span>Valor a comparar</span>
-      <input type="number" id="compareAmountInput" step="0.01" min="0" aria-label="Valor a comparar">
+      <input type="number" id="compareAmountInput" step="0.01" min="0" aria-label="Valor a comparar" placeholder="ex: 10000">
       <span>por <span class="mono" id="compareMonthsLabel">3</span> meses (mesmo prazo da projeção acima)</span>
     </div>
 
@@ -648,20 +628,8 @@
       </div>
     </div>
 
-    <h3 style="font-size: 0.98rem; margin: 0 0 0.35rem;">Comparar com outras opções</h3>
-    <p class="section-sub">Escolha um banco ou corretora e, depois, o investimento disponível nele. <strong>Cada linha da tabela abaixo simula 100% do "valor a comparar" aplicado só naquela opção</strong> — são cenários alternativos, não fatias para somar entre si.</p>
-
-    <div class="picker">
-      <div class="field">
-        <label for="pickBank">Banco / corretora</label>
-        <select id="pickBank"></select>
-      </div>
-      <div class="field">
-        <label for="pickProduct">Investimento disponível</label>
-        <select id="pickProduct"></select>
-      </div>
-      <button class="add-btn ghost" id="addCompare" type="button">+ Adicionar à comparação</button>
-    </div>
+    <h3 style="font-size: 0.98rem; margin: 0 0 0.35rem;">Outras boas opções</h3>
+    <p class="section-sub"><strong>Cada linha simula 100% do "valor a comparar" aplicado só naquela opção</strong> — são cenários alternativos, não fatias para somar entre si (pra dividir entre bancos, use a seção "Combine vários investimentos" abaixo).</p>
 
     <div class="table-scroll">
       <table class="compare-table">
@@ -672,7 +640,6 @@
             <th style="text-align:center;">IR</th>
             <th>Rendimento (bruto → líquido)</th>
             <th>Saldo final</th>
-            <th></th>
           </tr>
         </thead>
         <tbody id="compareBody"></tbody>
@@ -762,7 +729,6 @@
 (function () {
   const STORAGE_KEY = 'caderneta-rendimentos-v9';
   const fmtBRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
-  const CUSTOM_KEY = '__custom__';
   const CDI_SERIES_URL = 'https://api.bcb.gov.br/dados/serie/bcdata.sgs.4389/dados/ultimos/1?formato=json';
 
   // Catálogo de referência: banco/corretora -> investimentos típicos disponíveis lá.
@@ -853,12 +819,6 @@
     ]
   };
 
-  // Used only as a fallback if saved data is missing/corrupted — a brand new
-  // visitor always starts from a blank slate, not from demo data.
-  function defaultCompareOptions() {
-    return [];
-  }
-
   function defaultState() {
     return {
       cdiAnnual: 13.90,
@@ -866,7 +826,6 @@
       months: 3,
       pots: [],
       compareAmount: 0,
-      compareOptions: defaultCompareOptions(),
       combination: []
     };
   }
@@ -877,8 +836,6 @@
       if (!raw) return defaultState();
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed.pots)) return defaultState();
-      if (!Array.isArray(parsed.compareOptions)) parsed.compareOptions = defaultCompareOptions();
-      parsed.compareOptions.forEach(o => { if (!o.bank) o.bank = 'Outros'; });
       if (typeof parsed.compareAmount !== 'number') parsed.compareAmount = parsed.pots.reduce((a, p) => a + p.amount, 0);
       if (!Array.isArray(parsed.combination)) parsed.combination = [];
       return parsed;
@@ -990,7 +947,6 @@
   const compareAmountInput = document.getElementById('compareAmountInput');
   const compareMonthsLabel = document.getElementById('compareMonthsLabel');
   const compareBody = document.getElementById('compareBody');
-  const addCompareBtn = document.getElementById('addCompare');
   const irNote = document.getElementById('irNote');
 
   const winnerBankEl = document.getElementById('winnerBank');
@@ -1019,23 +975,6 @@
   const combineNetEl = document.getElementById('combineNet');
   const combineVsWinnerEl = document.getElementById('combineVsWinner');
 
-  const pickBankSelect = document.getElementById('pickBank');
-  const pickProductSelect = document.getElementById('pickProduct');
-
-  function populateBankSelect() {
-    pickBankSelect.innerHTML = Object.keys(BANK_CATALOG).map(b => `<option value="${b}">${b}</option>`).join('');
-  }
-
-  function populateProductSelect() {
-    const products = BANK_CATALOG[pickBankSelect.value] || [];
-    pickProductSelect.innerHTML = products.map((p, i) => `<option value="${i}">${p.name}</option>`).join('')
-      + `<option value="${CUSTOM_KEY}">Outro investimento neste banco…</option>`;
-  }
-
-  pickBankSelect.addEventListener('change', populateProductSelect);
-
-  populateBankSelect();
-  populateProductSelect();
 
   function populateCombineBankSelect() {
     combineBankSelect.innerHTML = Object.keys(BANK_CATALOG).map(b => `<option value="${b}">${b}</option>`).join('');
@@ -1330,6 +1269,24 @@
     renderCompare();
   }
 
+  // Ranks every product in the whole catalog for a given amount/months —
+  // this is what powers the automatic "rende mais" + suggestions list.
+  function rankAllProducts(amount, months, ir) {
+    const all = [];
+    Object.entries(BANK_CATALOG).forEach(([bank, products]) => {
+      products.forEach(product => {
+        const opt = { ...product, bank };
+        const grossGain = grossGainForAmount(opt, amount, months);
+        const irPaid = opt.exempt ? 0 : grossGain * ir.rate;
+        const netGain = grossGain - irPaid;
+        const netBalance = amount + netGain;
+        all.push({ opt, grossGain, netGain, netBalance, irPaid });
+      });
+    });
+    all.sort((a, b) => b.netGain - a.netGain);
+    return all;
+  }
+
   function renderCompare() {
     compareBody.innerHTML = '';
     const months = state.months;
@@ -1337,29 +1294,18 @@
     const ir = irRateForMonths(months);
     irNote.textContent = `Faixa de IR aplicada para ${months} ${months === 1 ? 'mês' : 'meses'}: ${ir.label}. Opções isentas (poupança, LCI/LCA) não pagam esse imposto.`;
 
-    const results = state.compareOptions.map(opt => {
-      const grossGain = grossGainForAmount(opt, amount, months);
-      const irPaid = opt.exempt ? 0 : grossGain * ir.rate;
-      const netGain = grossGain - irPaid;
-      const netBalance = amount + netGain;
-      return { opt, grossGain, netGain, netBalance, irPaid };
-    });
-
-    // which option truly pays the most, regardless of display order
-    const bestId = results.length > 0
-      ? results.reduce((best, r) => r.netGain > best.netGain ? r : best, results[0]).opt.id
-      : null;
+    const ranked = amount > 0 ? rankAllProducts(amount, months, ir) : [];
 
     // headline result card — shows the full bruto → IR → líquido breakdown
-    if (results.length === 0) {
-      winnerBankEl.textContent = 'Nenhuma opção ainda';
-      winnerProductEl.textContent = 'Escolha um banco ou corretora abaixo para comparar.';
+    if (ranked.length === 0) {
+      winnerBankEl.textContent = 'Digite um valor acima';
+      winnerProductEl.textContent = 'Assim que você digitar quanto tem pra guardar, mostramos a melhor opção automaticamente.';
       winnerCapInfoEl.textContent = '';
       winnerReceipt.style.display = 'none';
       winnerBalanceEl.textContent = '—';
       lastWinnerNetGain = null;
     } else {
-      const best = results.find(r => r.opt.id === bestId);
+      const best = ranked[0];
       winnerBankEl.textContent = best.opt.bank || 'Outro';
       winnerProductEl.textContent = best.opt.name;
 
@@ -1388,22 +1334,12 @@
       lastWinnerNetGain = best.netGain;
     }
 
-    // display grouped by bank (A–Z), best offer first within each bank
-    results.sort((a, b) => {
-      const bankCompare = (a.opt.bank || '').localeCompare(b.opt.bank || '', 'pt-BR');
-      if (bankCompare !== 0) return bankCompare;
-      return b.netGain - a.netGain;
-    });
+    // "outras boas opções" — the next 5 best alternatives after the winner
+    const suggestions = ranked.slice(1, 6);
 
-    let lastBank = null;
-    results.forEach((r) => {
+    suggestions.forEach((r, i) => {
       const opt = r.opt;
       const tr = document.createElement('tr');
-      if (opt.bank !== lastBank) {
-        if (lastBank !== null) tr.className = 'group-start';
-        lastBank = opt.bank;
-      }
-      if (opt.id === bestId) tr.className = (tr.className ? tr.className + ' ' : '') + 'best-row';
 
       const nameTd = document.createElement('td');
       const nameCell = document.createElement('div');
@@ -1411,71 +1347,36 @@
 
       const bankLabel = document.createElement('div');
       bankLabel.className = 'bank-label';
-      bankLabel.textContent = opt.bank || 'Outro';
+      bankLabel.textContent = `#${i + 2} · ${opt.bank || 'Outro'}`;
       nameCell.appendChild(bankLabel);
 
-      const nameInput = document.createElement('input');
-      nameInput.type = 'text';
-      nameInput.className = 'name-input';
-      nameInput.value = opt.name;
-      nameInput.addEventListener('input', () => { opt.name = nameInput.value; save(); });
-      nameCell.appendChild(nameInput);
+      const nameLine = document.createElement('div');
+      nameLine.className = 'combine-name';
+      nameLine.textContent = opt.name;
+      nameCell.appendChild(nameLine);
 
       if (opt.cap) {
         const capInfo = document.createElement('div');
         capInfo.className = 'cap-info' + (amount > opt.cap ? ' over' : '');
         capInfo.textContent = amount > opt.cap
-          ? `Limite ${fmtBRL.format(opt.cap)}: só essa parte rende a taxa cheia — o excedente rende ${opt.excessRate}${opt.excessMode === 'fixed' ? '% a.m.' : '% do CDI'}`
+          ? `Limite ${fmtBRL.format(opt.cap)}: excedente rende ${opt.excessRate}${opt.excessMode === 'fixed' ? '% a.m.' : '% do CDI'}`
           : `Limite: ${fmtBRL.format(opt.cap)} (valor atual está dentro)`;
         nameCell.appendChild(capInfo);
       }
 
       nameTd.appendChild(nameCell);
-      if (opt.id === bestId) {
-        const tag = document.createElement('span');
-        tag.className = 'best-tag';
-        tag.textContent = 'rende mais';
-        nameTd.appendChild(tag);
-      }
       tr.appendChild(nameTd);
 
       const rateTd = document.createElement('td');
-      const rateCell = document.createElement('div');
-      rateCell.className = 'rate-cell';
-      const modeSelect = document.createElement('select');
-      modeSelect.innerHTML = '<option value="cdi">% do CDI</option><option value="fixed">% a.m. fixo</option>';
-      modeSelect.value = opt.mode;
-      modeSelect.addEventListener('change', () => {
-        opt.mode = modeSelect.value;
-        opt.rate = opt.mode === 'cdi' ? 100 : 0.5;
-        save(); renderCompare();
-      });
-      const rateInput = document.createElement('input');
-      rateInput.type = 'number';
-      rateInput.step = '0.01';
-      rateInput.min = '0';
-      rateInput.value = opt.rate;
-      rateInput.addEventListener('input', () => { opt.rate = parseFloat(rateInput.value) || 0; save(); renderCompare(); });
-      rateCell.appendChild(rateInput);
-      rateCell.appendChild(modeSelect);
-      rateTd.appendChild(rateCell);
+      rateTd.className = 'mono';
+      rateTd.textContent = opt.mode === 'cdi' ? `${opt.rate}% do CDI` : `${opt.rate}% a.m.`;
       tr.appendChild(rateTd);
 
       const exemptTd = document.createElement('td');
       exemptTd.style.textAlign = 'center';
-      const pill = document.createElement('label');
-      pill.className = 'exempt-cell';
-      const exemptCheckbox = document.createElement('input');
-      exemptCheckbox.type = 'checkbox';
-      exemptCheckbox.checked = opt.exempt;
-      exemptCheckbox.title = 'Isento de Imposto de Renda';
-      exemptCheckbox.addEventListener('change', () => { opt.exempt = exemptCheckbox.checked; save(); renderCompare(); });
-      pill.appendChild(exemptCheckbox);
-      exemptTd.appendChild(pill);
       const badge = document.createElement('div');
       badge.className = 'pill ' + (opt.exempt ? 'pill-exempt' : 'pill-taxed');
       badge.textContent = opt.exempt ? 'isento' : 'taxado';
-      badge.style.marginTop = '0.25rem';
       exemptTd.appendChild(badge);
       tr.appendChild(exemptTd);
 
@@ -1506,25 +1407,12 @@
       balTd.textContent = fmtBRL.format(r.netBalance);
       tr.appendChild(balTd);
 
-      const removeTd = document.createElement('td');
-      const removeBtn = document.createElement('button');
-      removeBtn.type = 'button';
-      removeBtn.className = 'compare-remove';
-      removeBtn.textContent = '✕';
-      removeBtn.setAttribute('aria-label', 'Remover opção');
-      removeBtn.addEventListener('click', () => {
-        state.compareOptions = state.compareOptions.filter(o => o.id !== opt.id);
-        save(); renderCompare();
-      });
-      removeTd.appendChild(removeBtn);
-      tr.appendChild(removeTd);
-
       compareBody.appendChild(tr);
     });
 
-    if (results.length === 0) {
+    if (suggestions.length === 0) {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td colspan="6" style="text-align:center; color:var(--ink-soft);">Adicione uma opção para comparar.</td>`;
+      tr.innerHTML = `<td colspan="5" style="text-align:center; color:var(--ink-soft);">Digite um valor acima pra ver sugestões.</td>`;
       compareBody.appendChild(tr);
     }
 
@@ -1684,32 +1572,8 @@
     state.compareAmount = parseFloat(compareAmountInput.value) || 0;
     save(); renderCompare();
   });
-
-  addCompareBtn.addEventListener('click', () => {
-    const bankName = pickBankSelect.value;
-
-    let product;
-    if (pickProductSelect.value === CUSTOM_KEY) {
-      product = { name: 'Novo investimento', mode: 'cdi', rate: 100, exempt: false };
-    } else {
-      const idx = parseInt(pickProductSelect.value, 10);
-      const template = (BANK_CATALOG[bankName] || [])[idx];
-      product = template ? { ...template } : { name: 'Novo investimento', mode: 'cdi', rate: 100, exempt: false };
-    }
-
-    state.compareOptions.push({
-      id: crypto.randomUUID(),
-      bank: bankName,
-      name: product.name,
-      mode: product.mode,
-      rate: product.rate,
-      exempt: product.exempt,
-      cap: product.cap ?? null,
-      excessMode: product.excessMode,
-      excessRate: product.excessRate
-    });
-    save();
-    renderCompare();
+  compareAmountInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); compareAmountInput.blur(); }
   });
 
   addCombineBtn.addEventListener('click', () => {
