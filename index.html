@@ -1,0 +1,1138 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Caderneta de Rendimentos</title>
+<meta name="description" content="Veja quanto suas caixinhas e cofrinhos rendem, e compare com outros bancos e corretoras — com a taxa CDI atualizada automaticamente pelo Banco Central.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%90%B7%3C/text%3E%3C/svg%3E">
+<style>
+  /* ---------- Tokens ---------- */
+  :root {
+    --paper: #f3efe4;
+    --paper-raised: #faf7ee;
+    --ink: #1f2a22;
+    --ink-soft: #5c6459;
+    --line: #d9d2be;
+    --line-strong: #c3b99e;
+    --verde: #1b6b4a;
+    --verde-soft: #e4efe6;
+    --ouro: #9c7223;
+    --ouro-soft: #f1e6cd;
+    --vinho: #8c2f39;
+    --vinho-soft: #f4e2e2;
+    --focus: #1b6b4a;
+    --shadow: 0 1px 0 rgba(31,42,34,0.06), 0 8px 24px -16px rgba(31,42,34,0.35);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #141f1a;
+      --paper-raised: #182620;
+      --ink: #ede7d9;
+      --ink-soft: #9aa79c;
+      --line: #2b3a32;
+      --line-strong: #3a4c41;
+      --verde: #52b184;
+      --verde-soft: #1c3329;
+      --ouro: #d9a653;
+      --ouro-soft: #33291a;
+      --vinho: #d9838c;
+      --vinho-soft: #3a2224;
+      --focus: #52b184;
+      --shadow: 0 1px 0 rgba(0,0,0,0.3), 0 12px 28px -18px rgba(0,0,0,0.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #141f1a;
+    --paper-raised: #182620;
+    --ink: #ede7d9;
+    --ink-soft: #9aa79c;
+    --line: #2b3a32;
+    --line-strong: #3a4c41;
+    --verde: #52b184;
+    --verde-soft: #1c3329;
+    --ouro: #d9a653;
+    --ouro-soft: #33291a;
+    --vinho: #d9838c;
+    --vinho-soft: #3a2224;
+    --focus: #52b184;
+    --shadow: 0 1px 0 rgba(0,0,0,0.3), 0 12px 28px -18px rgba(0,0,0,0.6);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.45;
+    padding: 2.5rem 1.25rem 5rem;
+  }
+  .wrap { max-width: 46rem; margin: 0 auto; }
+
+  h1, h2, .display {
+    font-family: ui-serif, Georgia, "Iowan Old Style", "Times New Roman", serif;
+    text-wrap: balance;
+    font-weight: 600;
+  }
+  .mono, .amount, input[type="number"] {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- Header ---------- */
+  header { margin-bottom: 2.25rem; }
+  .eyebrow {
+    font-size: 0.72rem;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin: 0 0 0.4rem;
+  }
+  h1 { font-size: 1.9rem; margin: 0 0 0.35rem; letter-spacing: -0.01em; }
+  .subtitle { color: var(--ink-soft); font-size: 0.98rem; margin: 0; max-width: 36rem; }
+
+  .cdi-stamp {
+    margin-top: 1.35rem;
+    border: 1px solid var(--line-strong);
+    background: var(--paper-raised);
+    border-radius: 3px;
+    padding: 0.85rem 1rem;
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    box-shadow: var(--shadow);
+  }
+  .cdi-stamp .label { font-size: 0.82rem; color: var(--ink-soft); }
+  .cdi-stamp input {
+    width: 4.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--verde);
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--line-strong);
+    padding: 0.1rem 0.15rem;
+  }
+  .cdi-stamp .unit { font-size: 0.82rem; color: var(--ink-soft); }
+  .refresh-btn {
+    background: none;
+    border: 1px solid var(--line-strong);
+    border-radius: 3px;
+    color: var(--verde);
+    font-size: 0.85rem;
+    line-height: 1;
+    padding: 0.2rem 0.45rem;
+    cursor: pointer;
+  }
+  .refresh-btn:hover { border-color: var(--verde); }
+  .refresh-btn:disabled { opacity: 0.5; cursor: default; }
+  .refresh-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .cdi-caption { flex-basis: 100%; font-size: 0.76rem; color: var(--ink-soft); margin-top: 0.15rem; }
+  .cdi-caption.ok { color: var(--verde); }
+  .cdi-caption.warn { color: var(--vinho); }
+
+  /* ---------- Section headers ---------- */
+  section.block { margin-bottom: 2.5rem; }
+  section.block > h2 { font-size: 1.05rem; margin: 0 0 0.3rem; }
+  section.block > .section-sub { color: var(--ink-soft); font-size: 0.88rem; margin: 0 0 1.1rem; max-width: 38rem; }
+
+  /* ---------- Ledger (your pots) ---------- */
+  .ledger {
+    border-top: 2px solid var(--ink);
+    margin-bottom: 1.5rem;
+  }
+  .pot {
+    border-bottom: 1px solid var(--line);
+    padding: 1.1rem 0;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.5rem 1rem;
+    align-items: start;
+  }
+  .pot-name {
+    grid-column: 1 / -1;
+    font-family: ui-serif, Georgia, serif;
+    font-size: 1.08rem;
+    font-weight: 600;
+    background: transparent;
+    border: none;
+    border-bottom: 1px dashed transparent;
+    padding: 0.1rem 0 0.2rem;
+    color: var(--ink);
+    width: 100%;
+  }
+  .pot-name:hover, .pot-name:focus { border-bottom-color: var(--line-strong); }
+  .pot-fields {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.9rem 1.4rem;
+    align-items: flex-end;
+    font-size: 0.85rem;
+  }
+  .field { display: flex; flex-direction: column; gap: 0.25rem; min-width: 6.5rem; }
+  .field label { font-size: 0.72rem; color: var(--ink-soft); letter-spacing: 0.02em; }
+  .field input, .field select {
+    font-size: 0.95rem;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--line-strong);
+    padding: 0.2rem 0.1rem;
+    color: var(--ink);
+    font-family: inherit;
+  }
+  .field select { font-family: ui-sans-serif, system-ui, sans-serif; }
+  .field input:focus, .field select:focus, .pot-name:focus {
+    outline: none;
+    border-bottom: 2px solid var(--focus);
+  }
+  .amount-field input { width: 8.5rem; }
+  .rate-field input { width: 4.5rem; }
+
+  .pot-result {
+    margin-left: auto;
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+  .pot-result .yield { color: var(--verde); font-weight: 600; font-size: 1rem; }
+  .pot-result .yield-label { font-size: 0.7rem; color: var(--ink-soft); letter-spacing: 0.02em; }
+
+  .remove-btn {
+    background: none;
+    border: none;
+    color: var(--vinho);
+    font-size: 0.78rem;
+    cursor: pointer;
+    padding: 0.2rem 0;
+    align-self: start;
+    justify-self: end;
+    opacity: 0.75;
+  }
+  .remove-btn:hover { opacity: 1; text-decoration: underline; }
+  .remove-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  .add-row { padding: 1rem 0 0; }
+  .add-btn {
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--verde);
+    background: var(--verde-soft);
+    border: 1px solid var(--verde);
+    border-radius: 3px;
+    padding: 0.55rem 1rem;
+    cursor: pointer;
+    transition: transform 0.12s ease;
+  }
+  .add-btn:hover { transform: translateY(-1px); }
+  .add-btn:active { transform: translateY(0); }
+  .add-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .add-btn.ghost {
+    color: var(--ouro);
+    background: var(--ouro-soft);
+    border-color: var(--ouro);
+  }
+
+  /* ---------- Summary stamp ---------- */
+  .summary {
+    border: 1px solid var(--ink);
+    border-radius: 3px;
+    padding: 1.25rem 1.4rem;
+    background: var(--paper-raised);
+    box-shadow: var(--shadow);
+    margin-bottom: 2rem;
+  }
+  .summary h2 { font-size: 1.05rem; margin: 0 0 0.9rem; }
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: 1rem;
+  }
+  .summary-item .k { font-size: 0.72rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.25rem; }
+  .summary-item .v { font-size: 1.35rem; font-weight: 600; }
+  .summary-item.gain .v { color: var(--verde); }
+
+  /* ---------- Projection ---------- */
+  .projection-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+    margin-bottom: 0.9rem;
+  }
+  .projection-controls input[type="range"] { accent-color: var(--verde); width: 10rem; }
+  .projection-controls .months-val { color: var(--ink); font-weight: 600; font-family: inherit; }
+
+  .table-scroll { overflow-x: auto; border-top: 1px solid var(--line-strong); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.88rem; min-width: 30rem; }
+  th, td { text-align: right; padding: 0.55rem 0.6rem; border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; }
+  th {
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-soft);
+    font-weight: 600;
+  }
+  td.gain { color: var(--verde); }
+  tbody tr:last-child td { border-bottom: 2px solid var(--ink); font-weight: 600; }
+
+  /* ---------- Compare options ---------- */
+  .compare-amount {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+    margin-bottom: 1.1rem;
+  }
+  .compare-amount input {
+    width: 8rem;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--ink);
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--line-strong);
+    padding: 0.1rem 0.15rem;
+  }
+  .compare-amount input:focus { outline: none; border-bottom: 2px solid var(--focus); }
+
+  table.compare-table { min-width: 42rem; }
+  table.compare-table input[type="text"],
+  table.compare-table input[type="number"] {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--line-strong);
+    padding: 0.15rem 0.1rem;
+    font-size: 0.85rem;
+    color: var(--ink);
+    width: 100%;
+  }
+  table.compare-table input[type="text"] { font-family: ui-serif, Georgia, serif; text-align: left; min-width: 8rem; }
+  table.compare-table input[type="number"] { width: 3.6rem; text-align: right; }
+  table.compare-table input:focus { outline: none; border-bottom: 2px solid var(--focus); }
+  table.compare-table select {
+    font-size: 0.78rem;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--line-strong);
+    color: var(--ink-soft);
+    font-family: ui-sans-serif, system-ui, sans-serif;
+  }
+  .rate-cell { display: flex; flex-direction: column; align-items: flex-end; gap: 0.2rem; }
+  .exempt-cell { display: flex; justify-content: center; }
+  .exempt-cell input[type="checkbox"] { accent-color: var(--verde); width: 1rem; height: 1rem; }
+
+  .pill {
+    display: inline-block;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+  .pill-exempt { background: var(--verde-soft); color: var(--verde); }
+  .pill-taxed { background: var(--line); color: var(--ink-soft); }
+
+  tr.best-row td { background: var(--ouro-soft); }
+  .best-tag {
+    display: inline-block;
+    border: 1.5px solid var(--ouro);
+    color: var(--ouro);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.08rem 0.4rem;
+    border-radius: 2px;
+    transform: rotate(-2deg);
+    margin-left: 0.5rem;
+  }
+  .compare-remove {
+    background: none; border: none; color: var(--vinho); cursor: pointer;
+    font-size: 0.85rem; opacity: 0.7; padding: 0;
+  }
+  .compare-remove:hover { opacity: 1; }
+  .ir-note { font-size: 0.76rem; color: var(--ink-soft); margin-top: 0.7rem; }
+
+  .name-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 0.15rem; width: max-content; }
+  table.compare-table td .name-cell input { width: 11rem; max-width: 100%; }
+  .bank-label {
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-soft);
+  }
+  tr.group-start td { border-top: 2px solid var(--line-strong); padding-top: 1.1rem; }
+
+  /* ---------- Winner result card ---------- */
+  .winner-card {
+    border: 1.5px solid var(--ouro);
+    background: var(--ouro-soft);
+    border-radius: 3px;
+    padding: 1.3rem 1.5rem;
+    margin-bottom: 1.75rem;
+    box-shadow: var(--shadow);
+  }
+  .winner-stamp {
+    display: inline-block;
+    border: 1.5px solid var(--ouro);
+    color: var(--ouro);
+    font-size: 0.64rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.15rem 0.55rem;
+    border-radius: 2px;
+    transform: rotate(-2deg);
+    margin-bottom: 0.7rem;
+  }
+  .winner-bank { font-family: ui-serif, Georgia, serif; font-size: 1.6rem; font-weight: 700; color: var(--ink); line-height: 1.15; text-wrap: balance; }
+  .winner-product { font-size: 0.95rem; color: var(--ink-soft); margin-top: 0.2rem; }
+  .winner-figures { display: flex; gap: 2.2rem; margin-top: 1.1rem; flex-wrap: wrap; }
+  .winner-figures .k { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); margin-bottom: 0.2rem; }
+  .winner-figures .v {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--verde);
+  }
+
+  /* ---------- Bank / product picker ---------- */
+  .picker {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    border: 1px dashed var(--line-strong);
+    border-radius: 3px;
+    padding: 1rem 1.1rem;
+    margin-bottom: 1.5rem;
+  }
+  .picker .field { min-width: 11rem; flex: 1 1 11rem; }
+  .picker .field label {
+    display: block;
+    font-size: 0.72rem;
+    color: var(--ink-soft);
+    letter-spacing: 0.02em;
+    margin-bottom: 0.3rem;
+  }
+  .picker .field select, .picker .field input {
+    font-size: 0.9rem;
+    background: var(--paper-raised);
+    border: 1px solid var(--line-strong);
+    border-radius: 3px;
+    padding: 0.45rem 0.55rem;
+    color: var(--ink);
+    width: 100%;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+  }
+  .picker .field select:focus, .picker .field input:focus { outline: none; border-color: var(--focus); }
+  .picker .add-btn { flex: 0 0 auto; }
+
+  footer {
+    margin-top: 2.5rem;
+    font-size: 0.76rem;
+    color: var(--ink-soft);
+    border-top: 1px solid var(--line);
+    padding-top: 1rem;
+  }
+  footer p { margin: 0.3rem 0; }
+  footer a { color: var(--verde); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .add-btn { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Suas caixinhas &amp; cofrinhos</p>
+    <h1>Caderneta de Rendimentos</h1>
+    <p class="subtitle">Cadastre onde seu dinheiro está guardado e veja, na hora, quanto ele deve render nos próximos meses — como uma caderneta de poupança, só que sua.</p>
+
+    <div class="cdi-stamp">
+      <span class="label">CDI atual</span>
+      <input type="number" id="cdiRate" step="0.01" inputmode="decimal" aria-label="Taxa CDI ao ano">
+      <span class="unit">% ao ano</span>
+      <button type="button" id="refreshCdiBtn" class="refresh-btn" title="Buscar taxa atual agora">↻ atualizar</button>
+      <span class="cdi-caption" id="cdiCaption">Buscando taxa atual do Banco Central…</span>
+    </div>
+  </header>
+
+  <section class="block">
+    <div class="ledger" id="potsList"></div>
+    <div class="add-row">
+      <button class="add-btn" id="addPot" type="button">+ Adicionar caixinha</button>
+    </div>
+  </section>
+
+  <section class="summary">
+    <h2>Total nesta caderneta</h2>
+    <div class="summary-grid">
+      <div class="summary-item">
+        <div class="k">Aplicado hoje</div>
+        <div class="v mono" id="totalPrincipal">R$ 0,00</div>
+      </div>
+      <div class="summary-item gain">
+        <div class="k">Rendimento no mês 1</div>
+        <div class="v mono" id="totalMonth1">R$ 0,00</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block projection">
+    <h2>Projeção da sua caderneta</h2>
+    <p class="section-sub">Como esse total evolui se você deixar tudo rendendo, mês a mês.</p>
+    <div class="projection-controls">
+      <label for="monthsRange">Ver os próximos</label>
+      <input type="range" id="monthsRange" min="1" max="24" value="3">
+      <span class="months-val mono"><span id="monthsVal">3</span> meses</span>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Mês</th><th>Saldo total</th><th>Rendimento do mês</th><th>Acumulado</th></tr>
+        </thead>
+        <tbody id="projBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="block" id="compareSection">
+    <h2>Qual opção compensa mais?</h2>
+    <p class="section-sub">Simulamos o mesmo valor, pelo mesmo prazo, em bancos e corretoras diferentes — já descontando o Imposto de Renda de quem não é isento, pra comparar de igual pra igual.</p>
+
+    <div class="compare-amount">
+      <span>Valor a comparar</span>
+      <input type="number" id="compareAmountInput" step="0.01" min="0" aria-label="Valor a comparar">
+      <span>por <span class="mono" id="compareMonthsLabel">3</span> meses (mesmo prazo da projeção acima)</span>
+    </div>
+
+    <div class="winner-card" id="winnerCard">
+      <span class="winner-stamp">rende mais</span>
+      <div class="winner-bank" id="winnerBank">—</div>
+      <div class="winner-product" id="winnerProduct">—</div>
+      <div class="winner-figures">
+        <div><div class="k">Rendimento líquido</div><div class="v" id="winnerGain">—</div></div>
+        <div><div class="k">Saldo final</div><div class="v" id="winnerBalance">—</div></div>
+      </div>
+    </div>
+
+    <h3 style="font-size: 0.98rem; margin: 0 0 0.35rem;">Comparar com outras opções</h3>
+    <p class="section-sub">Escolha um banco ou corretora e, depois, o investimento disponível nele.</p>
+
+    <div class="picker">
+      <div class="field">
+        <label for="pickBank">Banco / corretora</label>
+        <select id="pickBank"></select>
+      </div>
+      <div class="field" id="customBankField" hidden>
+        <label for="pickBankCustom">Nome do banco/corretora</label>
+        <input type="text" id="pickBankCustom" placeholder="ex: Banco XP">
+      </div>
+      <div class="field">
+        <label for="pickProduct">Investimento disponível</label>
+        <select id="pickProduct"></select>
+      </div>
+      <button class="add-btn ghost" id="addCompare" type="button">+ Adicionar à comparação</button>
+    </div>
+
+    <div class="table-scroll">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th>Banco / Opção</th>
+            <th>Taxa</th>
+            <th style="text-align:center;">IR</th>
+            <th>Líquido no período</th>
+            <th>Saldo final</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="compareBody"></tbody>
+      </table>
+    </div>
+    <p class="ir-note" id="irNote"></p>
+  </section>
+
+  <footer>
+    <p>A taxa CDI no topo é buscada automaticamente da <a href="https://dadosabertos.bcb.gov.br/dataset/4389-taxa-de-juros---cdi" target="_blank" rel="noopener">API pública do Banco Central</a> (série 4389) sempre que a página é aberta. As taxas do catálogo de bancos/corretoras (ex: % do CDI de cada CDB) são estimativas de mercado verificadas em 13/08/2026 — bancos mudam essas ofertas com frequência, então confira a condição real antes de investir.</p>
+    <p>Valores brutos ou líquidos estimados por juros compostos a partir das taxas informadas — não descontam taxas de administração/custódia, e a comparação de IR usa a tabela regressiva padrão de renda fixa (22,5% até 180 dias; 20% de 181 a 360; 17,5% de 361 a 720; 15% acima disso). Não é recomendação de investimento.</p>
+    <p>Seus dados ficam salvos apenas neste navegador — nada é enviado para nenhum servidor.</p>
+  </footer>
+</div>
+
+<script>
+(function () {
+  const STORAGE_KEY = 'caderneta-rendimentos-v5';
+  const fmtBRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+  const CUSTOM_KEY = '__custom__';
+  const CDI_SERIES_URL = 'https://api.bcb.gov.br/dados/serie/bcdata.sgs.4389/dados/ultimos/1?formato=json';
+
+  // Catálogo de referência: banco/corretora -> investimentos típicos disponíveis lá.
+  // Taxas são estimativas de mercado, editáveis depois de adicionar.
+  const BANK_CATALOG = {
+    'Nubank': [
+      { name: 'Caixinha 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
+      { name: 'Caixinha Turbo 115% do CDI (padrão, até R$5 mil, 31 dias)', mode: 'cdi', rate: 115, exempt: false },
+      { name: 'Caixinha Turbo 120% do CDI (Ultravioleta/Nubank+, até R$10 mil)', mode: 'cdi', rate: 120, exempt: false },
+      { name: 'LCI Nubank ~95% do CDI', mode: 'cdi', rate: 95, exempt: true }
+    ],
+    'Banco Inter': [
+      { name: 'CDB Inter 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
+      { name: 'Poupança Inter', mode: 'fixed', rate: 0.50, exempt: true }
+    ],
+    'C6 Bank': [
+      { name: 'Cofrinho C6 ~102% do CDI', mode: 'cdi', rate: 102, exempt: false },
+      { name: 'Poupança C6', mode: 'fixed', rate: 0.50, exempt: true }
+    ],
+    'PicPay': [
+      { name: 'CDB PicPay 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
+    ],
+    'Banco do Brasil': [
+      { name: 'Poupança BB', mode: 'fixed', rate: 0.50, exempt: true },
+      { name: 'CDB BB ~90% do CDI', mode: 'cdi', rate: 90, exempt: false }
+    ],
+    'Itaú': [
+      { name: 'Poupança Itaú', mode: 'fixed', rate: 0.50, exempt: true },
+      { name: 'CDB Itaú ~85% do CDI', mode: 'cdi', rate: 85, exempt: false }
+    ],
+    'Bradesco': [
+      { name: 'Poupança Bradesco', mode: 'fixed', rate: 0.50, exempt: true },
+      { name: 'CDB Bradesco ~85% do CDI', mode: 'cdi', rate: 85, exempt: false }
+    ],
+    'Santander': [
+      { name: 'Poupança Santander', mode: 'fixed', rate: 0.50, exempt: true },
+      { name: 'CDB Santander ~88% do CDI', mode: 'cdi', rate: 88, exempt: false }
+    ],
+    'Caixa Econômica Federal': [
+      { name: 'Poupança Caixa', mode: 'fixed', rate: 0.50, exempt: true }
+    ],
+    'XP Investimentos': [
+      { name: 'CDB XP ~108% do CDI', mode: 'cdi', rate: 108, exempt: false },
+      { name: 'LCI/LCA XP ~96% do CDI', mode: 'cdi', rate: 96, exempt: true },
+      { name: 'Tesouro Selic', mode: 'cdi', rate: 100, exempt: false }
+    ],
+    'Rico': [
+      { name: 'CDB Rico ~106% do CDI', mode: 'cdi', rate: 106, exempt: false },
+      { name: 'Tesouro Selic', mode: 'cdi', rate: 100, exempt: false }
+    ],
+    'BTG Pactual': [
+      { name: 'CDB BTG ~106% do CDI', mode: 'cdi', rate: 106, exempt: false },
+      { name: 'Tesouro Selic', mode: 'cdi', rate: 100, exempt: false }
+    ]
+  };
+
+  function defaultCompareOptions() {
+    return [
+      { id: crypto.randomUUID(), bank: 'Nubank', name: 'Caixinha / CDB 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
+      { id: crypto.randomUUID(), bank: 'Banco do Brasil', name: 'Poupança BB', mode: 'fixed', rate: 0.50, exempt: true },
+      { id: crypto.randomUUID(), bank: 'Banco do Brasil', name: 'CDB BB ~90% do CDI', mode: 'cdi', rate: 90, exempt: false },
+      { id: crypto.randomUUID(), bank: 'XP Investimentos', name: 'LCI/LCA XP ~96% do CDI', mode: 'cdi', rate: 96, exempt: true },
+      { id: crypto.randomUUID(), bank: 'XP Investimentos', name: 'Tesouro Selic', mode: 'cdi', rate: 100, exempt: false }
+    ];
+  }
+
+  function defaultState() {
+    return {
+      cdiAnnual: 13.90,
+      cdiFetchedDate: null,
+      months: 3,
+      pots: [
+        { id: crypto.randomUUID(), name: 'Caixinha Nubank', amount: 4500, mode: 'cdi', rate: 100 },
+        { id: crypto.randomUUID(), name: 'Cofrinho BB', amount: 55000, mode: 'fixed', rate: 0.50 }
+      ],
+      compareAmount: 59500,
+      compareOptions: defaultCompareOptions()
+    };
+  }
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return defaultState();
+      const parsed = JSON.parse(raw);
+      if (!parsed.pots || !parsed.pots.length) return defaultState();
+      if (!parsed.compareOptions || !parsed.compareOptions.length) parsed.compareOptions = defaultCompareOptions();
+      parsed.compareOptions.forEach(o => { if (!o.bank) o.bank = 'Outros'; });
+      if (typeof parsed.compareAmount !== 'number') parsed.compareAmount = parsed.pots.reduce((a, p) => a + p.amount, 0);
+      return parsed;
+    } catch (e) {
+      return defaultState();
+    }
+  }
+
+  let state = load();
+
+  function save() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  function cdiMonthlyRate() {
+    return Math.pow(1 + state.cdiAnnual / 100, 1 / 12) - 1;
+  }
+
+  function monthlyRateFor(mode, rate) {
+    if (mode === 'cdi') return cdiMonthlyRate() * (rate / 100);
+    return rate / 100;
+  }
+
+  function potMonthlyRate(pot) {
+    return monthlyRateFor(pot.mode, pot.rate);
+  }
+
+  function irRateForMonths(months) {
+    const days = months * 30;
+    if (days <= 180) return { rate: 0.225, label: '22,5% (até 180 dias)' };
+    if (days <= 360) return { rate: 0.20, label: '20% (181 a 360 dias)' };
+    if (days <= 720) return { rate: 0.175, label: '17,5% (361 a 720 dias)' };
+    return { rate: 0.15, label: '15% (acima de 720 dias)' };
+  }
+
+  const potsList = document.getElementById('potsList');
+  const cdiInput = document.getElementById('cdiRate');
+  const cdiCaption = document.getElementById('cdiCaption');
+  const refreshCdiBtn = document.getElementById('refreshCdiBtn');
+  const addPotBtn = document.getElementById('addPot');
+  const monthsRange = document.getElementById('monthsRange');
+  const monthsVal = document.getElementById('monthsVal');
+  const projBody = document.getElementById('projBody');
+  const totalPrincipalEl = document.getElementById('totalPrincipal');
+  const totalMonth1El = document.getElementById('totalMonth1');
+
+  const compareAmountInput = document.getElementById('compareAmountInput');
+  const compareMonthsLabel = document.getElementById('compareMonthsLabel');
+  const compareBody = document.getElementById('compareBody');
+  const addCompareBtn = document.getElementById('addCompare');
+  const irNote = document.getElementById('irNote');
+
+  const winnerBankEl = document.getElementById('winnerBank');
+  const winnerProductEl = document.getElementById('winnerProduct');
+  const winnerGainEl = document.getElementById('winnerGain');
+  const winnerBalanceEl = document.getElementById('winnerBalance');
+
+  const pickBankSelect = document.getElementById('pickBank');
+  const customBankField = document.getElementById('customBankField');
+  const pickBankCustomInput = document.getElementById('pickBankCustom');
+  const pickProductSelect = document.getElementById('pickProduct');
+
+  function populateBankSelect() {
+    const banks = Object.keys(BANK_CATALOG);
+    pickBankSelect.innerHTML = banks.map(b => `<option value="${b}">${b}</option>`).join('')
+      + `<option value="${CUSTOM_KEY}">Outro banco/corretora…</option>`;
+  }
+
+  function populateProductSelect() {
+    const bank = pickBankSelect.value;
+    if (bank === CUSTOM_KEY) {
+      pickProductSelect.innerHTML = `<option value="${CUSTOM_KEY}">Investimento personalizado</option>`;
+      return;
+    }
+    const products = BANK_CATALOG[bank] || [];
+    pickProductSelect.innerHTML = products.map((p, i) => `<option value="${i}">${p.name}</option>`).join('')
+      + `<option value="${CUSTOM_KEY}">Outro investimento…</option>`;
+  }
+
+  pickBankSelect.addEventListener('change', () => {
+    customBankField.hidden = pickBankSelect.value !== CUSTOM_KEY;
+    populateProductSelect();
+  });
+
+  populateBankSelect();
+  populateProductSelect();
+
+  cdiInput.value = state.cdiAnnual;
+  monthsRange.value = state.months;
+  monthsVal.textContent = state.months;
+  compareAmountInput.value = state.compareAmount;
+  compareMonthsLabel.textContent = state.months;
+
+  // ---------- Live CDI fetch (Banco Central, série 4389) ----------
+  async function fetchLiveCDI() {
+    refreshCdiBtn.disabled = true;
+    cdiCaption.className = 'cdi-caption';
+    cdiCaption.textContent = 'Buscando taxa atual do Banco Central…';
+    try {
+      const res = await fetch(CDI_SERIES_URL, { cache: 'no-store' });
+      if (!res.ok) throw new Error('status ' + res.status);
+      const data = await res.json();
+      const entry = data && data[0];
+      const rate = entry ? parseFloat(entry.valor) : NaN;
+      if (!isFinite(rate) || rate <= 0) throw new Error('valor inválido');
+
+      state.cdiAnnual = rate;
+      state.cdiFetchedDate = entry.data;
+      cdiInput.value = rate;
+      save();
+      renderResults();
+
+      cdiCaption.className = 'cdi-caption ok';
+      cdiCaption.textContent = `✓ Atualizado automaticamente do Banco Central em ${entry.data}.`;
+    } catch (e) {
+      if (state.cdiFetchedDate) {
+        cdiCaption.className = 'cdi-caption warn';
+        cdiCaption.textContent = `⚠ Não consegui atualizar agora — mostrando o último valor confirmado em ${state.cdiFetchedDate}.`;
+      } else {
+        cdiCaption.className = 'cdi-caption warn';
+        cdiCaption.textContent = '⚠ Não consegui buscar a taxa automaticamente agora. Confira e ajuste manualmente se precisar.';
+      }
+    } finally {
+      refreshCdiBtn.disabled = false;
+    }
+  }
+
+  refreshCdiBtn.addEventListener('click', fetchLiveCDI);
+
+  cdiInput.addEventListener('input', () => {
+    state.cdiAnnual = parseFloat(cdiInput.value) || 0;
+    cdiCaption.className = 'cdi-caption';
+    cdiCaption.textContent = 'Valor personalizado — clique em "atualizar" para voltar à taxa oficial automática.';
+    save(); renderResults();
+  });
+
+  function renderPots() {
+    potsList.innerHTML = '';
+    state.pots.forEach(pot => {
+      const row = document.createElement('div');
+      row.className = 'pot';
+
+      const nameInput = document.createElement('input');
+      nameInput.className = 'pot-name';
+      nameInput.value = pot.name;
+      nameInput.setAttribute('aria-label', 'Nome da caixinha');
+      nameInput.addEventListener('input', () => { pot.name = nameInput.value; save(); });
+      row.appendChild(nameInput);
+
+      const fields = document.createElement('div');
+      fields.className = 'pot-fields';
+
+      const amountField = document.createElement('div');
+      amountField.className = 'field amount-field';
+      amountField.innerHTML = '<label>Valor aplicado (R$)</label>';
+      const amountInput = document.createElement('input');
+      amountInput.type = 'number';
+      amountInput.step = '0.01';
+      amountInput.min = '0';
+      amountInput.value = pot.amount;
+      amountInput.addEventListener('input', () => { pot.amount = parseFloat(amountInput.value) || 0; save(); renderResults(); });
+      amountField.appendChild(amountInput);
+      fields.appendChild(amountField);
+
+      const modeField = document.createElement('div');
+      modeField.className = 'field';
+      modeField.innerHTML = '<label>Como rende</label>';
+      const modeSelect = document.createElement('select');
+      modeSelect.innerHTML = '<option value="cdi">% do CDI</option><option value="fixed">Taxa fixa a.m.</option>';
+      modeSelect.value = pot.mode;
+      modeSelect.addEventListener('change', () => {
+        pot.mode = modeSelect.value;
+        pot.rate = pot.mode === 'cdi' ? 100 : 0.5;
+        save(); renderPots();
+      });
+      modeField.appendChild(modeSelect);
+      fields.appendChild(modeField);
+
+      const rateField = document.createElement('div');
+      rateField.className = 'field rate-field';
+      rateField.innerHTML = `<label>${pot.mode === 'cdi' ? '% do CDI' : '% ao mês'}</label>`;
+      const rateInput = document.createElement('input');
+      rateInput.type = 'number';
+      rateInput.step = '0.01';
+      rateInput.min = '0';
+      rateInput.value = pot.rate;
+      rateInput.addEventListener('input', () => { pot.rate = parseFloat(rateInput.value) || 0; save(); renderResults(); });
+      rateField.appendChild(rateInput);
+      fields.appendChild(rateField);
+
+      const result = document.createElement('div');
+      result.className = 'pot-result';
+      result.innerHTML = `<div class="yield mono" data-yield></div><div class="yield-label">rendimento no mês 1</div>`;
+      fields.appendChild(result);
+
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'remove-btn';
+      removeBtn.textContent = 'remover';
+      removeBtn.addEventListener('click', () => {
+        state.pots = state.pots.filter(p => p.id !== pot.id);
+        save(); renderPots(); renderResults();
+      });
+
+      row.appendChild(fields);
+      row.appendChild(removeBtn);
+      row._pot = pot;
+      row._yieldEl = result.querySelector('[data-yield]');
+      potsList.appendChild(row);
+    });
+    renderResults();
+  }
+
+  function renderResults() {
+    let totalPrincipal = 0;
+    let totalMonth1 = 0;
+
+    [...potsList.children].forEach(row => {
+      const pot = row._pot;
+      const rate = potMonthlyRate(pot);
+      const gain = pot.amount * rate;
+      row._yieldEl.textContent = '+ ' + fmtBRL.format(gain);
+      totalPrincipal += pot.amount;
+      totalMonth1 += gain;
+    });
+
+    totalPrincipalEl.textContent = fmtBRL.format(totalPrincipal);
+    totalMonth1El.textContent = '+ ' + fmtBRL.format(totalMonth1);
+
+    renderProjection();
+  }
+
+  function renderProjection() {
+    projBody.innerHTML = '';
+    const months = state.months;
+    let balances = state.pots.map(p => p.amount);
+    let cumulative = 0;
+
+    for (let m = 1; m <= months; m++) {
+      let monthGain = 0;
+      balances = balances.map((bal, i) => {
+        const rate = potMonthlyRate(state.pots[i]);
+        const g = bal * rate;
+        monthGain += g;
+        return bal + g;
+      });
+      cumulative += monthGain;
+      const totalBal = balances.reduce((a, b) => a + b, 0);
+
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>Mês ${m}</td><td class="mono">${fmtBRL.format(totalBal)}</td><td class="mono gain">+ ${fmtBRL.format(monthGain)}</td><td class="mono gain">+ ${fmtBRL.format(cumulative)}</td>`;
+      projBody.appendChild(tr);
+    }
+
+    if (months === 0 || state.pots.length === 0) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td colspan="4" style="text-align:center; color:var(--ink-soft);">Adicione uma caixinha para ver a projeção.</td>`;
+      projBody.appendChild(tr);
+    }
+
+    renderCompare();
+  }
+
+  function renderCompare() {
+    compareBody.innerHTML = '';
+    const months = state.months;
+    const amount = state.compareAmount;
+    const ir = irRateForMonths(months);
+    irNote.textContent = `Faixa de IR aplicada para ${months} ${months === 1 ? 'mês' : 'meses'}: ${ir.label}. Opções isentas (poupança, LCI/LCA) não pagam esse imposto.`;
+
+    const results = state.compareOptions.map(opt => {
+      const monthlyRate = monthlyRateFor(opt.mode, opt.rate);
+      const grossBalance = amount * Math.pow(1 + monthlyRate, months);
+      const grossGain = grossBalance - amount;
+      const irPaid = opt.exempt ? 0 : grossGain * ir.rate;
+      const netGain = grossGain - irPaid;
+      const netBalance = amount + netGain;
+      return { opt, netGain, netBalance, irPaid };
+    });
+
+    // which option truly pays the most, regardless of display order
+    const bestId = results.length > 0
+      ? results.reduce((best, r) => r.netGain > best.netGain ? r : best, results[0]).opt.id
+      : null;
+
+    // headline result card
+    if (results.length === 0) {
+      winnerBankEl.textContent = 'Nenhuma opção ainda';
+      winnerProductEl.textContent = 'Escolha um banco ou corretora abaixo para comparar.';
+      winnerGainEl.textContent = '—';
+      winnerBalanceEl.textContent = '—';
+    } else {
+      const best = results.find(r => r.opt.id === bestId);
+      winnerBankEl.textContent = best.opt.bank || 'Outro';
+      winnerProductEl.textContent = best.opt.name;
+      winnerGainEl.textContent = '+ ' + fmtBRL.format(best.netGain);
+      winnerBalanceEl.textContent = fmtBRL.format(best.netBalance);
+    }
+
+    // display grouped by bank (A–Z), best offer first within each bank
+    results.sort((a, b) => {
+      const bankCompare = (a.opt.bank || '').localeCompare(b.opt.bank || '', 'pt-BR');
+      if (bankCompare !== 0) return bankCompare;
+      return b.netGain - a.netGain;
+    });
+
+    let lastBank = null;
+    results.forEach((r) => {
+      const opt = r.opt;
+      const tr = document.createElement('tr');
+      if (opt.bank !== lastBank) {
+        if (lastBank !== null) tr.className = 'group-start';
+        lastBank = opt.bank;
+      }
+      if (opt.id === bestId) tr.className = (tr.className ? tr.className + ' ' : '') + 'best-row';
+
+      const nameTd = document.createElement('td');
+      const nameCell = document.createElement('div');
+      nameCell.className = 'name-cell';
+
+      const bankLabel = document.createElement('div');
+      bankLabel.className = 'bank-label';
+      bankLabel.textContent = opt.bank || 'Outro';
+      nameCell.appendChild(bankLabel);
+
+      const nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.className = 'name-input';
+      nameInput.value = opt.name;
+      nameInput.addEventListener('input', () => { opt.name = nameInput.value; save(); });
+      nameCell.appendChild(nameInput);
+
+      nameTd.appendChild(nameCell);
+      if (opt.id === bestId) {
+        const tag = document.createElement('span');
+        tag.className = 'best-tag';
+        tag.textContent = 'rende mais';
+        nameTd.appendChild(tag);
+      }
+      tr.appendChild(nameTd);
+
+      const rateTd = document.createElement('td');
+      const rateCell = document.createElement('div');
+      rateCell.className = 'rate-cell';
+      const modeSelect = document.createElement('select');
+      modeSelect.innerHTML = '<option value="cdi">% do CDI</option><option value="fixed">% a.m. fixo</option>';
+      modeSelect.value = opt.mode;
+      modeSelect.addEventListener('change', () => {
+        opt.mode = modeSelect.value;
+        opt.rate = opt.mode === 'cdi' ? 100 : 0.5;
+        save(); renderCompare();
+      });
+      const rateInput = document.createElement('input');
+      rateInput.type = 'number';
+      rateInput.step = '0.01';
+      rateInput.min = '0';
+      rateInput.value = opt.rate;
+      rateInput.addEventListener('input', () => { opt.rate = parseFloat(rateInput.value) || 0; save(); renderCompare(); });
+      rateCell.appendChild(rateInput);
+      rateCell.appendChild(modeSelect);
+      rateTd.appendChild(rateCell);
+      tr.appendChild(rateTd);
+
+      const exemptTd = document.createElement('td');
+      exemptTd.style.textAlign = 'center';
+      const pill = document.createElement('label');
+      pill.className = 'exempt-cell';
+      const exemptCheckbox = document.createElement('input');
+      exemptCheckbox.type = 'checkbox';
+      exemptCheckbox.checked = opt.exempt;
+      exemptCheckbox.title = 'Isento de Imposto de Renda';
+      exemptCheckbox.addEventListener('change', () => { opt.exempt = exemptCheckbox.checked; save(); renderCompare(); });
+      pill.appendChild(exemptCheckbox);
+      exemptTd.appendChild(pill);
+      const badge = document.createElement('div');
+      badge.className = 'pill ' + (opt.exempt ? 'pill-exempt' : 'pill-taxed');
+      badge.textContent = opt.exempt ? 'isento' : 'taxado';
+      badge.style.marginTop = '0.25rem';
+      exemptTd.appendChild(badge);
+      tr.appendChild(exemptTd);
+
+      const gainTd = document.createElement('td');
+      gainTd.className = 'mono gain';
+      gainTd.textContent = '+ ' + fmtBRL.format(r.netGain);
+      tr.appendChild(gainTd);
+
+      const balTd = document.createElement('td');
+      balTd.className = 'mono';
+      balTd.textContent = fmtBRL.format(r.netBalance);
+      tr.appendChild(balTd);
+
+      const removeTd = document.createElement('td');
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'compare-remove';
+      removeBtn.textContent = '✕';
+      removeBtn.setAttribute('aria-label', 'Remover opção');
+      removeBtn.addEventListener('click', () => {
+        state.compareOptions = state.compareOptions.filter(o => o.id !== opt.id);
+        save(); renderCompare();
+      });
+      removeTd.appendChild(removeBtn);
+      tr.appendChild(removeTd);
+
+      compareBody.appendChild(tr);
+    });
+
+    if (results.length === 0) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td colspan="6" style="text-align:center; color:var(--ink-soft);">Adicione uma opção para comparar.</td>`;
+      compareBody.appendChild(tr);
+    }
+  }
+
+  addPotBtn.addEventListener('click', () => {
+    state.pots.push({ id: crypto.randomUUID(), name: 'Nova caixinha', amount: 1000, mode: 'cdi', rate: 100 });
+    save(); renderPots();
+  });
+
+  monthsRange.addEventListener('input', () => {
+    state.months = parseInt(monthsRange.value, 10);
+    monthsVal.textContent = state.months;
+    compareMonthsLabel.textContent = state.months;
+    save(); renderProjection();
+  });
+
+  compareAmountInput.addEventListener('input', () => {
+    state.compareAmount = parseFloat(compareAmountInput.value) || 0;
+    save(); renderCompare();
+  });
+
+  addCompareBtn.addEventListener('click', () => {
+    let bankName;
+    if (pickBankSelect.value === CUSTOM_KEY) {
+      bankName = pickBankCustomInput.value.trim();
+      if (!bankName) { pickBankCustomInput.focus(); return; }
+    } else {
+      bankName = pickBankSelect.value;
+    }
+
+    let product;
+    if (pickProductSelect.value === CUSTOM_KEY) {
+      product = { name: 'Novo investimento', mode: 'cdi', rate: 100, exempt: false };
+    } else {
+      const idx = parseInt(pickProductSelect.value, 10);
+      const template = (BANK_CATALOG[bankName] || [])[idx];
+      product = template ? { ...template } : { name: 'Novo investimento', mode: 'cdi', rate: 100, exempt: false };
+    }
+
+    state.compareOptions.push({
+      id: crypto.randomUUID(),
+      bank: bankName,
+      name: product.name,
+      mode: product.mode,
+      rate: product.rate,
+      exempt: product.exempt
+    });
+    save();
+    renderCompare();
+
+    if (pickBankSelect.value === CUSTOM_KEY) pickBankCustomInput.value = '';
+  });
+
+  renderPots();
+  fetchLiveCDI();
+})();
+</script>
+</body>
+</html>
