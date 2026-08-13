@@ -1245,13 +1245,20 @@
     const labelsEl = document.getElementById('cdiChartLabels');
     if (!container) return;
     try {
-      const res = await fetch('https://api.bcb.gov.br/dados/serie/bcdata.sgs.4389/dados/ultimos/130?formato=json', { cache: 'no-store' });
+      // The "ultimos/N" shortcut caps out at 20 values, so a 6-month window
+      // needs the date-range endpoint instead (already chronological, oldest first).
+      const fmtDateBR = d => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+      const today = new Date();
+      const sixMonthsAgo = new Date(today);
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+      const url = `https://api.bcb.gov.br/dados/serie/bcdata.sgs.4389/dados?dataInicial=${fmtDateBR(sixMonthsAgo)}&dataFinal=${fmtDateBR(today)}&formato=json`;
+
+      const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) throw new Error('status ' + res.status);
       const raw = await res.json();
       const points = (Array.isArray(raw) ? raw : [])
         .map(d => ({ date: d.data, value: parseFloat(d.valor) }))
-        .filter(p => p.date && isFinite(p.value))
-        .reverse(); // API returns newest-first; a chart reads left-to-right chronologically
+        .filter(p => p.date && isFinite(p.value));
 
       if (points.length < 2) throw new Error('dados insuficientes');
 
