@@ -461,6 +461,23 @@
   .gain-cell .ir-line.exempt { color: var(--verde); }
   .gain-cell .net-line { font-size: 0.92rem; font-weight: 700; color: var(--verde); }
 
+  /* ---------- Combine section ---------- */
+  .combine-name { font-family: ui-serif, Georgia, serif; font-size: 0.88rem; color: var(--ink); }
+  .combine-amount-input { width: 7.5rem; text-align: right; }
+  .allocation-status { font-size: 0.82rem; margin: 0.7rem 0 1.3rem; }
+  .allocation-status.ok { color: var(--verde); }
+  .allocation-status.warn { color: var(--ouro); }
+  .combine-card { border-color: var(--verde); background: var(--verde-soft); }
+  .combine-stamp { border-color: var(--verde); color: var(--verde); }
+  .vs-winner {
+    font-size: 0.85rem;
+    color: var(--ink);
+    margin: 1rem 0 0;
+    padding-top: 0.9rem;
+    border-top: 1px dashed var(--line-strong);
+  }
+  .vs-winner strong { color: var(--verde); }
+
   /* ---------- Bank / product picker ---------- */
   .picker {
     display: flex;
@@ -633,6 +650,65 @@
     <p class="ir-note" id="irNote"></p>
   </section>
 
+  <section class="block" id="combineSection">
+    <h2>Combine vários investimentos</h2>
+    <p class="section-sub">Divida o valor entre bancos/corretoras diferentes — vale a pena principalmente quando algum tem limite (como as caixinhas turbinadas), pra aproveitar mais de uma taxa alta ao mesmo tempo, em vez de deixar tudo numa única opção.</p>
+
+    <div class="picker">
+      <div class="field">
+        <label for="combineBank">Banco / corretora</label>
+        <select id="combineBank"></select>
+      </div>
+      <div class="field">
+        <label for="combineProduct">Investimento</label>
+        <select id="combineProduct"></select>
+      </div>
+      <div class="field">
+        <label for="combineAmount">Valor a alocar (R$)</label>
+        <input type="number" id="combineAmount" step="0.01" min="0">
+      </div>
+      <button class="add-btn ghost" id="addCombine" type="button">+ Adicionar à combinação</button>
+    </div>
+
+    <div class="add-row" style="padding-top: 0;">
+      <button class="add-btn" id="autoSuggestBtn" type="button">✨ Preencher automaticamente com a melhor combinação</button>
+    </div>
+
+    <div class="table-scroll">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th>Banco / Opção</th>
+            <th>Valor alocado</th>
+            <th>Rendimento (bruto → líquido)</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="combineBody"></tbody>
+      </table>
+    </div>
+    <p class="allocation-status" id="allocationStatus"></p>
+
+    <div class="winner-card combine-card" id="combineCard">
+      <span class="winner-stamp combine-stamp">total combinado</span>
+      <div class="receipt">
+        <div class="receipt-row">
+          <span>Rendimento bruto</span>
+          <span class="mono" id="combineGross">R$ 0,00</span>
+        </div>
+        <div class="receipt-row minus">
+          <span>(–) Imposto de Renda</span>
+          <span class="mono" id="combineIr">R$ 0,00</span>
+        </div>
+        <div class="receipt-row total">
+          <span>= Rendimento líquido</span>
+          <span class="mono" id="combineNet">R$ 0,00</span>
+        </div>
+      </div>
+      <p class="vs-winner" id="combineVsWinner"></p>
+    </div>
+  </section>
+
   <footer>
     <p>A taxa CDI no topo é buscada automaticamente da <a href="https://dadosabertos.bcb.gov.br/dataset/4389-taxa-de-juros---cdi" target="_blank" rel="noopener">API pública do Banco Central</a> (série 4389) sempre que a página é aberta. As taxas do catálogo de bancos/corretoras (ex: % do CDI de cada CDB/cofrinho) foram checadas uma a uma em 13/08/2026 — bancos mudam essas ofertas com frequência (a maioria revisa a % do CDI a qualquer momento), então confira a condição real antes de investir.</p>
     <p>Valores brutos ou líquidos estimados por juros compostos a partir das taxas informadas — não descontam taxas de administração/custódia, e a comparação de IR usa a tabela regressiva padrão de renda fixa (22,5% até 180 dias; 20% de 181 a 360; 17,5% de 361 a 720; 15% acima disso). Não é recomendação de investimento.</p>
@@ -727,7 +803,8 @@
         { id: crypto.randomUUID(), name: 'Cofrinho BB (BB RF Simples Reserva)', amount: 55000, mode: 'cdi', rate: 91 }
       ],
       compareAmount: 59500,
-      compareOptions: defaultCompareOptions()
+      compareOptions: defaultCompareOptions(),
+      combination: []
     };
   }
 
@@ -740,6 +817,7 @@
       if (!parsed.compareOptions || !parsed.compareOptions.length) parsed.compareOptions = defaultCompareOptions();
       parsed.compareOptions.forEach(o => { if (!o.bank) o.bank = 'Outros'; });
       if (typeof parsed.compareAmount !== 'number') parsed.compareAmount = parsed.pots.reduce((a, p) => a + p.amount, 0);
+      if (!Array.isArray(parsed.combination)) parsed.combination = [];
       return parsed;
     } catch (e) {
       return defaultState();
@@ -792,6 +870,46 @@
     return { rate: 0.15, label: '15% (acima de 720 dias)' };
   }
 
+  // Shared by the comparison table and the combination builder: compounds an
+  // amount over `months`, splitting it at the product's cap when it has one.
+  function grossGainForAmount(entity, amount, months) {
+    const { capPart, excessPart } = splitAmount(amount, entity.cap);
+    let grossBalance = capPart * Math.pow(1 + monthlyRateFor(entity.mode, entity.rate), months);
+    if (excessPart > 0) grossBalance += excessPart * Math.pow(1 + excessMonthlyRate(entity), months);
+    return grossBalance - amount;
+  }
+
+  // Greedy allocator: ranks every catalog product by its net-of-tax monthly
+  // rate and fills each one's cap (highest rate first) until the total amount
+  // is spent — the natural way to squeeze more than one capped high rate out
+  // of a single pool of money.
+  function suggestAllocation(totalAmount, months) {
+    if (totalAmount <= 0) return [];
+    const ir = irRateForMonths(months);
+    const tranches = [];
+    Object.entries(BANK_CATALOG).forEach(([bank, products]) => {
+      products.forEach(p => {
+        const netRate = monthlyRateFor(p.mode, p.rate) * (p.exempt ? 1 : (1 - ir.rate));
+        tranches.push({ bank, product: p, capacity: p.cap || Infinity, netRate });
+      });
+    });
+    tranches.sort((a, b) => b.netRate - a.netRate);
+
+    let remaining = totalAmount;
+    const allocation = [];
+    for (const t of tranches) {
+      if (remaining <= 0.01) break;
+      const alloc = Math.min(remaining, t.capacity);
+      allocation.push({
+        id: crypto.randomUUID(), bank: t.bank, name: t.product.name, mode: t.product.mode,
+        rate: t.product.rate, exempt: t.product.exempt, cap: t.product.cap ?? null,
+        excessMode: t.product.excessMode, excessRate: t.product.excessRate, amount: alloc
+      });
+      remaining -= alloc;
+    }
+    return allocation;
+  }
+
   const potsList = document.getElementById('potsList');
   const cdiInput = document.getElementById('cdiRate');
   const cdiCaption = document.getElementById('cdiCaption');
@@ -819,6 +937,19 @@
   const winnerIrEl = document.getElementById('winnerIr');
   const winnerGainEl = document.getElementById('winnerGain');
   const winnerBalanceEl = document.getElementById('winnerBalance');
+  let lastWinnerNetGain = null; // net gain of the single best option, for the combine section to compare against
+
+  const combineBankSelect = document.getElementById('combineBank');
+  const combineProductSelect = document.getElementById('combineProduct');
+  const combineAmountInput = document.getElementById('combineAmount');
+  const addCombineBtn = document.getElementById('addCombine');
+  const autoSuggestBtn = document.getElementById('autoSuggestBtn');
+  const combineBody = document.getElementById('combineBody');
+  const allocationStatusEl = document.getElementById('allocationStatus');
+  const combineGrossEl = document.getElementById('combineGross');
+  const combineIrEl = document.getElementById('combineIr');
+  const combineNetEl = document.getElementById('combineNet');
+  const combineVsWinnerEl = document.getElementById('combineVsWinner');
 
   const pickBankSelect = document.getElementById('pickBank');
   const pickProductSelect = document.getElementById('pickProduct');
@@ -837,6 +968,17 @@
 
   populateBankSelect();
   populateProductSelect();
+
+  function populateCombineBankSelect() {
+    combineBankSelect.innerHTML = Object.keys(BANK_CATALOG).map(b => `<option value="${b}">${b}</option>`).join('');
+  }
+  function populateCombineProductSelect() {
+    const products = BANK_CATALOG[combineBankSelect.value] || [];
+    combineProductSelect.innerHTML = products.map((p, i) => `<option value="${i}">${p.name}</option>`).join('');
+  }
+  combineBankSelect.addEventListener('change', populateCombineProductSelect);
+  populateCombineBankSelect();
+  populateCombineProductSelect();
 
   cdiInput.value = state.cdiAnnual;
   monthsRange.value = state.months;
@@ -1089,10 +1231,7 @@
     irNote.textContent = `Faixa de IR aplicada para ${months} ${months === 1 ? 'mês' : 'meses'}: ${ir.label}. Opções isentas (poupança, LCI/LCA) não pagam esse imposto.`;
 
     const results = state.compareOptions.map(opt => {
-      const { capPart, excessPart } = splitAmount(amount, opt.cap);
-      let grossBalance = capPart * Math.pow(1 + monthlyRateFor(opt.mode, opt.rate), months);
-      if (excessPart > 0) grossBalance += excessPart * Math.pow(1 + excessMonthlyRate(opt), months);
-      const grossGain = grossBalance - amount;
+      const grossGain = grossGainForAmount(opt, amount, months);
       const irPaid = opt.exempt ? 0 : grossGain * ir.rate;
       const netGain = grossGain - irPaid;
       const netBalance = amount + netGain;
@@ -1111,6 +1250,7 @@
       winnerCapInfoEl.textContent = '';
       winnerReceipt.style.display = 'none';
       winnerBalanceEl.textContent = '—';
+      lastWinnerNetGain = null;
     } else {
       const best = results.find(r => r.opt.id === bestId);
       winnerBankEl.textContent = best.opt.bank || 'Outro';
@@ -1138,6 +1278,7 @@
       }
       winnerGainEl.textContent = fmtBRL.format(best.netGain);
       winnerBalanceEl.textContent = fmtBRL.format(best.netBalance);
+      lastWinnerNetGain = best.netGain;
     }
 
     // display grouped by bank (A–Z), best offer first within each bank
@@ -1279,6 +1420,124 @@
       tr.innerHTML = `<td colspan="6" style="text-align:center; color:var(--ink-soft);">Adicione uma opção para comparar.</td>`;
       compareBody.appendChild(tr);
     }
+
+    renderCombine();
+  }
+
+  function renderCombine() {
+    combineBody.innerHTML = '';
+    const months = state.months;
+    const ir = irRateForMonths(months);
+
+    let totalAllocated = 0, totalGross = 0, totalIr = 0, totalNet = 0;
+
+    state.combination.forEach(item => {
+      const grossGain = grossGainForAmount(item, item.amount, months);
+      const irPaid = item.exempt ? 0 : grossGain * ir.rate;
+      const netGain = grossGain - irPaid;
+      totalAllocated += item.amount;
+      totalGross += grossGain;
+      totalIr += irPaid;
+      totalNet += netGain;
+
+      const tr = document.createElement('tr');
+
+      const nameTd = document.createElement('td');
+      const nameCell = document.createElement('div');
+      nameCell.className = 'name-cell';
+      const bankLabel = document.createElement('div');
+      bankLabel.className = 'bank-label';
+      bankLabel.textContent = item.bank;
+      nameCell.appendChild(bankLabel);
+      const nameLine = document.createElement('div');
+      nameLine.className = 'combine-name';
+      nameLine.textContent = item.name;
+      nameCell.appendChild(nameLine);
+      nameTd.appendChild(nameCell);
+      tr.appendChild(nameTd);
+
+      const amountTd = document.createElement('td');
+      const amountInput = document.createElement('input');
+      amountInput.type = 'number';
+      amountInput.step = '0.01';
+      amountInput.min = '0';
+      amountInput.className = 'mono combine-amount-input';
+      amountInput.value = item.amount;
+      amountInput.addEventListener('input', () => { item.amount = parseFloat(amountInput.value) || 0; save(); renderCombine(); });
+      amountTd.appendChild(amountInput);
+      tr.appendChild(amountTd);
+
+      const gainTd = document.createElement('td');
+      const gainCell = document.createElement('div');
+      gainCell.className = 'gain-cell';
+      const grossLine = document.createElement('div');
+      grossLine.className = 'gross-line mono';
+      grossLine.textContent = fmtBRL.format(grossGain) + ' bruto';
+      gainCell.appendChild(grossLine);
+      const irLine = document.createElement('div');
+      irLine.className = item.exempt ? 'ir-line mono exempt' : 'ir-line mono';
+      irLine.textContent = item.exempt ? 'isento de IR' : '− ' + fmtBRL.format(irPaid) + ' IR';
+      gainCell.appendChild(irLine);
+      const netLine = document.createElement('div');
+      netLine.className = 'net-line mono';
+      netLine.textContent = fmtBRL.format(netGain) + ' líquido';
+      gainCell.appendChild(netLine);
+      gainTd.appendChild(gainCell);
+      tr.appendChild(gainTd);
+
+      const removeTd = document.createElement('td');
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'compare-remove';
+      removeBtn.textContent = '✕';
+      removeBtn.setAttribute('aria-label', 'Remover da combinação');
+      removeBtn.addEventListener('click', () => {
+        state.combination = state.combination.filter(i => i.id !== item.id);
+        save(); renderCombine();
+      });
+      removeTd.appendChild(removeBtn);
+      tr.appendChild(removeTd);
+
+      combineBody.appendChild(tr);
+    });
+
+    if (state.combination.length === 0) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td colspan="4" style="text-align:center; color:var(--ink-soft);">Adicione um banco e um valor acima, ou clique em "preencher automaticamente".</td>`;
+      combineBody.appendChild(tr);
+    }
+
+    const target = state.compareAmount;
+    const diff = target - totalAllocated;
+    if (state.combination.length === 0) {
+      allocationStatusEl.textContent = '';
+    } else if (Math.abs(diff) < 0.01) {
+      allocationStatusEl.className = 'allocation-status ok';
+      allocationStatusEl.textContent = `✓ Alocado: ${fmtBRL.format(totalAllocated)} — bate certinho com o valor total (${fmtBRL.format(target)}).`;
+    } else if (diff > 0) {
+      allocationStatusEl.className = 'allocation-status warn';
+      allocationStatusEl.textContent = `Alocado: ${fmtBRL.format(totalAllocated)} de ${fmtBRL.format(target)} — ainda falta alocar ${fmtBRL.format(diff)}.`;
+    } else {
+      allocationStatusEl.className = 'allocation-status warn';
+      allocationStatusEl.textContent = `Alocado: ${fmtBRL.format(totalAllocated)} — isso é ${fmtBRL.format(-diff)} A MAIS do que o valor total (${fmtBRL.format(target)}).`;
+    }
+
+    combineGrossEl.textContent = fmtBRL.format(totalGross);
+    combineIrEl.textContent = fmtBRL.format(totalIr);
+    combineNetEl.textContent = fmtBRL.format(totalNet);
+
+    if (state.combination.length > 0 && lastWinnerNetGain != null) {
+      const delta = totalNet - lastWinnerNetGain;
+      if (delta > 0.01) {
+        combineVsWinnerEl.innerHTML = `Comparado a colocar tudo só na melhor opção única: <strong>+${fmtBRL.format(delta)} a mais</strong> combinando.`;
+      } else if (delta < -0.01) {
+        combineVsWinnerEl.textContent = `Comparado a colocar tudo só na melhor opção única, essa combinação rende ${fmtBRL.format(-delta)} a menos.`;
+      } else {
+        combineVsWinnerEl.textContent = 'Mesmo resultado de colocar tudo numa única opção — nenhum limite está sendo aproveitado aqui.';
+      }
+    } else {
+      combineVsWinnerEl.textContent = '';
+    }
   }
 
   addPotBtn.addEventListener('click', () => {
@@ -1323,6 +1582,36 @@
     });
     save();
     renderCompare();
+  });
+
+  addCombineBtn.addEventListener('click', () => {
+    const bankName = combineBankSelect.value;
+    const idx = parseInt(combineProductSelect.value, 10);
+    const template = (BANK_CATALOG[bankName] || [])[idx];
+    const amt = parseFloat(combineAmountInput.value) || 0;
+    if (!template || amt <= 0) { combineAmountInput.focus(); return; }
+
+    state.combination.push({
+      id: crypto.randomUUID(),
+      bank: bankName,
+      name: template.name,
+      mode: template.mode,
+      rate: template.rate,
+      exempt: template.exempt,
+      cap: template.cap ?? null,
+      excessMode: template.excessMode,
+      excessRate: template.excessRate,
+      amount: amt
+    });
+    save();
+    renderCombine();
+    combineAmountInput.value = '';
+  });
+
+  autoSuggestBtn.addEventListener('click', () => {
+    state.combination = suggestAllocation(state.compareAmount, state.months);
+    save();
+    renderCombine();
   });
 
   renderPots();
