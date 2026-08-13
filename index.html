@@ -679,6 +679,11 @@
         <tbody id="projBody"></tbody>
       </table>
     </div>
+
+    <div class="share-row">
+      <button type="button" class="share-btn" id="shareProjectionBtn">📤 Compartilhar minha projeção</button>
+      <span class="share-status" id="shareProjectionStatus"></span>
+    </div>
   </section>
 
   <section class="block" id="compareSection">
@@ -1298,16 +1303,10 @@
     }
   });
 
-  const shareStatusEl = document.getElementById('shareStatus');
-  document.getElementById('shareResultBtn').addEventListener('click', async () => {
-    if (!lastWinnerSummary) {
-      shareStatusEl.textContent = 'Digite um valor pra comparar primeiro.';
-      return;
-    }
-    const s = lastWinnerSummary;
-    const text = `Descobri que colocando ${fmtBRL.format(s.amount)} no ${s.bank} (${s.product}) por ${s.months} ${s.months === 1 ? 'mês' : 'meses'}, eu teria ${fmtBRL.format(s.netGain)} de rendimento líquido — saldo final de ${fmtBRL.format(s.netBalance)}!\n\nCalculado na Caderneta de Rendimentos:`;
+  // Shared by every "compartilhar" button: tries the native share sheet first
+  // (great on mobile), falls back to copying the text to the clipboard.
+  async function shareText(text, statusEl) {
     const url = location.href.split('?')[0].split('#')[0];
-
     if (navigator.share) {
       try {
         await navigator.share({ title: 'Caderneta de Rendimentos', text, url });
@@ -1317,12 +1316,34 @@
     if (navigator.clipboard && navigator.clipboard.writeText) {
       try {
         await navigator.clipboard.writeText(text + ' ' + url);
-        shareStatusEl.textContent = '✓ Copiado! Cole onde quiser compartilhar.';
-        setTimeout(() => { shareStatusEl.textContent = ''; }, 4000);
+        statusEl.textContent = '✓ Copiado! Cole onde quiser compartilhar.';
+        setTimeout(() => { statusEl.textContent = ''; }, 4000);
         return;
       } catch (e) { /* cai no fallback abaixo */ }
     }
-    shareStatusEl.textContent = 'Não consegui copiar automaticamente — copie o link da página pra compartilhar.';
+    statusEl.textContent = 'Não consegui copiar automaticamente — copie o link da página pra compartilhar.';
+  }
+
+  const shareStatusEl = document.getElementById('shareStatus');
+  document.getElementById('shareResultBtn').addEventListener('click', () => {
+    if (!lastWinnerSummary) {
+      shareStatusEl.textContent = 'Digite um valor pra comparar primeiro.';
+      return;
+    }
+    const s = lastWinnerSummary;
+    const text = `Descobri que colocando ${fmtBRL.format(s.amount)} no ${s.bank} (${s.product}) por ${s.months} ${s.months === 1 ? 'mês' : 'meses'}, eu teria ${fmtBRL.format(s.netGain)} de rendimento líquido — saldo final de ${fmtBRL.format(s.netBalance)}!\n\nCalculado na Caderneta de Rendimentos:`;
+    shareText(text, shareStatusEl);
+  });
+
+  const shareProjectionStatusEl = document.getElementById('shareProjectionStatus');
+  document.getElementById('shareProjectionBtn').addEventListener('click', () => {
+    if (!lastProjectionSummary) {
+      shareProjectionStatusEl.textContent = 'Adicione uma caixinha primeiro.';
+      return;
+    }
+    const s = lastProjectionSummary;
+    const text = `Tenho ${fmtBRL.format(s.totalPrincipal)} aplicado${s.potCount > 1 ? 's' : ''} em ${s.potCount} caixinha${s.potCount > 1 ? 's' : ''}, e se deixar tudo rendendo devo ter ${fmtBRL.format(s.totalBal)} em ${s.months} ${s.months === 1 ? 'mês' : 'meses'} — rendimento de ${fmtBRL.format(s.cumulative)}!\n\nCalculado na Caderneta de Rendimentos:`;
+    shareText(text, shareProjectionStatusEl);
   });
 
   cdiInput.addEventListener('input', () => {
@@ -1538,10 +1559,24 @@
     }
   }
 
+  let lastProjectionSummary = null; // snapshot used by the "compartilhar minha projeção" button
+
   function renderProjection() {
     const months = state.months;
     const rows = state.pots.length ? computeMonthSeries(state.pots, months) : [];
     fillMonthTable(projBody, rows, 'Adicione uma caixinha para ver a projeção.');
+
+    if (state.pots.length && rows.length) {
+      lastProjectionSummary = {
+        totalPrincipal: state.pots.reduce((a, p) => a + p.amount, 0),
+        potCount: state.pots.length,
+        months,
+        cumulative: rows[rows.length - 1].cumulative,
+        totalBal: rows[rows.length - 1].totalBal
+      };
+    } else {
+      lastProjectionSummary = null;
+    }
 
     renderCompare();
   }
