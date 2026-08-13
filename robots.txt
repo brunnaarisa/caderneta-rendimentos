@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://brunnaarisa.github.io/caderneta-rendimentos/sitemap.xml
+Sitemap: https://cadernetaderendimentos.com.br/sitemap.xml
