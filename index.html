@@ -398,15 +398,53 @@
   }
   .winner-bank { font-family: ui-serif, Georgia, serif; font-size: 1.6rem; font-weight: 700; color: var(--ink); line-height: 1.15; text-wrap: balance; }
   .winner-product { font-size: 0.95rem; color: var(--ink-soft); margin-top: 0.2rem; }
+
+  .receipt {
+    margin-top: 1.1rem;
+    padding-top: 0.9rem;
+    border-top: 1px dashed var(--line-strong);
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    max-width: 24rem;
+  }
+  .receipt-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    font-size: 0.88rem;
+    color: var(--ink-soft);
+  }
+  .receipt-row .mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", monospace; }
+  .receipt-row.minus { color: var(--vinho); }
+  .receipt-row.minus.exempt { color: var(--verde); }
+  .receipt-row.total {
+    border-top: 1px solid var(--ink);
+    padding-top: 0.5rem;
+    margin-top: 0.05rem;
+    font-weight: 700;
+    color: var(--ink);
+    font-size: 1rem;
+  }
+  .receipt-row.total .mono { color: var(--verde); font-size: 1.3rem; font-weight: 700; }
+
   .winner-figures { display: flex; gap: 2.2rem; margin-top: 1.1rem; flex-wrap: wrap; }
   .winner-figures .k { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); margin-bottom: 0.2rem; }
   .winner-figures .v {
     font-family: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", monospace;
     font-variant-numeric: tabular-nums;
-    font-size: 1.25rem;
+    font-size: 1.1rem;
     font-weight: 700;
-    color: var(--verde);
+    color: var(--ink);
   }
+
+  /* compact bruto/IR/líquido breakdown inside a table cell */
+  .gain-cell { display: flex; flex-direction: column; align-items: flex-end; gap: 0.05rem; }
+  .gain-cell .gross-line { font-size: 0.7rem; color: var(--ink-soft); }
+  .gain-cell .ir-line { font-size: 0.7rem; color: var(--vinho); }
+  .gain-cell .ir-line.exempt { color: var(--verde); }
+  .gain-cell .net-line { font-size: 0.92rem; font-weight: 700; color: var(--verde); }
 
   /* ---------- Bank / product picker ---------- */
   .picker {
@@ -525,9 +563,24 @@
       <span class="winner-stamp">rende mais</span>
       <div class="winner-bank" id="winnerBank">—</div>
       <div class="winner-product" id="winnerProduct">—</div>
+
+      <div class="receipt" id="winnerReceipt">
+        <div class="receipt-row">
+          <span>Rendimento bruto</span>
+          <span class="mono" id="winnerGross">—</span>
+        </div>
+        <div class="receipt-row minus" id="winnerIrRow">
+          <span>(–) Imposto de Renda (<span id="winnerIrPct">—</span>)</span>
+          <span class="mono" id="winnerIr">—</span>
+        </div>
+        <div class="receipt-row total">
+          <span>= Rendimento líquido</span>
+          <span class="mono" id="winnerGain">—</span>
+        </div>
+      </div>
+
       <div class="winner-figures">
-        <div><div class="k">Rendimento líquido</div><div class="v" id="winnerGain">—</div></div>
-        <div><div class="k">Saldo final</div><div class="v" id="winnerBalance">—</div></div>
+        <div><div class="k">Saldo final (aplicado + líquido)</div><div class="v" id="winnerBalance">—</div></div>
       </div>
     </div>
 
@@ -557,7 +610,7 @@
             <th>Banco / Opção</th>
             <th>Taxa</th>
             <th style="text-align:center;">IR</th>
-            <th>Líquido no período</th>
+            <th>Rendimento (bruto → líquido)</th>
             <th>Saldo final</th>
             <th></th>
           </tr>
@@ -724,6 +777,11 @@
 
   const winnerBankEl = document.getElementById('winnerBank');
   const winnerProductEl = document.getElementById('winnerProduct');
+  const winnerReceipt = document.getElementById('winnerReceipt');
+  const winnerGrossEl = document.getElementById('winnerGross');
+  const winnerIrRow = document.getElementById('winnerIrRow');
+  const winnerIrPctEl = document.getElementById('winnerIrPct');
+  const winnerIrEl = document.getElementById('winnerIr');
   const winnerGainEl = document.getElementById('winnerGain');
   const winnerBalanceEl = document.getElementById('winnerBalance');
 
@@ -947,7 +1005,7 @@
       const irPaid = opt.exempt ? 0 : grossGain * ir.rate;
       const netGain = grossGain - irPaid;
       const netBalance = amount + netGain;
-      return { opt, netGain, netBalance, irPaid };
+      return { opt, grossGain, netGain, netBalance, irPaid };
     });
 
     // which option truly pays the most, regardless of display order
@@ -955,17 +1013,29 @@
       ? results.reduce((best, r) => r.netGain > best.netGain ? r : best, results[0]).opt.id
       : null;
 
-    // headline result card
+    // headline result card — shows the full bruto → IR → líquido breakdown
     if (results.length === 0) {
       winnerBankEl.textContent = 'Nenhuma opção ainda';
       winnerProductEl.textContent = 'Escolha um banco ou corretora abaixo para comparar.';
-      winnerGainEl.textContent = '—';
+      winnerReceipt.style.display = 'none';
       winnerBalanceEl.textContent = '—';
     } else {
       const best = results.find(r => r.opt.id === bestId);
       winnerBankEl.textContent = best.opt.bank || 'Outro';
       winnerProductEl.textContent = best.opt.name;
-      winnerGainEl.textContent = '+ ' + fmtBRL.format(best.netGain);
+
+      winnerReceipt.style.display = '';
+      winnerGrossEl.textContent = fmtBRL.format(best.grossGain);
+      if (best.opt.exempt) {
+        winnerIrRow.className = 'receipt-row minus exempt';
+        winnerIrPctEl.textContent = 'isento';
+        winnerIrEl.textContent = 'R$ 0,00';
+      } else {
+        winnerIrRow.className = 'receipt-row minus';
+        winnerIrPctEl.textContent = (ir.rate * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%';
+        winnerIrEl.textContent = fmtBRL.format(best.irPaid);
+      }
+      winnerGainEl.textContent = fmtBRL.format(best.netGain);
       winnerBalanceEl.textContent = fmtBRL.format(best.netBalance);
     }
 
@@ -1052,8 +1122,25 @@
       tr.appendChild(exemptTd);
 
       const gainTd = document.createElement('td');
-      gainTd.className = 'mono gain';
-      gainTd.textContent = '+ ' + fmtBRL.format(r.netGain);
+      const gainCell = document.createElement('div');
+      gainCell.className = 'gain-cell';
+
+      const grossLine = document.createElement('div');
+      grossLine.className = 'gross-line mono';
+      grossLine.textContent = fmtBRL.format(r.grossGain) + ' bruto';
+      gainCell.appendChild(grossLine);
+
+      const irLine = document.createElement('div');
+      irLine.className = opt.exempt ? 'ir-line mono exempt' : 'ir-line mono';
+      irLine.textContent = opt.exempt ? 'isento de IR' : '− ' + fmtBRL.format(r.irPaid) + ' IR';
+      gainCell.appendChild(irLine);
+
+      const netLine = document.createElement('div');
+      netLine.className = 'net-line mono';
+      netLine.textContent = fmtBRL.format(r.netGain) + ' líquido';
+      gainCell.appendChild(netLine);
+
+      gainTd.appendChild(gainCell);
       tr.appendChild(gainTd);
 
       const balTd = document.createElement('td');
