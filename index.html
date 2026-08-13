@@ -190,6 +190,19 @@
   }
   .amount-field input { width: 8.5rem; }
   .rate-field input { width: 4.5rem; }
+  .cap-field input { width: 6.5rem; }
+
+  .cap-toggle-field { justify-content: flex-end; padding-bottom: 0.2rem; }
+  .cap-toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .cap-toggle-label input[type="checkbox"] { accent-color: var(--verde); width: 1rem; height: 1rem; }
 
   .pot-result {
     margin-left: auto;
@@ -373,6 +386,8 @@
     color: var(--ink-soft);
   }
   tr.group-start td { border-top: 2px solid var(--line-strong); padding-top: 1.1rem; }
+  .cap-info { font-size: 0.7rem; color: var(--ink-soft); max-width: 13rem; }
+  .cap-info.over { color: var(--ouro); }
 
   /* ---------- Winner result card ---------- */
   .winner-card {
@@ -563,6 +578,7 @@
       <span class="winner-stamp">rende mais</span>
       <div class="winner-bank" id="winnerBank">—</div>
       <div class="winner-product" id="winnerProduct">—</div>
+      <div class="cap-info" id="winnerCapInfo"></div>
 
       <div class="receipt" id="winnerReceipt">
         <div class="receipt-row">
@@ -630,7 +646,7 @@
 
 <script>
 (function () {
-  const STORAGE_KEY = 'caderneta-rendimentos-v7';
+  const STORAGE_KEY = 'caderneta-rendimentos-v8';
   const fmtBRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
   const CUSTOM_KEY = '__custom__';
   const CDI_SERIES_URL = 'https://api.bcb.gov.br/dados/serie/bcdata.sgs.4389/dados/ultimos/1?formato=json';
@@ -640,8 +656,10 @@
   const BANK_CATALOG = {
     'Nubank': [
       { name: 'Caixinha 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
-      { name: 'Caixinha Turbo 115% do CDI (padrão, até R$5 mil, 31 dias)', mode: 'cdi', rate: 115, exempt: false },
-      { name: 'Caixinha Turbo 120% do CDI (Ultravioleta/Nubank+, até R$10 mil)', mode: 'cdi', rate: 120, exempt: false },
+      { name: 'Caixinha Turbo 115% do CDI (padrão, até R$5 mil, 31 dias)', mode: 'cdi', rate: 115, exempt: false,
+        cap: 5000, excessMode: 'cdi', excessRate: 100 },
+      { name: 'Caixinha Turbo 120% do CDI (Ultravioleta/Nubank+, até R$10 mil)', mode: 'cdi', rate: 120, exempt: false,
+        cap: 10000, excessMode: 'cdi', excessRate: 100 },
       { name: 'LCI Nubank ~95% do CDI (estimativa)', mode: 'cdi', rate: 95, exempt: true }
     ],
     'Banco Inter': [
@@ -654,7 +672,8 @@
       { name: 'Poupança C6', mode: 'fixed', rate: 0.50, exempt: true }
     ],
     'PicPay': [
-      { name: 'Cofrinho Turbinado 121% do CDI', mode: 'cdi', rate: 121, exempt: false },
+      { name: 'Cofrinho Turbinado 121% do CDI (até R$10 mil; acima disso, 102%)', mode: 'cdi', rate: 121, exempt: false,
+        cap: 10000, excessMode: 'cdi', excessRate: 102 },
       { name: 'Saldo da conta 102% do CDI', mode: 'cdi', rate: 102, exempt: false },
       { name: 'CDB PicPay 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
@@ -697,7 +716,7 @@
       { id: crypto.randomUUID(), bank: 'Nubank', name: 'Caixinha 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
       { id: crypto.randomUUID(), bank: 'Banco do Brasil', name: 'Cofrinho BB (BB RF Simples Reserva, sem FGC) 91% do CDI', mode: 'cdi', rate: 91, exempt: false },
       { id: crypto.randomUUID(), bank: 'Banco do Brasil', name: 'Poupança BB', mode: 'fixed', rate: 0.50, exempt: true },
-      { id: crypto.randomUUID(), bank: 'PicPay', name: 'Cofrinho Turbinado 121% do CDI', mode: 'cdi', rate: 121, exempt: false },
+      { id: crypto.randomUUID(), bank: 'PicPay', name: 'Cofrinho Turbinado 121% do CDI (até R$10 mil; acima disso, 102%)', mode: 'cdi', rate: 121, exempt: false, cap: 10000, excessMode: 'cdi', excessRate: 102 },
       { id: crypto.randomUUID(), bank: 'XP Investimentos', name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ];
   }
@@ -708,7 +727,7 @@
       cdiFetchedDate: null,
       months: 3,
       pots: [
-        { id: crypto.randomUUID(), name: 'Caixinha Turbo Nubank', amount: 4500, mode: 'cdi', rate: 115 },
+        { id: crypto.randomUUID(), name: 'Caixinha Turbo Nubank', amount: 4500, mode: 'cdi', rate: 115, cap: 5000, excessMode: 'cdi', excessRate: 100 },
         { id: crypto.randomUUID(), name: 'Cofrinho BB (BB RF Simples Reserva)', amount: 55000, mode: 'cdi', rate: 91 }
       ],
       compareAmount: 59500,
@@ -750,6 +769,25 @@
     return monthlyRateFor(pot.mode, pot.rate);
   }
 
+  // Splits an amount into the part that still gets the special rate (up to `cap`)
+  // and the part that exceeds it (which earns the fallback/excess rate instead).
+  // No cap (null/0) means the whole amount gets the special rate.
+  function splitAmount(amount, cap) {
+    if (!cap || cap <= 0 || amount <= cap) return { capPart: amount, excessPart: 0 };
+    return { capPart: cap, excessPart: amount - cap };
+  }
+
+  function excessMonthlyRate(entity) {
+    return monthlyRateFor(entity.excessMode || entity.mode, entity.excessRate != null ? entity.excessRate : entity.rate);
+  }
+
+  function potMonth1Gain(pot) {
+    const { capPart, excessPart } = splitAmount(pot.amount, pot.cap);
+    let gain = capPart * potMonthlyRate(pot);
+    if (excessPart > 0) gain += excessPart * excessMonthlyRate(pot);
+    return gain;
+  }
+
   function irRateForMonths(months) {
     const days = months * 30;
     if (days <= 180) return { rate: 0.225, label: '22,5% (até 180 dias)' };
@@ -777,6 +815,7 @@
 
   const winnerBankEl = document.getElementById('winnerBank');
   const winnerProductEl = document.getElementById('winnerProduct');
+  const winnerCapInfoEl = document.getElementById('winnerCapInfo');
   const winnerReceipt = document.getElementById('winnerReceipt');
   const winnerGrossEl = document.getElementById('winnerGross');
   const winnerIrRow = document.getElementById('winnerIrRow');
@@ -918,6 +957,71 @@
       rateField.appendChild(rateInput);
       fields.appendChild(rateField);
 
+      const capToggleField = document.createElement('div');
+      capToggleField.className = 'field cap-toggle-field';
+      const capToggleLabel = document.createElement('label');
+      capToggleLabel.className = 'cap-toggle-label';
+      const capCheckbox = document.createElement('input');
+      capCheckbox.type = 'checkbox';
+      capCheckbox.checked = pot.cap != null;
+      capToggleLabel.appendChild(capCheckbox);
+      capToggleLabel.appendChild(document.createTextNode(' tem limite de valor'));
+      capToggleField.appendChild(capToggleLabel);
+      fields.appendChild(capToggleField);
+
+      capCheckbox.addEventListener('change', () => {
+        if (capCheckbox.checked) {
+          pot.cap = 5000;
+          pot.excessMode = 'cdi';
+          pot.excessRate = 100;
+        } else {
+          pot.cap = null;
+          delete pot.excessMode;
+          delete pot.excessRate;
+        }
+        save(); renderPots();
+      });
+
+      if (pot.cap != null) {
+        const capAmountField = document.createElement('div');
+        capAmountField.className = 'field cap-field';
+        capAmountField.innerHTML = '<label>Limite (R$)</label>';
+        const capAmountInput = document.createElement('input');
+        capAmountInput.type = 'number';
+        capAmountInput.step = '0.01';
+        capAmountInput.min = '0';
+        capAmountInput.value = pot.cap;
+        capAmountInput.addEventListener('input', () => { pot.cap = parseFloat(capAmountInput.value) || 0; save(); renderResults(); });
+        capAmountField.appendChild(capAmountInput);
+        fields.appendChild(capAmountField);
+
+        const excessModeField = document.createElement('div');
+        excessModeField.className = 'field';
+        excessModeField.innerHTML = '<label>Acima do limite rende</label>';
+        const excessModeSelect = document.createElement('select');
+        excessModeSelect.innerHTML = '<option value="cdi">% do CDI</option><option value="fixed">Taxa fixa a.m.</option>';
+        excessModeSelect.value = pot.excessMode || 'cdi';
+        excessModeSelect.addEventListener('change', () => {
+          pot.excessMode = excessModeSelect.value;
+          pot.excessRate = pot.excessMode === 'cdi' ? 100 : 0.5;
+          save(); renderPots();
+        });
+        excessModeField.appendChild(excessModeSelect);
+        fields.appendChild(excessModeField);
+
+        const excessRateField = document.createElement('div');
+        excessRateField.className = 'field rate-field';
+        excessRateField.innerHTML = `<label>${(pot.excessMode || 'cdi') === 'cdi' ? '% do CDI' : '% ao mês'} (excedente)</label>`;
+        const excessRateInput = document.createElement('input');
+        excessRateInput.type = 'number';
+        excessRateInput.step = '0.01';
+        excessRateInput.min = '0';
+        excessRateInput.value = pot.excessRate != null ? pot.excessRate : 100;
+        excessRateInput.addEventListener('input', () => { pot.excessRate = parseFloat(excessRateInput.value) || 0; save(); renderResults(); });
+        excessRateField.appendChild(excessRateInput);
+        fields.appendChild(excessRateField);
+      }
+
       const result = document.createElement('div');
       result.className = 'pot-result';
       result.innerHTML = `<div class="yield mono" data-yield></div><div class="yield-label">rendimento no mês 1</div>`;
@@ -947,8 +1051,7 @@
 
     [...potsList.children].forEach(row => {
       const pot = row._pot;
-      const rate = potMonthlyRate(pot);
-      const gain = pot.amount * rate;
+      const gain = potMonth1Gain(pot);
       row._yieldEl.textContent = '+ ' + fmtBRL.format(gain);
       totalPrincipal += pot.amount;
       totalMonth1 += gain;
@@ -963,19 +1066,22 @@
   function renderProjection() {
     projBody.innerHTML = '';
     const months = state.months;
-    let balances = state.pots.map(p => p.amount);
+    // each pot's balance is tracked as { capPart, excessPart } so the two
+    // sub-amounts compound at their own rate independently
+    let subBalances = state.pots.map(p => splitAmount(p.amount, p.cap));
     let cumulative = 0;
 
     for (let m = 1; m <= months; m++) {
       let monthGain = 0;
-      balances = balances.map((bal, i) => {
-        const rate = potMonthlyRate(state.pots[i]);
-        const g = bal * rate;
-        monthGain += g;
-        return bal + g;
+      subBalances = subBalances.map((sb, i) => {
+        const pot = state.pots[i];
+        const capGain = sb.capPart * potMonthlyRate(pot);
+        const excessGain = sb.excessPart > 0 ? sb.excessPart * excessMonthlyRate(pot) : 0;
+        monthGain += capGain + excessGain;
+        return { capPart: sb.capPart + capGain, excessPart: sb.excessPart + excessGain };
       });
       cumulative += monthGain;
-      const totalBal = balances.reduce((a, b) => a + b, 0);
+      const totalBal = subBalances.reduce((a, sb) => a + sb.capPart + sb.excessPart, 0);
 
       const tr = document.createElement('tr');
       tr.innerHTML = `<td>Mês ${m}</td><td class="mono">${fmtBRL.format(totalBal)}</td><td class="mono gain">+ ${fmtBRL.format(monthGain)}</td><td class="mono gain">+ ${fmtBRL.format(cumulative)}</td>`;
@@ -999,8 +1105,9 @@
     irNote.textContent = `Faixa de IR aplicada para ${months} ${months === 1 ? 'mês' : 'meses'}: ${ir.label}. Opções isentas (poupança, LCI/LCA) não pagam esse imposto.`;
 
     const results = state.compareOptions.map(opt => {
-      const monthlyRate = monthlyRateFor(opt.mode, opt.rate);
-      const grossBalance = amount * Math.pow(1 + monthlyRate, months);
+      const { capPart, excessPart } = splitAmount(amount, opt.cap);
+      let grossBalance = capPart * Math.pow(1 + monthlyRateFor(opt.mode, opt.rate), months);
+      if (excessPart > 0) grossBalance += excessPart * Math.pow(1 + excessMonthlyRate(opt), months);
       const grossGain = grossBalance - amount;
       const irPaid = opt.exempt ? 0 : grossGain * ir.rate;
       const netGain = grossGain - irPaid;
@@ -1017,12 +1124,22 @@
     if (results.length === 0) {
       winnerBankEl.textContent = 'Nenhuma opção ainda';
       winnerProductEl.textContent = 'Escolha um banco ou corretora abaixo para comparar.';
+      winnerCapInfoEl.textContent = '';
       winnerReceipt.style.display = 'none';
       winnerBalanceEl.textContent = '—';
     } else {
       const best = results.find(r => r.opt.id === bestId);
       winnerBankEl.textContent = best.opt.bank || 'Outro';
       winnerProductEl.textContent = best.opt.name;
+
+      if (best.opt.cap) {
+        winnerCapInfoEl.className = 'cap-info' + (amount > best.opt.cap ? ' over' : '');
+        winnerCapInfoEl.textContent = amount > best.opt.cap
+          ? `Limite ${fmtBRL.format(best.opt.cap)}: só essa parte rende a taxa cheia — o excedente rende ${best.opt.excessRate}${best.opt.excessMode === 'fixed' ? '% a.m.' : '% do CDI'}. O recibo abaixo já soma as duas partes.`
+          : `Limite: ${fmtBRL.format(best.opt.cap)} (o valor que você está comparando está dentro do limite).`;
+      } else {
+        winnerCapInfoEl.textContent = '';
+      }
 
       winnerReceipt.style.display = '';
       winnerGrossEl.textContent = fmtBRL.format(best.grossGain);
@@ -1071,6 +1188,15 @@
       nameInput.value = opt.name;
       nameInput.addEventListener('input', () => { opt.name = nameInput.value; save(); });
       nameCell.appendChild(nameInput);
+
+      if (opt.cap) {
+        const capInfo = document.createElement('div');
+        capInfo.className = 'cap-info' + (amount > opt.cap ? ' over' : '');
+        capInfo.textContent = amount > opt.cap
+          ? `Limite ${fmtBRL.format(opt.cap)}: só essa parte rende a taxa cheia — o excedente rende ${opt.excessRate}${opt.excessMode === 'fixed' ? '% a.m.' : '% do CDI'}`
+          : `Limite: ${fmtBRL.format(opt.cap)} (valor atual está dentro)`;
+        nameCell.appendChild(capInfo);
+      }
 
       nameTd.appendChild(nameCell);
       if (opt.id === bestId) {
@@ -1212,7 +1338,10 @@
       name: product.name,
       mode: product.mode,
       rate: product.rate,
-      exempt: product.exempt
+      exempt: product.exempt,
+      cap: product.cap ?? null,
+      excessMode: product.excessMode,
+      excessRate: product.excessRate
     });
     save();
     renderCompare();
