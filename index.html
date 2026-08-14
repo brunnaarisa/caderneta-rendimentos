@@ -186,6 +186,28 @@
   .welcome-close:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   .welcome-banner[hidden] { display: none; }
 
+  .support-box {
+    max-width: 46rem;
+    margin: 0 auto 2rem;
+    padding: 1.1rem 1.25rem;
+    background: var(--paper-raised);
+    border: 1px solid var(--line-strong);
+    border-radius: 3px;
+  }
+  .support-title { font-family: ui-serif, Georgia, serif; font-weight: 600; font-size: 0.98rem; margin: 0 0 0.4rem; }
+  .support-text { font-size: 0.85rem; color: var(--ink-soft); margin: 0 0 0.8rem; max-width: 34rem; }
+  .support-pix { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; }
+  .support-pix code {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", monospace;
+    font-size: 0.82rem;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 0.35rem 0.6rem;
+    color: var(--ink);
+  }
+  .support-status { font-size: 0.78rem; color: var(--verde); margin: 0.5rem 0 0; }
+
   abbr.jargon {
     text-decoration: underline dotted;
     text-decoration-color: var(--verde);
@@ -1059,6 +1081,16 @@
     </details>
   </section>
 
+  <div class="support-box">
+    <p class="support-title">☕ Gostou da Caderneta?</p>
+    <p class="support-text">Se essa calculadora te ajudou, você pode apoiar o projeto com um Pix — qualquer valor ajuda a manter o site no ar. Totalmente opcional, claro.</p>
+    <div class="support-pix">
+      <code id="pixKeyText">1d425c2b-60f9-4840-a155-9dcdbe96ac09</code>
+      <button type="button" id="copyPixBtn" class="use-total-btn">copiar chave Pix</button>
+    </div>
+    <p class="support-status" id="pixCopyStatus"></p>
+  </div>
+
   <footer>
     <p><strong>Sobre a precisão dos dados:</strong> a taxa CDI no topo é buscada automaticamente da <a href="https://dadosabertos.bcb.gov.br/dataset/4389-taxa-de-juros---cdi" target="_blank" rel="noopener">API pública do Banco Central</a> a cada visita, então essa parte está sempre certa. Já as taxas do catálogo de bancos/corretoras (13 instituições) foram pesquisadas e checadas uma a uma em 13/08/2026, com fonte — mas <strong>este site não tem como buscar essas taxas ao vivo</strong> (não existe uma API pública unificada com as ofertas de todos os bancos). Elas ficam desatualizadas com o tempo, principalmente LCI/LCA e CDBs de plataformas como XP/Rico/BTG, que mudam a qualquer momento. Sempre que uma opção tiver uma ressalva escrita (ex: "confira a ficha do título"), é justamente porque aquele número pode não ser exato — use como ponto de partida, não como confirmação, e confira a condição real no app do banco antes de aplicar.</p>
     <p>Valores brutos ou líquidos estimados por juros compostos a partir das taxas informadas — não descontam taxas de administração/custódia, e a comparação de IR usa a tabela regressiva padrão de renda fixa (22,5% até 180 dias; 20% de 181 a 360; 17,5% de 361 a 720; 15% acima disso). Não é recomendação de investimento.</p>
@@ -1570,6 +1602,18 @@
   document.getElementById('welcomeCloseBtn').addEventListener('click', () => {
     welcomeBanner.hidden = true;
     localStorage.setItem(WELCOME_DISMISSED_KEY, '1');
+  });
+
+  document.getElementById('copyPixBtn').addEventListener('click', async () => {
+    const pixKey = document.getElementById('pixKeyText').textContent;
+    const statusEl = document.getElementById('pixCopyStatus');
+    try {
+      await navigator.clipboard.writeText(pixKey);
+      statusEl.textContent = '✓ Chave copiada! Cole no seu app de banco pra fazer o Pix.';
+      setTimeout(() => { statusEl.textContent = ''; }, 5000);
+    } catch (e) {
+      statusEl.textContent = 'Não consegui copiar — selecione a chave acima manualmente.';
+    }
   });
 
   // Shared by every "compartilhar" button: tries the native share sheet first
