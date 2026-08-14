@@ -92,6 +92,55 @@
   }
   .wrap { max-width: 46rem; margin: 0 auto; }
 
+  @media (prefers-reduced-motion: no-preference) {
+    html { scroll-behavior: smooth; }
+  }
+
+  .quicknav {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: var(--paper-raised);
+    border-bottom: 1px solid var(--line-strong);
+  }
+  .quicknav-inner {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: 0.6rem 1.25rem;
+    display: flex;
+    gap: 1.3rem;
+    overflow-x: auto;
+    font-size: 0.78rem;
+  }
+  .quicknav a {
+    color: var(--ink-soft);
+    text-decoration: none;
+    white-space: nowrap;
+    padding: 0.15rem 0;
+    border-bottom: 1px solid transparent;
+  }
+  .quicknav a:hover { color: var(--verde); }
+  .quicknav a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  .back-to-top {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    width: 2.7rem;
+    height: 2.7rem;
+    border-radius: 50%;
+    background: var(--verde);
+    color: var(--paper-raised);
+    border: none;
+    font-size: 1.3rem;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: var(--shadow);
+    z-index: 20;
+  }
+  .back-to-top[hidden] { display: none; }
+  .back-to-top:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
   h1, h2, .display {
     font-family: ui-serif, Georgia, "Iowan Old Style", "Times New Roman", serif;
     text-wrap: balance;
@@ -127,6 +176,18 @@
   }
   .clear-all-btn:hover { color: var(--vinho); }
   .clear-all-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  .use-total-btn {
+    background: none;
+    border: 1px solid var(--line-strong);
+    border-radius: 3px;
+    color: var(--verde);
+    font-size: 0.74rem;
+    padding: 0.2rem 0.5rem;
+    cursor: pointer;
+  }
+  .use-total-btn:hover { border-color: var(--verde); }
+  .use-total-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
   .cdi-stamp {
     margin-top: 1.35rem;
@@ -648,7 +709,17 @@
     </div>
   </header>
 
-  <section class="block">
+  <nav class="quicknav" aria-label="Navegação rápida entre seções">
+    <div class="quicknav-inner">
+      <a href="#potsSection">Caixinhas</a>
+      <a href="#projectionSection">Projeção</a>
+      <a href="#compareSection">Compensa mais</a>
+      <a href="#combineSection">Combinar</a>
+      <a href="#explainerSection">Como funciona</a>
+    </div>
+  </nav>
+
+  <section class="block" id="potsSection">
     <h2>Onde seu dinheiro está hoje</h2>
     <p class="section-sub">Escolha o banco/corretora e o investimento onde seu dinheiro está guardado agora, e informe o valor.</p>
 
@@ -682,7 +753,7 @@
       </div>
       <div class="field">
         <label for="potAmount">Valor aplicado (R$)</label>
-        <input type="number" id="potAmount" step="0.01" min="0">
+        <input type="text" inputmode="decimal" id="potAmount" placeholder="0,00">
       </div>
       <button class="add-btn" id="addPot" type="button">+ Adicionar caixinha</button>
     </div>
@@ -704,7 +775,7 @@
     </div>
   </section>
 
-  <section class="block projection">
+  <section class="block projection" id="projectionSection">
     <h2>Projeção da sua caderneta</h2>
     <p class="section-sub">Como esse total evolui se você deixar tudo rendendo, mês a mês.</p>
     <div class="projection-controls">
@@ -734,7 +805,8 @@
 
     <div class="compare-amount">
       <span>Valor a comparar</span>
-      <input type="number" id="compareAmountInput" step="0.01" min="0" aria-label="Valor a comparar" placeholder="ex: 10000">
+      <input type="text" inputmode="decimal" id="compareAmountInput" aria-label="Valor a comparar" placeholder="0,00">
+      <button type="button" id="useMyTotalBtn" class="use-total-btn">↺ usar valor das minhas caixinhas</button>
       <span>por <span class="mono" id="compareMonthsLabel">3</span> meses (mesmo prazo da projeção acima)</span>
     </div>
 
@@ -829,7 +901,7 @@
       </div>
       <div class="field">
         <label for="combineAmount">Valor a alocar (R$)</label>
-        <input type="number" id="combineAmount" step="0.01" min="0">
+        <input type="text" inputmode="decimal" id="combineAmount" placeholder="0,00">
       </div>
       <button class="add-btn ghost" id="addCombine" type="button">+ Adicionar à combinação</button>
     </div>
@@ -916,11 +988,38 @@
   </footer>
 </div>
 
+<button type="button" id="backToTopBtn" class="back-to-top" aria-label="Voltar ao topo" hidden>↑</button>
+
 <script>
 (function () {
   const STORAGE_KEY = 'caderneta-rendimentos-v9';
   const fmtBRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
   const CDI_SERIES_URL = 'https://api.bcb.gov.br/dados/serie/bcdata.sgs.4389/dados/ultimos/1?formato=json';
+
+  // Currency-style ("R$ 1.234,56") masking for money inputs — the raw digits
+  // typed are treated right-to-left as cents, same pattern most BR banking
+  // apps use, so people don't have to think about "." vs "," decimals.
+  function formatBRLDigits(digits) {
+    if (!digits) return '';
+    const num = parseInt(digits, 10) / 100;
+    return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function parseBRLMasked(str) {
+    if (!str) return 0;
+    return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
+  }
+  function displayBRLValue(num) {
+    return num ? num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
+  }
+  // Wires a text input up as a currency field: formats as the user types and
+  // calls onChange with the parsed numeric value on every keystroke.
+  function maskCurrencyInput(input, onChange) {
+    input.addEventListener('input', () => {
+      const digits = input.value.replace(/\D/g, '');
+      input.value = formatBRLDigits(digits);
+      onChange(parseBRLMasked(input.value));
+    });
+  }
 
   // Update this date every time BANK_CATALOG below is re-researched/verified —
   // it drives the staleness badge, since this static site can't check it live.
@@ -1435,11 +1534,10 @@
       amountField.className = 'field amount-field';
       amountField.innerHTML = '<label>Valor aplicado (R$)</label>';
       const amountInput = document.createElement('input');
-      amountInput.type = 'number';
-      amountInput.step = '0.01';
-      amountInput.min = '0';
-      amountInput.value = pot.amount;
-      amountInput.addEventListener('input', () => { pot.amount = parseFloat(amountInput.value) || 0; save(); renderResults(); });
+      amountInput.type = 'text';
+      amountInput.inputMode = 'decimal';
+      amountInput.value = displayBRLValue(pot.amount);
+      maskCurrencyInput(amountInput, (value) => { pot.amount = value; save(); renderResults(); });
       amountField.appendChild(amountInput);
       fields.appendChild(amountField);
 
@@ -1499,11 +1597,10 @@
         capAmountField.className = 'field cap-field';
         capAmountField.innerHTML = '<label>Limite (R$)</label>';
         const capAmountInput = document.createElement('input');
-        capAmountInput.type = 'number';
-        capAmountInput.step = '0.01';
-        capAmountInput.min = '0';
-        capAmountInput.value = pot.cap;
-        capAmountInput.addEventListener('input', () => { pot.cap = parseFloat(capAmountInput.value) || 0; save(); renderResults(); });
+        capAmountInput.type = 'text';
+        capAmountInput.inputMode = 'decimal';
+        capAmountInput.value = displayBRLValue(pot.cap);
+        maskCurrencyInput(capAmountInput, (value) => { pot.cap = value; save(); renderResults(); });
         capAmountField.appendChild(capAmountInput);
         fields.appendChild(capAmountField);
 
@@ -1809,14 +1906,17 @@
     renderCombine();
   }
 
-  function renderCombine() {
-    combineBody.innerHTML = '';
+  // Recomputes totals/status/receipt/projection AND refreshes each row's
+  // bruto/IR/líquido text in place — deliberately never touches the row
+  // inputs themselves, so typing an amount doesn't blow away your cursor.
+  function renderCombineSummary() {
     const months = state.months;
     const ir = irRateForMonths(months);
 
     let totalAllocated = 0, totalGross = 0, totalIr = 0, totalNet = 0;
+    const rowEls = [...combineBody.querySelectorAll('tr')];
 
-    state.combination.forEach(item => {
+    state.combination.forEach((item, i) => {
       const grossGain = grossGainForAmount(item, item.amount, months);
       const irPaid = item.exempt ? 0 : grossGain * ir.rate;
       const netGain = grossGain - irPaid;
@@ -1825,78 +1925,18 @@
       totalIr += irPaid;
       totalNet += netGain;
 
-      const tr = document.createElement('tr');
-
-      const nameTd = document.createElement('td');
-      const nameCell = document.createElement('div');
-      nameCell.className = 'name-cell';
-      const bankLabel = document.createElement('div');
-      bankLabel.className = 'bank-label';
-      bankLabel.textContent = item.bank;
-      nameCell.appendChild(bankLabel);
-      const nameLine = document.createElement('div');
-      nameLine.className = 'combine-name';
-      nameLine.textContent = item.name;
-      nameCell.appendChild(nameLine);
-      if (item.note) {
-        const noteInfo = document.createElement('div');
-        noteInfo.className = 'cap-info';
-        noteInfo.textContent = item.note;
-        nameCell.appendChild(noteInfo);
+      const tr = rowEls[i];
+      if (!tr) return;
+      const grossLine = tr.querySelector('.gross-line');
+      const irLine = tr.querySelector('.ir-line');
+      const netLine = tr.querySelector('.net-line');
+      if (grossLine) grossLine.textContent = fmtBRL.format(grossGain) + ' bruto';
+      if (irLine) {
+        irLine.className = item.exempt ? 'ir-line mono exempt' : 'ir-line mono';
+        irLine.textContent = item.exempt ? 'isento de IR' : '− ' + fmtBRL.format(irPaid) + ' IR';
       }
-      nameTd.appendChild(nameCell);
-      tr.appendChild(nameTd);
-
-      const amountTd = document.createElement('td');
-      const amountInput = document.createElement('input');
-      amountInput.type = 'number';
-      amountInput.step = '0.01';
-      amountInput.min = '0';
-      amountInput.className = 'mono combine-amount-input';
-      amountInput.value = item.amount;
-      amountInput.addEventListener('input', () => { item.amount = parseFloat(amountInput.value) || 0; save(); renderCombine(); });
-      amountTd.appendChild(amountInput);
-      tr.appendChild(amountTd);
-
-      const gainTd = document.createElement('td');
-      const gainCell = document.createElement('div');
-      gainCell.className = 'gain-cell';
-      const grossLine = document.createElement('div');
-      grossLine.className = 'gross-line mono';
-      grossLine.textContent = fmtBRL.format(grossGain) + ' bruto';
-      gainCell.appendChild(grossLine);
-      const irLine = document.createElement('div');
-      irLine.className = item.exempt ? 'ir-line mono exempt' : 'ir-line mono';
-      irLine.textContent = item.exempt ? 'isento de IR' : '− ' + fmtBRL.format(irPaid) + ' IR';
-      gainCell.appendChild(irLine);
-      const netLine = document.createElement('div');
-      netLine.className = 'net-line mono';
-      netLine.textContent = fmtBRL.format(netGain) + ' líquido';
-      gainCell.appendChild(netLine);
-      gainTd.appendChild(gainCell);
-      tr.appendChild(gainTd);
-
-      const removeTd = document.createElement('td');
-      const removeBtn = document.createElement('button');
-      removeBtn.type = 'button';
-      removeBtn.className = 'compare-remove';
-      removeBtn.textContent = '✕';
-      removeBtn.setAttribute('aria-label', 'Remover da combinação');
-      removeBtn.addEventListener('click', () => {
-        state.combination = state.combination.filter(i => i.id !== item.id);
-        save(); renderCombine();
-      });
-      removeTd.appendChild(removeBtn);
-      tr.appendChild(removeTd);
-
-      combineBody.appendChild(tr);
+      if (netLine) netLine.textContent = fmtBRL.format(netGain) + ' líquido';
     });
-
-    if (state.combination.length === 0) {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td colspan="4" style="text-align:center; color:var(--ink-soft);">Adicione um banco e um valor acima, ou clique em "preencher automaticamente".</td>`;
-      combineBody.appendChild(tr);
-    }
 
     const projRows = state.combination.length ? computeMonthSeries(state.combination, months) : [];
     fillMonthTable(combineProjBody, projRows, 'Adicione itens à combinação para ver a projeção mês a mês.');
@@ -1934,8 +1974,89 @@
     }
   }
 
+  // Rebuilds the whole combination table (add/remove/reorder). Amount edits
+  // on an existing row call renderCombineSummary() directly instead, so the
+  // input the user is typing into never gets torn down mid-keystroke.
+  function renderCombine() {
+    combineBody.innerHTML = '';
+
+    state.combination.forEach(item => {
+      const tr = document.createElement('tr');
+
+      const nameTd = document.createElement('td');
+      const nameCell = document.createElement('div');
+      nameCell.className = 'name-cell';
+      const bankLabel = document.createElement('div');
+      bankLabel.className = 'bank-label';
+      bankLabel.textContent = item.bank;
+      nameCell.appendChild(bankLabel);
+      const nameLine = document.createElement('div');
+      nameLine.className = 'combine-name';
+      nameLine.textContent = item.name;
+      nameCell.appendChild(nameLine);
+      if (item.note) {
+        const noteInfo = document.createElement('div');
+        noteInfo.className = 'cap-info';
+        noteInfo.textContent = item.note;
+        nameCell.appendChild(noteInfo);
+      }
+      nameTd.appendChild(nameCell);
+      tr.appendChild(nameTd);
+
+      const amountTd = document.createElement('td');
+      const amountInput = document.createElement('input');
+      amountInput.type = 'text';
+      amountInput.inputMode = 'decimal';
+      amountInput.className = 'mono combine-amount-input';
+      amountInput.value = displayBRLValue(item.amount);
+      maskCurrencyInput(amountInput, (value) => { item.amount = value; save(); renderCombineSummary(); });
+      amountTd.appendChild(amountInput);
+      tr.appendChild(amountTd);
+
+      const gainTd = document.createElement('td');
+      const gainCell = document.createElement('div');
+      gainCell.className = 'gain-cell';
+      const grossLine = document.createElement('div');
+      grossLine.className = 'gross-line mono';
+      gainCell.appendChild(grossLine);
+      const irLine = document.createElement('div');
+      irLine.className = 'ir-line mono';
+      gainCell.appendChild(irLine);
+      const netLine = document.createElement('div');
+      netLine.className = 'net-line mono';
+      gainCell.appendChild(netLine);
+      gainTd.appendChild(gainCell);
+      tr.appendChild(gainTd);
+
+      const removeTd = document.createElement('td');
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'compare-remove';
+      removeBtn.textContent = '✕';
+      removeBtn.setAttribute('aria-label', 'Remover da combinação');
+      removeBtn.addEventListener('click', () => {
+        state.combination = state.combination.filter(i => i.id !== item.id);
+        save(); renderCombine();
+      });
+      removeTd.appendChild(removeBtn);
+      tr.appendChild(removeTd);
+
+      combineBody.appendChild(tr);
+    });
+
+    if (state.combination.length === 0) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td colspan="4" style="text-align:center; color:var(--ink-soft);">Adicione um banco e um valor acima, ou clique em "preencher automaticamente".</td>`;
+      combineBody.appendChild(tr);
+    }
+
+    renderCombineSummary();
+  }
+
+  maskCurrencyInput(potAmountInput, () => {});
+
   addPotBtn.addEventListener('click', () => {
-    const amt = parseFloat(potAmountInput.value) || 0;
+    const amt = parseBRLMasked(potAmountInput.value);
     if (amt <= 0) { potAmountInput.focus(); return; }
 
     if (potBankSelect.value === POT_CUSTOM_BANK) {
@@ -1987,16 +2108,26 @@
     save(); renderProjection();
   });
 
-  compareAmountInput.addEventListener('input', () => {
-    state.compareAmount = parseFloat(compareAmountInput.value) || 0;
+  maskCurrencyInput(compareAmountInput, (value) => {
+    state.compareAmount = value;
     save(); renderCompare();
   });
   compareAmountInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); compareAmountInput.blur(); }
   });
 
+  document.getElementById('useMyTotalBtn').addEventListener('click', () => {
+    const total = state.pots.reduce((a, p) => a + p.amount, 0);
+    compareAmountInput.value = displayBRLValue(total);
+    state.compareAmount = total;
+    save();
+    renderCompare();
+  });
+
+  maskCurrencyInput(combineAmountInput, () => {});
+
   addCombineBtn.addEventListener('click', () => {
-    const amt = parseFloat(combineAmountInput.value) || 0;
+    const amt = parseBRLMasked(combineAmountInput.value);
     if (amt <= 0) { combineAmountInput.focus(); return; }
 
     if (combineBankSelect.value === COMBINE_CUSTOM_BANK) {
@@ -2073,6 +2204,14 @@
   fetchLiveCDI();
   renderCatalogFreshness();
   renderCdiHistoryChart();
+
+  const backToTopBtn = document.getElementById('backToTopBtn');
+  window.addEventListener('scroll', () => {
+    backToTopBtn.hidden = window.scrollY < 500;
+  }, { passive: true });
+  backToTopBtn.addEventListener('click', () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
