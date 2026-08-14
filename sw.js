@@ -2,7 +2,7 @@
 // Caches the app shell so it opens instantly (and works offline for anything
 // already visited) — bump CACHE_NAME whenever index.html changes meaningfully
 // so returning visitors pick up the update instead of a stale cached copy.
-const CACHE_NAME = 'caderneta-rendimentos-v4';
+const CACHE_NAME = 'caderneta-rendimentos-v5';
 const APP_SHELL = [
   './',
   './index.html',
@@ -36,6 +36,28 @@ self.addEventListener('fetch', (event) => {
   // (other origins, non-GET requests) pass straight through to the network.
   if (event.request.method !== 'GET' || url.origin !== self.location.origin) return;
 
+  const isAppShellPage = event.request.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname.endsWith('/');
+
+  if (isAppShellPage) {
+    // Network-first for the app itself: since this is under active
+    // development, a returning visitor should always get the latest version
+    // when online — the cache only kicks in as an offline fallback.
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response && response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // Cache-first for static assets (icons, manifest) — these change rarely,
+  // so it's fine to serve the cached copy instantly and refresh in the background.
   event.respondWith(
     caches.match(event.request).then((cached) => {
       const network = fetch(event.request)
