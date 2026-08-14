@@ -2,7 +2,7 @@
 // Caches the app shell so it opens instantly (and works offline for anything
 // already visited) — bump CACHE_NAME whenever index.html changes meaningfully
 // so returning visitors pick up the update instead of a stale cached copy.
-const CACHE_NAME = 'caderneta-rendimentos-v2';
+const CACHE_NAME = 'caderneta-rendimentos-v3';
 const APP_SHELL = [
   './',
   './index.html',
