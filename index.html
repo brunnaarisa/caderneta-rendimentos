@@ -142,6 +142,57 @@
   .back-to-top[hidden] { display: none; }
   .back-to-top:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
+  .welcome-banner {
+    position: relative;
+    max-width: 46rem;
+    margin: 0 auto 2rem;
+    padding: 1.1rem 2.2rem 1.1rem 1.25rem;
+    background: var(--verde-soft);
+    border: 1px solid var(--verde);
+    border-radius: 3px;
+  }
+  .welcome-title {
+    font-family: ui-serif, Georgia, serif;
+    font-weight: 600;
+    font-size: 1rem;
+    margin: 0 0 0.7rem;
+    color: var(--ink);
+  }
+  .welcome-steps {
+    margin: 0 0 0.8rem;
+    padding-left: 1.2rem;
+    font-size: 0.88rem;
+    color: var(--ink-soft);
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .welcome-steps strong { color: var(--ink); }
+  .welcome-more { margin: 0; font-size: 0.85rem; color: var(--ink-soft); }
+  .welcome-more a { color: var(--verde); font-weight: 600; }
+  .welcome-close {
+    position: absolute;
+    top: 0.7rem;
+    right: 0.7rem;
+    background: none;
+    border: none;
+    color: var(--ink-soft);
+    font-size: 0.9rem;
+    cursor: pointer;
+    padding: 0.2rem;
+    line-height: 1;
+  }
+  .welcome-close:hover { color: var(--vinho); }
+  .welcome-close:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .welcome-banner[hidden] { display: none; }
+
+  abbr.jargon {
+    text-decoration: underline dotted;
+    text-decoration-color: var(--verde);
+    text-underline-offset: 2px;
+    cursor: help;
+  }
+
   h1, h2, .display {
     font-family: ui-serif, Georgia, "Iowan Old Style", "Times New Roman", serif;
     text-wrap: balance;
@@ -696,7 +747,7 @@
     <button type="button" id="clearAllBtn" class="clear-all-btn">🗑 Limpar tudo e começar do zero</button>
 
     <div class="cdi-stamp">
-      <span class="label">CDI atual</span>
+      <span class="label" title="Taxa de referência que a maioria dos investimentos pós-fixados usa como base — veja mais em 'Como funciona'.">CDI atual</span>
       <input type="number" id="cdiRate" step="0.01" inputmode="decimal" aria-label="Taxa CDI ao ano">
       <span class="unit">% ao ano</span>
       <button type="button" id="refreshCdiBtn" class="refresh-btn" title="Buscar taxa atual agora">↻ atualizar</button>
@@ -719,6 +770,17 @@
       <a href="#explainerSection">Como funciona</a>
     </div>
   </nav>
+
+  <div class="welcome-banner" id="welcomeBanner">
+    <button type="button" class="welcome-close" id="welcomeCloseBtn" aria-label="Fechar este resumo">✕</button>
+    <p class="welcome-title">Nunca usou uma calculadora de investimentos? Começa por aqui:</p>
+    <ol class="welcome-steps">
+      <li><strong>Adicione</strong> abaixo onde seu dinheiro já está guardado hoje (ou pule direto pro passo 3, se só quiser comparar opções).</li>
+      <li><strong>Veja quanto rende</strong> — o total soma sozinho, mês a mês, sem você precisar calcular nada.</li>
+      <li><strong>Compare</strong> com outros bancos e corretoras pra saber se vale a pena mudar.</li>
+    </ol>
+    <p class="welcome-more">Termos como CDI, IR ou FGC não fazem sentido pra você? <a href="#explainerSection">Veja as explicações aqui</a>.</p>
+  </div>
 
   <section class="block" id="potsSection">
     <h2>Onde seu dinheiro está hoje</h2>
@@ -820,11 +882,11 @@
 
       <div class="receipt" id="winnerReceipt">
         <div class="receipt-row">
-          <span>Rendimento bruto</span>
+          <span title="Quanto rende antes de descontar imposto.">Rendimento bruto</span>
           <span class="mono" id="winnerGross">—</span>
         </div>
         <div class="receipt-row minus" id="winnerIrRow">
-          <span>(–) Imposto de Renda (<span id="winnerIrPct">—</span>)</span>
+          <span title="Imposto de Renda — cobrado sobre o rendimento de quem não é isento.">(–) Imposto de Renda (<span id="winnerIrPct">—</span>)</span>
           <span class="mono" id="winnerIr">—</span>
         </div>
         <div class="receipt-row total">
@@ -852,7 +914,7 @@
           <tr>
             <th>Banco / Opção</th>
             <th>Taxa</th>
-            <th style="text-align:center;">IR</th>
+            <th style="text-align:center;" title="Imposto de Renda — cobrado sobre o rendimento de quem não é isento.">IR</th>
             <th>Rendimento (bruto → líquido)</th>
             <th>Saldo final</th>
           </tr>
@@ -941,11 +1003,11 @@
       <span class="winner-stamp combine-stamp">total combinado</span>
       <div class="receipt">
         <div class="receipt-row">
-          <span>Rendimento bruto</span>
+          <span title="Quanto rende antes de descontar imposto.">Rendimento bruto</span>
           <span class="mono" id="combineGross">R$ 0,00</span>
         </div>
         <div class="receipt-row minus">
-          <span>(–) Imposto de Renda</span>
+          <span title="Imposto de Renda — cobrado sobre o rendimento de quem não é isento.">(–) Imposto de Renda</span>
           <span class="mono" id="combineIr">R$ 0,00</span>
         </div>
         <div class="receipt-row total">
@@ -969,6 +1031,21 @@
     <details class="explainer">
       <summary>Por que o Imposto de Renda varia entre as opções?</summary>
       <p>A maioria dos investimentos de renda fixa (CDB, Tesouro, fundos DI) segue uma <strong>tabela regressiva</strong>: quanto mais tempo o dinheiro fica investido, menor o imposto sobre o rendimento — de 22,5% (até 180 dias) até 15% (acima de 720 dias). Só é cobrado sobre o que você ganhou, nunca sobre o valor aplicado. Já <strong>Poupança, LCI e LCA são isentas</strong> — não pagam nada de IR sobre o rendimento, o que às vezes compensa mesmo com uma taxa nominal menor.</p>
+    </details>
+
+    <details class="explainer">
+      <summary>O que é o FGC, e por que ele importa?</summary>
+      <p>O <strong>FGC (Fundo Garantidor de Créditos)</strong> é um seguro que protege seu dinheiro se o banco quebrar — cobre até <strong>R$250 mil por CPF, por instituição</strong>, somando poupança, CDB, LCI, LCA e RDB naquele banco. Vale pra praticamente todo banco e fintech do catálogo. O que <strong>não</strong> tem essa cobertura: fundos de investimento (mesmo alguns "cofrinhos" que na verdade são fundos por trás) e Tesouro Direto — mas o Tesouro tem outra garantia, que é o próprio governo federal. Este site sempre avisa quando um produto não tem FGC, pra você saber o risco antes de aplicar.</p>
+    </details>
+
+    <details class="explainer">
+      <summary>Quanto guardar como reserva de emergência?</summary>
+      <p>Antes de se preocupar em "qual opção rende mais", a recomendação mais comum é ter uma <strong>reserva de emergência</strong> — um dinheiro guardado pra imprevistos (perda de emprego, conserto urgente, etc.) que dá pra resgatar rápido, sem perder valor. O tamanho ideal varia bastante — normalmente entre <strong>3 e 12 meses das suas despesas mensais</strong>, dependendo de quão estável é sua renda — guardado em algo com liquidez diária e baixo risco, como as próprias caixinhas/cofrinhos deste catálogo. Só depois de ter essa reserva formada costuma valer a pena pensar em prazos mais longos.</p>
+    </details>
+
+    <details class="explainer">
+      <summary>Por que a Poupança quase sempre rende menos?</summary>
+      <p>A Poupança é isenta de IR e muito popular só porque é simples e todo mundo conhece — mas, na prática, quase sempre rende menos que outras opções igualmente seguras (CDB, LCI/LCA, Tesouro Selic), mesmo depois de descontar o imposto dessas outras. Isso acontece porque a fórmula da poupança (0,5% ao mês + TR, quando a Selic está acima de 8,5% ao ano) costuma ficar bem abaixo dos 100% do CDI que a maioria dos outros produtos pós-fixados paga. Deixar dinheiro parado na poupança só porque "sempre foi assim" geralmente significa perder dinheiro sem necessidade — por isso vale sempre comparar, e é exatamente pra isso que a seção "Qual opção compensa mais?" existe.</p>
     </details>
 
     <details class="explainer">
@@ -1020,6 +1097,26 @@
       input.value = formatBRLDigits(digits);
       onChange(parseBRLMasked(input.value));
     });
+  }
+
+  // Wraps known jargon inside plain text with a hoverable/tappable <abbr> —
+  // ONLY ever call this on strings we authored ourselves (catalog `note`
+  // fields), never on anything a user typed, since it renders as HTML.
+  const GLOSSARY = {
+    'CDI': 'Certificado de Depósito Interbancário — taxa de referência que a maioria dos investimentos pós-fixados usa como base.',
+    'FGC': 'Fundo Garantidor de Créditos — protege até R$250 mil por CPF e por instituição, se o banco quebrar.',
+    'IR': 'Imposto de Renda — cobrado sobre o rendimento de quem não é isento.',
+    'CDB': 'Certificado de Depósito Bancário — você empresta dinheiro pro banco, que devolve com juros.',
+    'LCI': 'Letra de Crédito Imobiliário — como um CDB, mas isenta de IR; financia o setor imobiliário.',
+    'LCA': 'Letra de Crédito do Agronegócio — como um CDB, mas isenta de IR; financia o agronegócio.'
+  };
+  function glossarize(text) {
+    let html = text;
+    Object.keys(GLOSSARY).sort((a, b) => b.length - a.length).forEach((term) => {
+      const re = new RegExp(`\\b${term}\\b`, 'g');
+      html = html.replace(re, `<abbr class="jargon" title="${GLOSSARY[term].replace(/"/g, '&quot;')}">${term}</abbr>`);
+    });
+    return html;
   }
 
   // Update this date every time BANK_CATALOG below is re-researched/verified —
@@ -1465,6 +1562,16 @@
     }
   });
 
+  const WELCOME_DISMISSED_KEY = 'caderneta-welcome-dismissed';
+  const welcomeBanner = document.getElementById('welcomeBanner');
+  if (localStorage.getItem(WELCOME_DISMISSED_KEY) === '1') {
+    welcomeBanner.hidden = true;
+  }
+  document.getElementById('welcomeCloseBtn').addEventListener('click', () => {
+    welcomeBanner.hidden = true;
+    localStorage.setItem(WELCOME_DISMISSED_KEY, '1');
+  });
+
   // Shared by every "compartilhar" button: tries the native share sheet first
   // (great on mobile), falls back to copying the text to the clipboard.
   async function shareText(text, statusEl) {
@@ -1791,7 +1898,7 @@
       } else {
         winnerCapInfoEl.textContent = '';
       }
-      winnerNoteEl.textContent = best.opt.note || '';
+      winnerNoteEl.innerHTML = best.opt.note ? glossarize(best.opt.note) : '';
 
       winnerReceipt.style.display = '';
       winnerGrossEl.textContent = fmtBRL.format(best.grossGain);
@@ -1848,7 +1955,7 @@
       if (opt.note) {
         const noteInfo = document.createElement('div');
         noteInfo.className = 'cap-info';
-        noteInfo.textContent = opt.note;
+        noteInfo.innerHTML = glossarize(opt.note);
         nameCell.appendChild(noteInfo);
       }
 
@@ -1865,6 +1972,9 @@
       const badge = document.createElement('div');
       badge.className = 'pill ' + (opt.exempt ? 'pill-exempt' : 'pill-taxed');
       badge.textContent = opt.exempt ? 'isento' : 'taxado';
+      badge.title = opt.exempt
+        ? 'Isento de Imposto de Renda — não desconta nada sobre o rendimento.'
+        : 'Taxado pela tabela regressiva de Imposto de Renda (22,5% a 15%, conforme o prazo).';
       exemptTd.appendChild(badge);
       tr.appendChild(exemptTd);
 
@@ -1998,7 +2108,7 @@
       if (item.note) {
         const noteInfo = document.createElement('div');
         noteInfo.className = 'cap-info';
-        noteInfo.textContent = item.note;
+        noteInfo.innerHTML = glossarize(item.note);
         nameCell.appendChild(noteInfo);
       }
       nameTd.appendChild(nameCell);
