@@ -320,6 +320,13 @@
   }
   h1 { font-size: 1.9rem; margin: 0 0 0.35rem; letter-spacing: -0.01em; }
   .subtitle { color: var(--ink-soft); font-size: 0.98rem; margin: 0; max-width: 36rem; }
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-top: 0.7rem;
+  }
   .clear-all-btn {
     display: inline-block;
     background: none;
@@ -328,10 +335,24 @@
     font-size: 0.78rem;
     cursor: pointer;
     padding: 0;
-    margin-top: 0.7rem;
     text-decoration: underline;
     text-underline-offset: 2px;
   }
+  .theme-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    color: var(--ink-soft);
+    font-size: 0.75rem;
+    cursor: pointer;
+    padding: 0.25rem 0.6rem;
+    border-radius: 3px;
+  }
+  .theme-toggle-btn:hover { color: var(--verde); border-color: var(--verde); }
+  .theme-toggle-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .ipca-stamp { margin-top: 0.6rem; }
   .clear-all-btn:hover { color: var(--vinho); }
   .clear-all-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
@@ -462,6 +483,7 @@
     border-bottom: 2px solid var(--focus);
   }
   .amount-field input { width: 8.5rem; }
+  .contrib-field input { width: 8.5rem; }
   .rate-field input { width: 4.5rem; }
   .cap-field input { width: 6.5rem; }
 
@@ -718,6 +740,14 @@
     color: var(--ink);
   }
 
+  .real-return {
+    font-size: 0.8rem;
+    color: var(--ink-soft);
+    margin-top: 0.7rem;
+  }
+  .real-return strong { color: var(--ink); }
+  .real-return abbr.jargon { color: inherit; }
+
   .share-row { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; margin-top: 1.2rem; }
   .share-btn {
     font-family: ui-sans-serif, system-ui, sans-serif;
@@ -841,6 +871,28 @@
   @media (prefers-reduced-motion: reduce) {
     .add-btn { transition: none; }
   }
+
+  /* Exportar PDF: ao clicar, marcamos o body e escondemos tudo que não é a
+     projeção — o navegador imprime só isso (e a pessoa escolhe "Salvar como PDF"). */
+  @media print {
+    body.printing-projection .quicknav,
+    body.printing-projection .welcome-banner,
+    body.printing-projection #potsSection,
+    body.printing-projection .summary,
+    body.printing-projection #metaSection,
+    body.printing-projection #compareSection,
+    body.printing-projection #combineSection,
+    body.printing-projection #explainerSection,
+    body.printing-projection .support-box,
+    body.printing-projection footer,
+    body.printing-projection .back-to-top,
+    body.printing-projection .header-actions,
+    body.printing-projection .cdi-chart-container,
+    body.printing-projection .no-print {
+      display: none !important;
+    }
+    body.printing-projection .projection-controls { display: none !important; }
+  }
 </style>
 </head>
 <body>
@@ -850,7 +902,10 @@
     <p class="eyebrow">Suas caixinhas &amp; cofrinhos</p>
     <h1>Caderneta de Rendimentos</h1>
     <p class="subtitle">Cadastre onde seu dinheiro está guardado e veja, na hora, quanto ele deve render nos próximos meses — como uma caderneta de poupança, só que sua.</p>
-    <button type="button" id="clearAllBtn" class="clear-all-btn">🗑 Limpar tudo e começar do zero</button>
+    <div class="header-actions">
+      <button type="button" id="clearAllBtn" class="clear-all-btn">🗑 Limpar tudo e começar do zero</button>
+      <button type="button" id="themeToggleBtn" class="theme-toggle-btn" aria-label="Alternar entre tema claro e escuro" title="Alternar tema claro/escuro">🌗 tema</button>
+    </div>
 
     <div class="cdi-stamp">
       <span class="label" title="Taxa de referência que a maioria dos investimentos pós-fixados usa como base — veja mais em 'Como funciona'.">CDI atual</span>
@@ -858,6 +913,14 @@
       <span class="unit">% ao ano</span>
       <button type="button" id="refreshCdiBtn" class="refresh-btn" title="Buscar taxa atual agora">↻ atualizar</button>
       <span class="cdi-caption" id="cdiCaption">Buscando taxa atual do Banco Central…</span>
+    </div>
+
+    <div class="cdi-stamp ipca-stamp">
+      <span class="label" title="Inflação acumulada nos últimos 12 meses (IBGE) — usada só pra mostrar o rendimento real, descontando a perda de poder de compra.">IPCA (12 meses)</span>
+      <input type="number" id="ipcaRate" step="0.01" inputmode="decimal" aria-label="Taxa IPCA acumulada em 12 meses">
+      <span class="unit">% ao ano</span>
+      <button type="button" id="refreshIpcaBtn" class="refresh-btn" title="Buscar inflação atual agora">↻ atualizar</button>
+      <span class="cdi-caption" id="ipcaCaption">Buscando inflação atual do IBGE…</span>
     </div>
 
     <div class="cdi-chart-container" id="cdiChartContainer" hidden>
@@ -871,6 +934,7 @@
     <div class="quicknav-inner">
       <a href="#potsSection">Caixinhas</a>
       <a href="#projectionSection">Projeção</a>
+      <a href="#metaSection">Metas</a>
       <a href="#compareSection">Compensa mais</a>
       <a href="#combineSection">Combinar</a>
       <a href="#explainerSection">Como funciona</a>
@@ -964,6 +1028,49 @@
     <div class="share-row">
       <button type="button" class="share-btn" id="shareProjectionBtn">📤 Compartilhar minha projeção</button>
       <span class="share-status" id="shareProjectionStatus"></span>
+      <button type="button" class="share-btn no-print" id="exportPdfBtn">🖨️ Exportar em PDF</button>
+    </div>
+  </section>
+
+  <section class="block" id="metaSection">
+    <h2>Quanto preciso guardar por mês?</h2>
+    <p class="section-sub">Diga qual valor você quer alcançar e em quanto tempo, e calculamos quanto precisa guardar todo mês pra chegar lá.</p>
+
+    <div class="picker">
+      <div class="field">
+        <label for="metaTarget">Valor da meta (R$)</label>
+        <input type="text" inputmode="decimal" id="metaTarget" placeholder="0,00">
+      </div>
+      <div class="field">
+        <label for="metaInitial">Já tenho guardado (R$, opcional)</label>
+        <input type="text" inputmode="decimal" id="metaInitial" placeholder="0,00">
+      </div>
+      <div class="field">
+        <label for="metaMonths">Prazo (meses)</label>
+        <input type="number" id="metaMonths" min="1" max="480" value="12">
+      </div>
+      <div class="field">
+        <label for="metaMode">Como rende</label>
+        <select id="metaMode">
+          <option value="cdi">% do CDI</option>
+          <option value="fixed">Taxa fixa a.m.</option>
+        </select>
+      </div>
+      <div class="field rate-field">
+        <label for="metaRate">Taxa</label>
+        <input type="number" id="metaRate" step="0.01" min="0" value="100">
+      </div>
+      <div class="field cap-toggle-field">
+        <label class="cap-toggle-label"><input type="checkbox" id="metaExempt"> isento de IR (ex: LCI/LCA)</label>
+      </div>
+    </div>
+
+    <div class="winner-card" id="metaResultCard">
+      <div class="winner-figures">
+        <div><div class="k">Você precisa guardar por mês</div><div class="v" id="metaMonthlyResult" style="font-size:1.4rem;">—</div></div>
+      </div>
+      <p class="cap-info" id="metaBreakdown"></p>
+      <p class="cap-info" id="metaDisclaimer">Cálculo simplificado: aplica a alíquota de <abbr class="jargon" title="Imposto de Renda — cobrado sobre o rendimento de quem não é isento.">IR</abbr> direto sobre a taxa de rendimento (quando não isento), como uma estimativa pra planejamento — não é um valor exato, já que cada aporte teria, na prática, seu próprio prazo de IR contado separadamente.</p>
     </div>
   </section>
 
@@ -1003,6 +1110,7 @@
 
       <div class="winner-figures">
         <div><div class="k">Saldo final (aplicado + líquido)</div><div class="v" id="winnerBalance">—</div></div>
+        <div class="real-return" id="winnerRealReturn"></div>
       </div>
 
       <div class="share-row">
@@ -1121,6 +1229,7 @@
           <span class="mono" id="combineNet">R$ 0,00</span>
         </div>
       </div>
+      <div class="real-return" id="combineRealReturn"></div>
       <p class="vs-winner" id="combineVsWinner"></p>
     </div>
   </section>
@@ -1189,6 +1298,21 @@
   const STORAGE_KEY = 'caderneta-rendimentos-v9';
   const fmtBRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
   const CDI_SERIES_URL = 'https://api.bcb.gov.br/dados/serie/bcdata.sgs.4389/dados/ultimos/1?formato=json';
+  // Série 13522 do SGS/BCB: IPCA acumulado em 12 meses (IBGE), a mesma fonte
+  // oficial usada pra "rendimento real" — o BCB publica logo depois do IBGE.
+  const IPCA_SERIES_URL = 'https://api.bcb.gov.br/dados/serie/bcdata.sgs.13522/dados/ultimos/1?formato=json';
+
+  // Alterna claro/escuro manualmente, sobrepondo a preferência do sistema.
+  // Sem preferência salva, segue o sistema (padrão de sempre).
+  const THEME_KEY = 'caderneta-theme';
+  function applyTheme(theme) {
+    if (theme === 'light' || theme === 'dark') {
+      document.documentElement.setAttribute('data-theme', theme);
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
+  }
+  applyTheme(localStorage.getItem(THEME_KEY));
 
   // Currency-style ("R$ 1.234,56") masking for money inputs — the raw digits
   // typed are treated right-to-left as cents, same pattern most BR banking
@@ -1352,6 +1476,8 @@
     return {
       cdiAnnual: 13.90,
       cdiFetchedDate: null,
+      ipcaAnnual: 4.50,
+      ipcaFetchedDate: null,
       months: 3,
       pots: [],
       compareAmount: 0,
@@ -1367,6 +1493,9 @@
       if (!Array.isArray(parsed.pots)) return defaultState();
       if (typeof parsed.compareAmount !== 'number') parsed.compareAmount = parsed.pots.reduce((a, p) => a + p.amount, 0);
       if (!Array.isArray(parsed.combination)) parsed.combination = [];
+      if (typeof parsed.ipcaAnnual !== 'number') parsed.ipcaAnnual = 4.50;
+      if (parsed.ipcaFetchedDate === undefined) parsed.ipcaFetchedDate = null;
+      parsed.pots.forEach(p => { if (typeof p.monthlyContribution !== 'number') p.monthlyContribution = 0; });
       return parsed;
     } catch (e) {
       return defaultState();
@@ -1381,6 +1510,17 @@
 
   function cdiMonthlyRate() {
     return Math.pow(1 + state.cdiAnnual / 100, 1 / 12) - 1;
+  }
+
+  function ipcaMonthlyRate() {
+    return Math.pow(1 + (state.ipcaAnnual || 0) / 100, 1 / 12) - 1;
+  }
+
+  // Deflaciona um saldo futuro pra "dinheiro de hoje", descontando a inflação
+  // acumulada no período — é isso que separa rendimento nominal de rendimento real.
+  function realBalanceFor(nominalBalance, months) {
+    const inflationFactor = Math.pow(1 + ipcaMonthlyRate(), months);
+    return nominalBalance / inflationFactor;
   }
 
   function monthlyRateFor(mode, rate) {
@@ -1400,12 +1540,23 @@
     return { capPart: cap, excessPart: amount - cap };
   }
 
+  // Deposits an extra amount into an already-split balance, respecting the same
+  // cap: fills whatever room is left in capPart first, spills the rest into excessPart.
+  function addToSplit(sb, amount, cap) {
+    if (!cap || cap <= 0) return { capPart: sb.capPart + amount, excessPart: sb.excessPart };
+    const roomInCap = Math.max(0, cap - sb.capPart);
+    const intoCap = Math.min(amount, roomInCap);
+    return { capPart: sb.capPart + intoCap, excessPart: sb.excessPart + (amount - intoCap) };
+  }
+
   function excessMonthlyRate(entity) {
     return monthlyRateFor(entity.excessMode || entity.mode, entity.excessRate != null ? entity.excessRate : entity.rate);
   }
 
   function potMonth1Gain(pot) {
-    const { capPart, excessPart } = splitAmount(pot.amount, pot.cap);
+    const base = splitAmount(pot.amount, pot.cap);
+    const contribution = pot.monthlyContribution || 0;
+    const { capPart, excessPart } = contribution > 0 ? addToSplit(base, contribution, pot.cap) : base;
     let gain = capPart * potMonthlyRate(pot);
     if (excessPart > 0) gain += excessPart * excessMonthlyRate(pot);
     return gain;
@@ -1426,6 +1577,20 @@
     let grossBalance = capPart * Math.pow(1 + monthlyRateFor(entity.mode, entity.rate), months);
     if (excessPart > 0) grossBalance += excessPart * Math.pow(1 + excessMonthlyRate(entity), months);
     return grossBalance - amount;
+  }
+
+  // Calculadora reversa do simulador de metas: dado um valor-alvo, um valor
+  // inicial e uma taxa mensal líquida, resolve pro aporte mensal necessário
+  // (depósito no início de cada mês, mesma convenção usada em computeMonthSeries).
+  // Retorna null se o prazo for inválido.
+  function requiredMonthlyContribution(target, initial, months, monthlyRate) {
+    if (!months || months <= 0) return null;
+    if (Math.abs(monthlyRate) < 1e-9) {
+      return (target - initial) / months;
+    }
+    const growthFactor = Math.pow(1 + monthlyRate, months);
+    const annuityFactor = ((growthFactor - 1) / monthlyRate) * (1 + monthlyRate);
+    return (target - initial * growthFactor) / annuityFactor;
   }
 
   // Greedy allocator: ranks every catalog product by its net-of-tax monthly
@@ -1463,6 +1628,9 @@
   const cdiInput = document.getElementById('cdiRate');
   const cdiCaption = document.getElementById('cdiCaption');
   const refreshCdiBtn = document.getElementById('refreshCdiBtn');
+  const ipcaInput = document.getElementById('ipcaRate');
+  const ipcaCaption = document.getElementById('ipcaCaption');
+  const refreshIpcaBtn = document.getElementById('refreshIpcaBtn');
   const potBankSelect = document.getElementById('potBank');
   const potCustomBankField = document.getElementById('potCustomBankField');
   const potCustomBankInput = document.getElementById('potCustomBank');
@@ -1498,6 +1666,7 @@
   const winnerIrEl = document.getElementById('winnerIr');
   const winnerGainEl = document.getElementById('winnerGain');
   const winnerBalanceEl = document.getElementById('winnerBalance');
+  const winnerRealReturnEl = document.getElementById('winnerRealReturn');
   let lastWinnerNetGain = null; // net gain of the single best option, for the combine section to compare against
   let lastWinnerSummary = null; // full snapshot of the current winner, used by the share button
 
@@ -1524,6 +1693,7 @@
   const combineGrossEl = document.getElementById('combineGross');
   const combineIrEl = document.getElementById('combineIr');
   const combineNetEl = document.getElementById('combineNet');
+  const combineRealReturnEl = document.getElementById('combineRealReturn');
   const combineVsWinnerEl = document.getElementById('combineVsWinner');
 
 
@@ -1575,6 +1745,7 @@
   updatePotPickerMode();
 
   cdiInput.value = state.cdiAnnual;
+  ipcaInput.value = state.ipcaAnnual;
   monthsRange.value = state.months;
   monthsVal.textContent = state.months;
   compareAmountInput.value = state.compareAmount;
@@ -1616,6 +1787,47 @@
   }
 
   refreshCdiBtn.addEventListener('click', fetchLiveCDI);
+
+  async function fetchLiveIPCA() {
+    refreshIpcaBtn.disabled = true;
+    ipcaCaption.className = 'cdi-caption';
+    ipcaCaption.textContent = 'Buscando inflação atual do IBGE…';
+    try {
+      const res = await fetch(IPCA_SERIES_URL, { cache: 'no-store' });
+      if (!res.ok) throw new Error('status ' + res.status);
+      const data = await res.json();
+      const entry = data && data[0];
+      const rate = entry ? parseFloat(entry.valor) : NaN;
+      if (!isFinite(rate) || rate <= 0) throw new Error('valor inválido');
+
+      state.ipcaAnnual = rate;
+      state.ipcaFetchedDate = entry.data;
+      ipcaInput.value = rate;
+      save();
+      renderResults();
+
+      ipcaCaption.className = 'cdi-caption ok';
+      ipcaCaption.textContent = `✓ IPCA acumulado em 12 meses, publicado em ${entry.data}. Usado só pra calcular o rendimento real (poder de compra).`;
+    } catch (e) {
+      if (state.ipcaFetchedDate) {
+        ipcaCaption.className = 'cdi-caption warn';
+        ipcaCaption.textContent = `⚠ Não consegui atualizar agora — mostrando o último valor confirmado em ${state.ipcaFetchedDate}.`;
+      } else {
+        ipcaCaption.className = 'cdi-caption warn';
+        ipcaCaption.textContent = '⚠ Não consegui buscar a inflação automaticamente agora. Confira e ajuste manualmente se precisar.';
+      }
+    } finally {
+      refreshIpcaBtn.disabled = false;
+    }
+  }
+
+  refreshIpcaBtn.addEventListener('click', fetchLiveIPCA);
+  ipcaInput.addEventListener('input', () => {
+    state.ipcaAnnual = parseFloat(ipcaInput.value) || 0;
+    ipcaCaption.className = 'cdi-caption';
+    ipcaCaption.textContent = 'Valor personalizado — clique em "atualizar" para voltar ao IPCA oficial automático.';
+    save(); renderResults();
+  });
 
   // Draws a small line chart of the last ~6 months of daily CDI values,
   // fetched straight from the same Banco Central series used for the live rate.
@@ -1676,6 +1888,23 @@
       localStorage.removeItem(STORAGE_KEY);
       location.reload();
     }
+  });
+
+  document.getElementById('exportPdfBtn').addEventListener('click', () => {
+    document.body.classList.add('printing-projection');
+    window.print();
+  });
+  window.addEventListener('afterprint', () => {
+    document.body.classList.remove('printing-projection');
+  });
+
+  // Ciclo: segue o sistema -> claro -> escuro -> volta a seguir o sistema.
+  document.getElementById('themeToggleBtn').addEventListener('click', () => {
+    const current = localStorage.getItem(THEME_KEY);
+    const next = current === 'light' ? 'dark' : current === 'dark' ? null : 'light';
+    if (next) localStorage.setItem(THEME_KEY, next);
+    else localStorage.removeItem(THEME_KEY);
+    applyTheme(next);
   });
 
   const WELCOME_DISMISSED_KEY = 'caderneta-welcome-dismissed';
@@ -1739,7 +1968,8 @@
       return;
     }
     const s = lastProjectionSummary;
-    const text = `Tenho ${fmtBRL.format(s.totalPrincipal)} aplicado${s.potCount > 1 ? 's' : ''} em ${s.potCount} caixinha${s.potCount > 1 ? 's' : ''}, e se deixar tudo rendendo devo ter ${fmtBRL.format(s.totalBal)} em ${s.months} ${s.months === 1 ? 'mês' : 'meses'} — rendimento de ${fmtBRL.format(s.cumulative)}!\n\nCalculado na Caderneta de Rendimentos:`;
+    const contribPart = s.totalContributed > 0 ? `, aportando mais ${fmtBRL.format(s.totalContributed)} ao longo do caminho,` : '';
+    const text = `Tenho ${fmtBRL.format(s.totalPrincipal)} aplicado${s.potCount > 1 ? 's' : ''} em ${s.potCount} caixinha${s.potCount > 1 ? 's' : ''}${contribPart}, e se deixar tudo rendendo devo ter ${fmtBRL.format(s.totalBal)} em ${s.months} ${s.months === 1 ? 'mês' : 'meses'} — rendimento de ${fmtBRL.format(s.cumulative)}!\n\nCalculado na Caderneta de Rendimentos:`;
     shareText(text, shareProjectionStatusEl);
   });
 
@@ -1776,6 +2006,18 @@
       maskCurrencyInput(amountInput, (value) => { pot.amount = value; save(); renderResults(); });
       amountField.appendChild(amountInput);
       fields.appendChild(amountField);
+
+      const contribField = document.createElement('div');
+      contribField.className = 'field contrib-field';
+      contribField.innerHTML = '<label>Aporte mensal (R$, opcional)</label>';
+      const contribInput = document.createElement('input');
+      contribInput.type = 'text';
+      contribInput.inputMode = 'decimal';
+      contribInput.placeholder = '0,00';
+      contribInput.value = displayBRLValue(pot.monthlyContribution || 0);
+      maskCurrencyInput(contribInput, (value) => { pot.monthlyContribution = value; save(); renderResults(); });
+      contribField.appendChild(contribInput);
+      fields.appendChild(contribField);
 
       const modeField = document.createElement('div');
       modeField.className = 'field';
@@ -1923,19 +2165,25 @@
   function computeMonthSeries(items, months) {
     let subBalances = items.map(it => splitAmount(it.amount, it.cap));
     let cumulative = 0;
+    let totalContributed = 0;
     const rows = [];
     for (let m = 1; m <= months; m++) {
       let monthGain = 0;
       subBalances = subBalances.map((sb, i) => {
         const it = items[i];
-        const capGain = sb.capPart * monthlyRateFor(it.mode, it.rate);
-        const excessGain = sb.excessPart > 0 ? sb.excessPart * excessMonthlyRate(it) : 0;
+        // Aporte mensal entra no início do mês (antes de render), como um depósito
+        // de salário — só depois disso o rendimento do mês é calculado em cima.
+        const contribution = it.monthlyContribution || 0;
+        const funded = contribution > 0 ? addToSplit(sb, contribution, it.cap) : sb;
+        if (contribution > 0) totalContributed += contribution;
+        const capGain = funded.capPart * monthlyRateFor(it.mode, it.rate);
+        const excessGain = funded.excessPart > 0 ? funded.excessPart * excessMonthlyRate(it) : 0;
         monthGain += capGain + excessGain;
-        return { capPart: sb.capPart + capGain, excessPart: sb.excessPart + excessGain };
+        return { capPart: funded.capPart + capGain, excessPart: funded.excessPart + excessGain };
       });
       cumulative += monthGain;
       const totalBal = subBalances.reduce((a, sb) => a + sb.capPart + sb.excessPart, 0);
-      rows.push({ month: m, totalBal, monthGain, cumulative });
+      rows.push({ month: m, totalBal, monthGain, cumulative, totalContributed });
     }
     return rows;
   }
@@ -1967,7 +2215,8 @@
         potCount: state.pots.length,
         months,
         cumulative: rows[rows.length - 1].cumulative,
-        totalBal: rows[rows.length - 1].totalBal
+        totalBal: rows[rows.length - 1].totalBal,
+        totalContributed: rows[rows.length - 1].totalContributed || 0
       };
     } else {
       lastProjectionSummary = null;
@@ -2011,6 +2260,7 @@
       winnerNoteEl.textContent = '';
       winnerReceipt.style.display = 'none';
       winnerBalanceEl.textContent = '—';
+      winnerRealReturnEl.textContent = '';
       lastWinnerNetGain = null;
       lastWinnerSummary = null;
     } else {
@@ -2041,6 +2291,15 @@
       }
       winnerGainEl.textContent = fmtBRL.format(best.netGain);
       winnerBalanceEl.textContent = fmtBRL.format(best.netBalance);
+
+      const realBalance = realBalanceFor(best.netBalance, months);
+      const realGain = realBalance - amount;
+      if (realGain >= -0.005) {
+        winnerRealReturnEl.innerHTML = `Descontando a inflação estimada (<abbr class="jargon" title="Inflação acumulada nos últimos 12 meses, usada aqui como estimativa pro período — veja/ajuste em 'IPCA' no topo da página.">IPCA</abbr> de ${state.ipcaAnnual.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% ao ano), seu <strong>rendimento real</strong> é de <strong>${fmtBRL.format(realGain)}</strong> — ou seja, seu poder de compra aumenta em ${fmtBRL.format(realGain)}, não só o número em reais.`;
+      } else {
+        winnerRealReturnEl.innerHTML = `⚠ Descontando a inflação estimada (IPCA de ${state.ipcaAnnual.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% ao ano), o <strong>rendimento real é negativo</strong> em ${fmtBRL.format(-realGain)} — nesse cenário, mesmo rendendo em reais, seu dinheiro perde poder de compra.`;
+      }
+
       lastWinnerNetGain = best.netGain;
       lastWinnerSummary = {
         bank: best.opt.bank || 'Outro',
@@ -2199,6 +2458,16 @@
     combineIrEl.textContent = fmtBRL.format(totalIr);
     combineNetEl.textContent = fmtBRL.format(totalNet);
 
+    if (totalAllocated > 0) {
+      const realBalance = realBalanceFor(totalAllocated + totalNet, months);
+      const realGain = realBalance - totalAllocated;
+      combineRealReturnEl.textContent = realGain >= -0.005
+        ? `Rendimento real (descontando IPCA de ${state.ipcaAnnual.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% ao ano): ${fmtBRL.format(realGain)}.`
+        : `⚠ Rendimento real negativo (descontando IPCA de ${state.ipcaAnnual.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% ao ano): ${fmtBRL.format(realGain)}.`;
+    } else {
+      combineRealReturnEl.textContent = '';
+    }
+
     if (state.combination.length > 0 && lastWinnerNetGain != null) {
       const delta = totalNet - lastWinnerNetGain;
       if (delta > 0.01) {
@@ -2307,6 +2576,7 @@
         id: crypto.randomUUID(),
         name: `${bankName} — ${productName}`,
         amount: amt,
+        monthlyContribution: 0,
         mode: potCustomModeSelect.value,
         rate: parseFloat(potCustomRateInput.value) || 0,
         cap: null
@@ -2325,6 +2595,7 @@
         id: crypto.randomUUID(),
         name: `${bankName} — ${template.name}`,
         amount: amt,
+        monthlyContribution: 0,
         mode: template.mode,
         rate: template.rate,
         cap: template.cap ?? null,
@@ -2421,6 +2692,66 @@
     renderCombine();
   });
 
+  // ---------- Simulador de metas ----------
+  const metaTargetInput = document.getElementById('metaTarget');
+  const metaInitialInput = document.getElementById('metaInitial');
+  const metaMonthsInput = document.getElementById('metaMonths');
+  const metaModeSelect = document.getElementById('metaMode');
+  const metaRateInput = document.getElementById('metaRate');
+  const metaExemptInput = document.getElementById('metaExempt');
+  const metaMonthlyResultEl = document.getElementById('metaMonthlyResult');
+  const metaBreakdownEl = document.getElementById('metaBreakdown');
+
+  let metaTarget = 0;
+  let metaInitial = 0;
+
+  function renderMeta() {
+    const months = parseInt(metaMonthsInput.value, 10) || 0;
+    const mode = metaModeSelect.value;
+    const rate = parseFloat(metaRateInput.value) || 0;
+    const exempt = metaExemptInput.checked;
+
+    if (metaTarget <= 0 || months <= 0) {
+      metaMonthlyResultEl.textContent = '—';
+      metaBreakdownEl.textContent = 'Preencha o valor da meta e o prazo pra calcular.';
+      return;
+    }
+
+    const nominalMonthlyRate = monthlyRateFor(mode, rate);
+    const ir = irRateForMonths(months);
+    // Simplificação: aplica a alíquota de IR direto na taxa (não só no ganho final) —
+    // ver aviso na tela. Mantém o mesmo espírito das outras seções, só que resolvendo
+    // pro aporte em vez de pro saldo.
+    const netMonthlyRate = exempt ? nominalMonthlyRate : nominalMonthlyRate * (1 - ir.rate);
+
+    const required = requiredMonthlyContribution(metaTarget, metaInitial, months, netMonthlyRate);
+
+    if (required <= 0) {
+      const growthFactor = Math.pow(1 + netMonthlyRate, months);
+      const projected = metaInitial * growthFactor;
+      metaMonthlyResultEl.textContent = 'R$ 0,00 🎉';
+      metaBreakdownEl.textContent = `Só com o valor inicial rendendo, você já deve alcançar a meta — a estimativa é terminar com ${fmtBRL.format(projected)} em ${months} ${months === 1 ? 'mês' : 'meses'}, sem precisar guardar mais nada.`;
+      return;
+    }
+
+    metaMonthlyResultEl.textContent = fmtBRL.format(required);
+    const totalContributed = required * months;
+    const totalIn = metaInitial + totalContributed;
+    const totalGain = metaTarget - totalIn;
+    metaBreakdownEl.textContent = `Guardando ${fmtBRL.format(required)} por mês durante ${months} ${months === 1 ? 'mês' : 'meses'} (${fmtBRL.format(totalContributed)} no total, além do valor inicial), você deve chegar a ${fmtBRL.format(metaTarget)} — sendo ${fmtBRL.format(totalGain)} de rendimento (${exempt ? 'isento de IR' : `já descontando IR de ${(ir.rate * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`}).`;
+  }
+
+  maskCurrencyInput(metaTargetInput, (value) => { metaTarget = value; renderMeta(); });
+  maskCurrencyInput(metaInitialInput, (value) => { metaInitial = value; renderMeta(); });
+  metaMonthsInput.addEventListener('input', renderMeta);
+  metaModeSelect.addEventListener('change', () => {
+    metaRateInput.value = metaModeSelect.value === 'cdi' ? 100 : 0.5;
+    renderMeta();
+  });
+  metaRateInput.addEventListener('input', renderMeta);
+  metaExemptInput.addEventListener('change', renderMeta);
+  renderMeta();
+
   function renderCatalogFreshness() {
     const el = document.getElementById('catalogFreshness');
     if (!el) return;
@@ -2441,6 +2772,7 @@
 
   renderPots();
   fetchLiveCDI();
+  fetchLiveIPCA();
   renderCatalogFreshness();
   renderCdiHistoryChart();
 
