@@ -1108,20 +1108,33 @@
         <input type="number" id="metaMonths" min="1" max="480" value="12">
       </div>
       <div class="field">
-        <label for="metaMode">Como rende</label>
-        <select id="metaMode">
+        <label for="metaBank">Banco / corretora</label>
+        <select id="metaBank"></select>
+      </div>
+      <div class="field" id="metaCustomBankField" hidden>
+        <label for="metaCustomBank">Nome do banco/corretora</label>
+        <input type="text" id="metaCustomBank" placeholder="ex: Banco XP">
+      </div>
+      <div class="field" id="metaProductField">
+        <label for="metaProduct">Investimento</label>
+        <select id="metaProduct"></select>
+      </div>
+      <div class="field" id="metaCustomModeField" hidden>
+        <label for="metaCustomMode">Como rende</label>
+        <select id="metaCustomMode">
           <option value="cdi">% do CDI</option>
           <option value="fixed">Taxa fixa a.m.</option>
         </select>
       </div>
-      <div class="field rate-field">
-        <label for="metaRate">Taxa</label>
-        <input type="number" id="metaRate" step="0.01" min="0" value="100">
+      <div class="field rate-field" id="metaCustomRateField" hidden>
+        <label for="metaCustomRate">Taxa</label>
+        <input type="number" id="metaCustomRate" step="0.01" min="0" value="100">
       </div>
-      <div class="field cap-toggle-field">
-        <label class="cap-toggle-label"><input type="checkbox" id="metaExempt"> isento de IR (ex: LCI/LCA)</label>
+      <div class="field cap-toggle-field" id="metaCustomExemptField" hidden>
+        <label class="cap-toggle-label"><input type="checkbox" id="metaCustomExempt"> isento de IR (ex: LCI/LCA)</label>
       </div>
     </div>
+    <p class="cap-info" id="metaProductNote"></p>
 
     <div class="winner-card" id="metaResultCard">
       <div class="winner-figures">
@@ -2802,20 +2815,74 @@
   const metaTargetInput = document.getElementById('metaTarget');
   const metaInitialInput = document.getElementById('metaInitial');
   const metaMonthsInput = document.getElementById('metaMonths');
-  const metaModeSelect = document.getElementById('metaMode');
-  const metaRateInput = document.getElementById('metaRate');
-  const metaExemptInput = document.getElementById('metaExempt');
+  const metaBankSelect = document.getElementById('metaBank');
+  const metaCustomBankField = document.getElementById('metaCustomBankField');
+  const metaCustomBankInput = document.getElementById('metaCustomBank');
+  const metaProductField = document.getElementById('metaProductField');
+  const metaProductSelect = document.getElementById('metaProduct');
+  const metaCustomModeField = document.getElementById('metaCustomModeField');
+  const metaCustomModeSelect = document.getElementById('metaCustomMode');
+  const metaCustomRateField = document.getElementById('metaCustomRateField');
+  const metaCustomRateInput = document.getElementById('metaCustomRate');
+  const metaCustomExemptField = document.getElementById('metaCustomExemptField');
+  const metaCustomExemptInput = document.getElementById('metaCustomExempt');
+  const metaProductNoteEl = document.getElementById('metaProductNote');
   const metaMonthlyResultEl = document.getElementById('metaMonthlyResult');
   const metaBreakdownEl = document.getElementById('metaBreakdown');
+
+  const META_CUSTOM_BANK = '__custom_bank__';
+
+  function populateMetaBankSelect() {
+    metaBankSelect.innerHTML = Object.keys(BANK_CATALOG).map(b => `<option value="${b}">${b}</option>`).join('')
+      + `<option value="${META_CUSTOM_BANK}">Outro (digitar manualmente)…</option>`;
+  }
+  function populateMetaProductSelect() {
+    const products = BANK_CATALOG[metaBankSelect.value] || [];
+    metaProductSelect.innerHTML = products.map((p, i) => `<option value="${i}">${p.name}</option>`).join('');
+  }
+  function updateMetaPickerMode() {
+    const isCustom = metaBankSelect.value === META_CUSTOM_BANK;
+    metaCustomBankField.hidden = !isCustom;
+    metaProductField.hidden = isCustom;
+    metaCustomModeField.hidden = !isCustom;
+    metaCustomRateField.hidden = !isCustom;
+    metaCustomExemptField.hidden = !isCustom;
+    if (!isCustom) populateMetaProductSelect();
+  }
+  populateMetaBankSelect();
+  updateMetaPickerMode();
+
+  // Lê a opção escolhida no seletor (catálogo real ou entrada manual) e devolve
+  // {mode, rate, exempt, cap, note} — o mesmo formato usado no resto do app.
+  function currentMetaProduct() {
+    if (metaBankSelect.value === META_CUSTOM_BANK) {
+      return {
+        mode: metaCustomModeSelect.value,
+        rate: parseFloat(metaCustomRateInput.value) || 0,
+        exempt: metaCustomExemptInput.checked,
+        cap: null, note: null
+      };
+    }
+    const products = BANK_CATALOG[metaBankSelect.value] || [];
+    const idx = parseInt(metaProductSelect.value, 10);
+    return products[idx] || { mode: 'cdi', rate: 100, exempt: false, cap: null, note: null };
+  }
 
   let metaTarget = 0;
   let metaInitial = 0;
 
   function renderMeta() {
     const months = parseInt(metaMonthsInput.value, 10) || 0;
-    const mode = metaModeSelect.value;
-    const rate = parseFloat(metaRateInput.value) || 0;
-    const exempt = metaExemptInput.checked;
+    const product = currentMetaProduct();
+    const { mode, rate, exempt, cap, note } = product;
+
+    if (cap) {
+      metaProductNoteEl.innerHTML = glossarize(`⚠ Esse investimento tem limite de valor (até ${fmtBRL.format(cap)} na taxa cheia) — a simulação abaixo não considera isso, então se o saldo passar do limite ao longo do caminho, o rendimento real pode ficar um pouco menor do que o calculado aqui.${note ? ' ' + note : ''}`);
+    } else if (note) {
+      metaProductNoteEl.innerHTML = glossarize(note);
+    } else {
+      metaProductNoteEl.textContent = '';
+    }
 
     if (metaTarget <= 0 || months <= 0) {
       metaMonthlyResultEl.textContent = '—';
@@ -2827,7 +2894,8 @@
     const ir = irRateForMonths(months);
     // Simplificação: aplica a alíquota de IR direto na taxa (não só no ganho final) —
     // ver aviso na tela. Mantém o mesmo espírito das outras seções, só que resolvendo
-    // pro aporte em vez de pro saldo.
+    // pro aporte em vez de pro saldo. Também não considera o limite de valor (cap),
+    // se o produto tiver um — ver aviso acima quando for o caso.
     const netMonthlyRate = exempt ? nominalMonthlyRate : nominalMonthlyRate * (1 - ir.rate);
 
     const required = requiredMonthlyContribution(metaTarget, metaInitial, months, netMonthlyRate);
@@ -2850,12 +2918,14 @@
   maskCurrencyInput(metaTargetInput, (value) => { metaTarget = value; renderMeta(); });
   maskCurrencyInput(metaInitialInput, (value) => { metaInitial = value; renderMeta(); });
   metaMonthsInput.addEventListener('input', renderMeta);
-  metaModeSelect.addEventListener('change', () => {
-    metaRateInput.value = metaModeSelect.value === 'cdi' ? 100 : 0.5;
+  metaBankSelect.addEventListener('change', () => { updateMetaPickerMode(); renderMeta(); });
+  metaProductSelect.addEventListener('change', renderMeta);
+  metaCustomModeSelect.addEventListener('change', () => {
+    metaCustomRateInput.value = metaCustomModeSelect.value === 'cdi' ? 100 : 0.5;
     renderMeta();
   });
-  metaRateInput.addEventListener('input', renderMeta);
-  metaExemptInput.addEventListener('change', renderMeta);
+  metaCustomRateInput.addEventListener('input', renderMeta);
+  metaCustomExemptInput.addEventListener('change', renderMeta);
   renderMeta();
 
   function renderCatalogFreshness() {
