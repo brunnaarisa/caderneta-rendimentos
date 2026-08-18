@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "br.com.cadernetaderendimentos.twa",
+        "sha256_cert_fingerprints": ["B9:66:6A:F7:5F:AE:A6:7D:1F:06:EC:72:91:FE:27:C1:82:79:28:21:AA:C3:51:A9:8E:4F:A1:3E:A8:DF:C3:39"]
+      }
+    }]
