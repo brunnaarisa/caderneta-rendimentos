@@ -3,8 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Caderneta de Rendimentos</title>
+<title>Caderneta de Rendimentos — Calculadora e Comparador de Investimentos</title>
 <meta name="description" content="Veja quanto suas caixinhas e cofrinhos rendem, e compare com outros bancos e corretoras — com a taxa CDI atualizada automaticamente pelo Banco Central.">
+<link rel="canonical" href="https://cadernetaderendimentos.com.br/">
 
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://cadernetaderendimentos.com.br/">
@@ -28,6 +29,89 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Caderneta">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Caderneta de Rendimentos",
+  "url": "https://cadernetaderendimentos.com.br/",
+  "description": "Calculadora e comparador de investimentos de renda fixa — caixinhas, cofrinhos, CDB, LCI/LCA, Tesouro Selic e poupança — com a taxa CDI sempre atualizada pelo Banco Central e cálculo de Imposto de Renda incluído.",
+  "applicationCategory": "FinanceApplication",
+  "operatingSystem": "Any (navegador web)",
+  "inLanguage": "pt-BR",
+  "isAccessibleForFree": true,
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "BRL"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "O que é o CDI?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "É a taxa de referência que a maioria dos investimentos pós-fixados no Brasil acompanha — quase todo banco anuncia sua caixinha ou CDB como uma porcentagem do CDI. Se um investimento paga 100% do CDI, ele rende exatamente essa taxa; se paga 115% do CDI, rende 15% a mais que ela. A taxa muda com o tempo, acompanhando de perto a Selic definida pelo Banco Central."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Por que o Imposto de Renda varia entre as opções?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "A maioria dos investimentos de renda fixa (CDB, Tesouro, fundos DI) segue uma tabela regressiva: quanto mais tempo o dinheiro fica investido, menor o imposto sobre o rendimento — de 22,5% até 180 dias a 15% acima de 720 dias. Só é cobrado sobre o que você ganhou, nunca sobre o valor aplicado. Já Poupança, LCI e LCA são isentas de Imposto de Renda."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "O que é o FGC, e por que ele importa?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "O FGC (Fundo Garantidor de Créditos) é um seguro que protege seu dinheiro se o banco quebrar, cobrindo até R$250 mil por CPF por instituição, somando poupança, CDB, LCI, LCA e RDB naquele banco. Fundos de investimento e Tesouro Direto não têm essa cobertura, mas o Tesouro tem a garantia do próprio governo federal."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Quanto guardar como reserva de emergência?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "A recomendação mais comum é ter entre 3 e 12 meses das suas despesas mensais guardados em algo com liquidez diária e baixo risco, como caixinhas e cofrinhos, antes de pensar em investimentos de prazo mais longo."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Por que a Poupança quase sempre rende menos?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "A Poupança é isenta de Imposto de Renda, mas sua fórmula (0,5% ao mês mais TR, quando a Selic está acima de 8,5% ao ano) costuma ficar bem abaixo dos 100% do CDI que a maioria dos outros produtos pós-fixados paga, mesmo depois de descontar o imposto dessas outras opções."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Caixinha, cofrinho, CDB, LCI/LCA, Tesouro Selic — qual a diferença?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Caixinha ou cofrinho é o nome que os bancos digitais dão a um CDB ou fundo simples com resgate fácil pelo app. CDB é você emprestando dinheiro ao banco, protegido pelo FGC até R$250 mil por CPF por banco. LCI/LCA financiam o setor imobiliário ou o agronegócio e são isentas de Imposto de Renda, geralmente com carência de 270 dias. Tesouro Selic é você emprestando dinheiro ao governo federal, considerado o investimento mais seguro do país."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "O que significa limite de valor numa caixinha turbinada?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Alguns bancos oferecem uma taxa mais alta só até um certo valor, como a Caixinha Turbo do Nubank que rende 115% do CDI até R$5 mil. O que passa desse limite não entra na taxa especial — ou fica travado para novos depósitos, ou passa a render uma taxa menor, dependendo do banco."
+      }
+    }
+  ]
+}
+</script>
 <style>
   /* ---------- Tokens ---------- */
   :root {
