@@ -205,15 +205,24 @@
     overflow-x: auto;
     font-size: 0.78rem;
   }
-  .quicknav a {
+  .tab-btn {
+    font-family: inherit;
+    background: none;
+    border: none;
     color: var(--ink-soft);
     text-decoration: none;
     white-space: nowrap;
     padding: 0.15rem 0;
-    border-bottom: 1px solid transparent;
+    border-bottom: 2px solid transparent;
+    font-size: inherit;
+    cursor: pointer;
   }
-  .quicknav a:hover { color: var(--verde); }
-  .quicknav a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .tab-btn:hover { color: var(--verde); }
+  .tab-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .tab-btn.active { color: var(--verde); font-weight: 700; border-bottom-color: var(--verde); }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
 
   .back-to-top {
     position: fixed;
@@ -977,26 +986,26 @@
     </div>
   </header>
 
-  <nav class="quicknav" aria-label="Navegação rápida entre seções">
+  <nav class="quicknav" aria-label="Navegação entre seções">
     <div class="quicknav-inner">
-      <a href="#potsSection">Caixinhas</a>
-      <a href="#projectionSection">Projeção</a>
-      <a href="#metaSection">Metas</a>
-      <a href="#compareSection">Compensa mais</a>
-      <a href="#combineSection">Combinar</a>
-      <a href="#explainerSection">Como funciona</a>
+      <button type="button" class="tab-btn" data-tab="inicio">Caixinhas</button>
+      <button type="button" class="tab-btn" data-tab="metas">Metas</button>
+      <button type="button" class="tab-btn" data-tab="comparar">Compensa mais</button>
+      <button type="button" class="tab-btn" data-tab="combinar">Combinar</button>
+      <button type="button" class="tab-btn" data-tab="explicacao">Como funciona</button>
     </div>
   </nav>
 
+  <div class="tab-panel" data-tab-panel="inicio">
   <div class="welcome-banner" id="welcomeBanner">
     <button type="button" class="welcome-close" id="welcomeCloseBtn" aria-label="Fechar este resumo">✕</button>
     <p class="welcome-title">Nunca usou uma calculadora de investimentos? Começa por aqui:</p>
     <ol class="welcome-steps">
-      <li><strong>Adicione</strong> abaixo onde seu dinheiro já está guardado hoje (ou pule direto pro passo 3, se só quiser comparar opções).</li>
+      <li><strong>Adicione</strong> abaixo onde seu dinheiro já está guardado hoje (ou pule direto pra aba "Compensa mais", se só quiser comparar opções).</li>
       <li><strong>Veja quanto rende</strong> — o total soma sozinho, mês a mês, sem você precisar calcular nada.</li>
       <li><strong>Compare</strong> com outros bancos e corretoras pra saber se vale a pena mudar.</li>
     </ol>
-    <p class="welcome-more">Termos como CDI, IR ou FGC não fazem sentido pra você? <a href="#explainerSection">Veja as explicações aqui</a>.</p>
+    <p class="welcome-more">Termos como CDI, IR ou FGC não fazem sentido pra você? <a href="#explicacao" data-tab-link="explicacao">Veja as explicações aqui</a>.</p>
   </div>
 
   <section class="block" id="potsSection">
@@ -1078,7 +1087,9 @@
       <button type="button" class="share-btn no-print" id="exportPdfBtn">🖨️ Exportar em PDF</button>
     </div>
   </section>
+  </div>
 
+  <div class="tab-panel" data-tab-panel="metas">
   <section class="block" id="metaSection">
     <h2>Quanto preciso guardar por mês?</h2>
     <p class="section-sub">Diga qual valor você quer alcançar e em quanto tempo, e calculamos quanto precisa guardar todo mês pra chegar lá.</p>
@@ -1120,7 +1131,9 @@
       <p class="cap-info" id="metaDisclaimer">Cálculo simplificado: aplica a alíquota de <abbr class="jargon" title="Imposto de Renda — cobrado sobre o rendimento de quem não é isento.">IR</abbr> direto sobre a taxa de rendimento (quando não isento), como uma estimativa pra planejamento — não é um valor exato, já que cada aporte teria, na prática, seu próprio prazo de IR contado separadamente.</p>
     </div>
   </section>
+  </div>
 
+  <div class="tab-panel" data-tab-panel="comparar">
   <section class="block" id="compareSection">
     <h2>Qual opção compensa mais?</h2>
     <p class="section-sub">Digite quanto você tem pra guardar — já mostramos automaticamente qual banco/corretora rende mais, e outras boas alternativas, já descontando o Imposto de Renda de quem não é isento.</p>
@@ -1185,7 +1198,9 @@
     </div>
     <p class="ir-note" id="irNote"></p>
   </section>
+  </div>
 
+  <div class="tab-panel" data-tab-panel="combinar">
   <section class="block" id="combineSection">
     <h2>Combine vários investimentos</h2>
     <p class="section-sub">Divida o valor entre bancos/corretoras diferentes — vale a pena principalmente quando algum tem limite (como as caixinhas turbinadas), pra aproveitar mais de uma taxa alta ao mesmo tempo, em vez de deixar tudo numa única opção.</p>
@@ -1280,7 +1295,9 @@
       <p class="vs-winner" id="combineVsWinner"></p>
     </div>
   </section>
+  </div>
 
+  <div class="tab-panel" data-tab-panel="explicacao">
   <section class="block" id="explainerSection">
     <h2>Como funciona</h2>
     <p class="section-sub">Um resumo rápido dos termos que aparecem na calculadora, pra quem não é do mundo dos investimentos.</p>
@@ -1325,6 +1342,7 @@
       <p>Alguns bancos oferecem uma taxa mais alta só até um certo valor (ex: Caixinha Turbo do Nubank rende 115% do CDI até R$5 mil). O que passar desse limite não entra nessa taxa especial — ou fica travado pra novos depósitos (o saldo continua rendendo alto, só não aceita mais dinheiro), ou passa a render uma taxa menor automaticamente, dependendo do banco. Este site já calcula isso automaticamente sempre que uma opção tem essa condição.</p>
     </details>
   </section>
+  </div>
 
   <div class="support-box">
     <p class="support-title">☕ Gostou da Caderneta?</p>
@@ -1959,6 +1977,39 @@
     else localStorage.removeItem(THEME_KEY);
     applyTheme(next);
   });
+
+  // ---------- Abas: só uma seção principal fica visível por vez ----------
+  const tabPanels = document.querySelectorAll('.tab-panel');
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  // Compatibilidade com links/hashes antigos (ex: já compartilhados ou de
+  // dentro do próprio app) que apontavam direto pra uma seção específica.
+  const HASH_TO_TAB = {
+    potsSection: 'inicio', projectionSection: 'inicio',
+    metaSection: 'metas',
+    compareSection: 'comparar',
+    combineSection: 'combinar',
+    explainerSection: 'explicacao', explicacao: 'explicacao'
+  };
+  function activateTab(name, opts) {
+    opts = opts || {};
+    if (![...tabPanels].some(p => p.dataset.tabPanel === name)) name = 'inicio';
+    tabPanels.forEach(p => p.classList.toggle('active', p.dataset.tabPanel === name));
+    tabBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+    if (opts.scrollTop !== false) window.scrollTo({ top: 0, behavior: 'auto' });
+    if (opts.updateHash !== false) history.replaceState(null, '', '#' + name);
+  }
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => activateTab(btn.dataset.tab));
+  });
+  // Qualquer link interno tipo <a href="#explicacao"> também troca de aba,
+  // em vez de tentar rolar a página até um id que agora está escondido.
+  document.querySelectorAll('[data-tab-link]').forEach(link => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      activateTab(link.dataset.tabLink);
+    });
+  });
+  activateTab(HASH_TO_TAB[location.hash.slice(1)] || 'inicio', { updateHash: false, scrollTop: false });
 
   const WELCOME_DISMISSED_KEY = 'caderneta-welcome-dismissed';
   const welcomeBanner = document.getElementById('welcomeBanner');
