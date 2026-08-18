@@ -63,6 +63,14 @@
     },
     {
       "@type": "Question",
+      "name": "O que é o IPCA, e por que ele aparece na calculadora?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "O IPCA é o índice oficial de inflação do Brasil, medido todo mês pelo IBGE. Rendimento nominal (em reais) não conta a história toda: se o dinheiro rendeu 10% num ano mas os preços subiram 5% no período, o poder de compra só cresceu de fato uns 5%. Por isso a calculadora também busca o IPCA acumulado dos últimos 12 meses e mostra o rendimento real, que é o que sobra depois de descontar essa perda de poder de compra."
+      }
+    },
+    {
+      "@type": "Question",
       "name": "Por que o Imposto de Renda varia entre as opções?",
       "acceptedAnswer": {
         "@type": "Answer",
@@ -352,7 +360,6 @@
   }
   .theme-toggle-btn:hover { color: var(--verde); border-color: var(--verde); }
   .theme-toggle-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-  .ipca-stamp { margin-top: 0.6rem; }
   .clear-all-btn:hover { color: var(--vinho); }
   .clear-all-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
@@ -408,6 +415,45 @@
   .cdi-caption { flex-basis: 100%; font-size: 0.76rem; color: var(--ink-soft); margin-top: 0.15rem; }
   .cdi-caption.ok { color: var(--verde); }
   .cdi-caption.warn { color: var(--vinho); }
+
+  /* Linha compacta do IPCA — some junto do card do CDI em vez de duplicar
+     a caixa inteira, já que é um dado secundário (só usado no rendimento real). */
+  .ipca-line {
+    flex-basis: 100%;
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-top: 0.6rem;
+    padding-top: 0.6rem;
+    border-top: 1px dashed var(--line);
+    font-size: 0.76rem;
+    color: var(--ink-soft);
+  }
+  .ipca-input {
+    width: 3.4rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--verde);
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--line-strong);
+    padding: 0 0.1rem;
+  }
+  .refresh-btn-mini {
+    background: none;
+    border: 1px solid var(--line-strong);
+    border-radius: 3px;
+    color: var(--verde);
+    font-size: 0.76rem;
+    line-height: 1;
+    padding: 0.1rem 0.3rem;
+    cursor: pointer;
+  }
+  .refresh-btn-mini:hover { border-color: var(--verde); }
+  .refresh-btn-mini:disabled { opacity: 0.5; cursor: default; }
+  .refresh-btn-mini:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .ipca-line .cdi-caption { flex-basis: 100%; margin-top: 0.3rem; }
 
   .cdi-chart-container { margin-top: 1rem; }
   .cdi-chart-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); margin: 0 0 0.4rem; }
@@ -913,14 +959,15 @@
       <span class="unit">% ao ano</span>
       <button type="button" id="refreshCdiBtn" class="refresh-btn" title="Buscar taxa atual agora">↻ atualizar</button>
       <span class="cdi-caption" id="cdiCaption">Buscando taxa atual do Banco Central…</span>
-    </div>
 
-    <div class="cdi-stamp ipca-stamp">
-      <span class="label" title="Inflação acumulada nos últimos 12 meses (IBGE) — usada só pra mostrar o rendimento real, descontando a perda de poder de compra.">IPCA (12 meses)</span>
-      <input type="number" id="ipcaRate" step="0.01" inputmode="decimal" aria-label="Taxa IPCA acumulada em 12 meses">
-      <span class="unit">% ao ano</span>
-      <button type="button" id="refreshIpcaBtn" class="refresh-btn" title="Buscar inflação atual agora">↻ atualizar</button>
-      <span class="cdi-caption" id="ipcaCaption">Buscando inflação atual do IBGE…</span>
+      <div class="ipca-line">
+        <abbr class="jargon" title="Inflação acumulada nos últimos 12 meses (IBGE) — usada só pra calcular o rendimento real, descontando a perda de poder de compra. Veja mais em 'Como funciona'.">IPCA</abbr>
+        (inflação, 12 meses):
+        <input type="number" id="ipcaRate" step="0.01" inputmode="decimal" aria-label="Taxa IPCA acumulada em 12 meses" class="ipca-input">
+        <span class="unit">% ao ano</span>
+        <button type="button" id="refreshIpcaBtn" class="refresh-btn-mini" title="Buscar inflação atual agora">↻</button>
+        <span class="cdi-caption" id="ipcaCaption"></span>
+      </div>
     </div>
 
     <div class="cdi-chart-container" id="cdiChartContainer" hidden>
@@ -1244,6 +1291,11 @@
     </details>
 
     <details class="explainer">
+      <summary>O que é o IPCA, e por que ele aparece aqui?</summary>
+      <p>O <strong>IPCA</strong> é o índice oficial de inflação do Brasil, medido todo mês pelo IBGE — é ele que mostra o quanto os preços em geral subiram. Rendimento "em reais" (nominal) não conta a história toda: se seu dinheiro rendeu 10% num ano mas os preços subiram 5% nesse mesmo período, seu poder de compra só cresceu de verdade uns 5%, não 10%. Por isso, junto do CDI, este site também busca o IPCA acumulado dos últimos 12 meses e mostra o <strong>rendimento real</strong> — o que sobra depois de descontar essa perda de poder de compra — na seção "Qual opção compensa mais". É só uma referência: a inflação dos próximos meses pode ser diferente da dos últimos 12.</p>
+    </details>
+
+    <details class="explainer">
       <summary>Por que o Imposto de Renda varia entre as opções?</summary>
       <p>A maioria dos investimentos de renda fixa (CDB, Tesouro, fundos DI) segue uma <strong>tabela regressiva</strong>: quanto mais tempo o dinheiro fica investido, menor o imposto sobre o rendimento — de 22,5% (até 180 dias) até 15% (acima de 720 dias). Só é cobrado sobre o que você ganhou, nunca sobre o valor aplicado. Já <strong>Poupança, LCI e LCA são isentas</strong> — não pagam nada de IR sobre o rendimento, o que às vezes compensa mesmo com uma taxa nominal menor.</p>
     </details>
@@ -1348,7 +1400,8 @@
     'IR': 'Imposto de Renda — cobrado sobre o rendimento de quem não é isento.',
     'CDB': 'Certificado de Depósito Bancário — você empresta dinheiro pro banco, que devolve com juros.',
     'LCI': 'Letra de Crédito Imobiliário — como um CDB, mas isenta de IR; financia o setor imobiliário.',
-    'LCA': 'Letra de Crédito do Agronegócio — como um CDB, mas isenta de IR; financia o agronegócio.'
+    'LCA': 'Letra de Crédito do Agronegócio — como um CDB, mas isenta de IR; financia o agronegócio.',
+    'IPCA': 'Índice de Preços ao Consumidor Amplo — o índice oficial de inflação do Brasil (IBGE). Usado aqui só pra calcular o "rendimento real", ou seja, quanto sobra depois de descontar a perda de poder de compra.'
   };
   function glossarize(text) {
     let html = text;
@@ -1791,7 +1844,7 @@
   async function fetchLiveIPCA() {
     refreshIpcaBtn.disabled = true;
     ipcaCaption.className = 'cdi-caption';
-    ipcaCaption.textContent = 'Buscando inflação atual do IBGE…';
+    ipcaCaption.textContent = 'Buscando…';
     try {
       const res = await fetch(IPCA_SERIES_URL, { cache: 'no-store' });
       if (!res.ok) throw new Error('status ' + res.status);
@@ -1807,14 +1860,14 @@
       renderResults();
 
       ipcaCaption.className = 'cdi-caption ok';
-      ipcaCaption.textContent = `✓ IPCA acumulado em 12 meses, publicado em ${entry.data}. Usado só pra calcular o rendimento real (poder de compra).`;
+      ipcaCaption.textContent = `✓ publicado em ${entry.data} (IBGE)`;
     } catch (e) {
       if (state.ipcaFetchedDate) {
         ipcaCaption.className = 'cdi-caption warn';
-        ipcaCaption.textContent = `⚠ Não consegui atualizar agora — mostrando o último valor confirmado em ${state.ipcaFetchedDate}.`;
+        ipcaCaption.textContent = `⚠ não atualizou — último valor de ${state.ipcaFetchedDate}`;
       } else {
         ipcaCaption.className = 'cdi-caption warn';
-        ipcaCaption.textContent = '⚠ Não consegui buscar a inflação automaticamente agora. Confira e ajuste manualmente se precisar.';
+        ipcaCaption.textContent = '⚠ não consegui buscar — ajuste manualmente';
       }
     } finally {
       refreshIpcaBtn.disabled = false;
@@ -1825,7 +1878,7 @@
   ipcaInput.addEventListener('input', () => {
     state.ipcaAnnual = parseFloat(ipcaInput.value) || 0;
     ipcaCaption.className = 'cdi-caption';
-    ipcaCaption.textContent = 'Valor personalizado — clique em "atualizar" para voltar ao IPCA oficial automático.';
+    ipcaCaption.textContent = 'valor personalizado';
     save(); renderResults();
   });
 
@@ -2294,10 +2347,11 @@
 
       const realBalance = realBalanceFor(best.netBalance, months);
       const realGain = realBalance - amount;
+      const ipcaLabel = state.ipcaAnnual.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
       if (realGain >= -0.005) {
-        winnerRealReturnEl.innerHTML = `Descontando a inflação estimada (<abbr class="jargon" title="Inflação acumulada nos últimos 12 meses, usada aqui como estimativa pro período — veja/ajuste em 'IPCA' no topo da página.">IPCA</abbr> de ${state.ipcaAnnual.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% ao ano), seu <strong>rendimento real</strong> é de <strong>${fmtBRL.format(realGain)}</strong> — ou seja, seu poder de compra aumenta em ${fmtBRL.format(realGain)}, não só o número em reais.`;
+        winnerRealReturnEl.innerHTML = glossarize(`Rendimento real (já descontando IPCA de ${ipcaLabel}% ao ano): ${fmtBRL.format(realGain)} — esse é o quanto seu poder de compra aumenta, não só o número em reais.`);
       } else {
-        winnerRealReturnEl.innerHTML = `⚠ Descontando a inflação estimada (IPCA de ${state.ipcaAnnual.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% ao ano), o <strong>rendimento real é negativo</strong> em ${fmtBRL.format(-realGain)} — nesse cenário, mesmo rendendo em reais, seu dinheiro perde poder de compra.`;
+        winnerRealReturnEl.innerHTML = glossarize(`⚠ Rendimento real negativo (já descontando IPCA de ${ipcaLabel}% ao ano): ${fmtBRL.format(realGain)} — mesmo rendendo em reais, seu dinheiro perde poder de compra nesse cenário.`);
       }
 
       lastWinnerNetGain = best.netGain;
@@ -2461,9 +2515,10 @@
     if (totalAllocated > 0) {
       const realBalance = realBalanceFor(totalAllocated + totalNet, months);
       const realGain = realBalance - totalAllocated;
-      combineRealReturnEl.textContent = realGain >= -0.005
-        ? `Rendimento real (descontando IPCA de ${state.ipcaAnnual.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% ao ano): ${fmtBRL.format(realGain)}.`
-        : `⚠ Rendimento real negativo (descontando IPCA de ${state.ipcaAnnual.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% ao ano): ${fmtBRL.format(realGain)}.`;
+      const ipcaLabel = state.ipcaAnnual.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+      combineRealReturnEl.innerHTML = glossarize(realGain >= -0.005
+        ? `Rendimento real (já descontando IPCA de ${ipcaLabel}% ao ano): ${fmtBRL.format(realGain)}.`
+        : `⚠ Rendimento real negativo (já descontando IPCA de ${ipcaLabel}% ao ano): ${fmtBRL.format(realGain)}.`);
     } else {
       combineRealReturnEl.textContent = '';
     }
