@@ -1663,18 +1663,46 @@
     return grossBalance - amount;
   }
 
-  // Calculadora reversa do simulador de metas: dado um valor-alvo, um valor
-  // inicial e uma taxa mensal líquida, resolve pro aporte mensal necessário
-  // (depósito no início de cada mês, mesma convenção usada em computeMonthSeries).
-  // Retorna null se o prazo for inválido.
-  function requiredMonthlyContribution(target, initial, months, monthlyRate) {
-    if (!months || months <= 0) return null;
-    if (Math.abs(monthlyRate) < 1e-9) {
-      return (target - initial) / months;
+  // Simula o saldo final do simulador de metas pra um aporte mensal candidato,
+  // mês a mês — igual ao computeMonthSeries, respeitando o limite de valor
+  // (cap) quando o produto tiver um, em vez de assumir uma taxa única fixa.
+  function simulateGoalBalance(initial, monthlyContribution, months, item, netCapRate, netExcessRate) {
+    let sb = splitAmount(initial, item.cap);
+    for (let m = 1; m <= months; m++) {
+      const funded = monthlyContribution > 0 ? addToSplit(sb, monthlyContribution, item.cap) : sb;
+      const capGain = funded.capPart * netCapRate;
+      const excessGain = funded.excessPart > 0 ? funded.excessPart * netExcessRate : 0;
+      sb = { capPart: funded.capPart + capGain, excessPart: funded.excessPart + excessGain };
     }
-    const growthFactor = Math.pow(1 + monthlyRate, months);
-    const annuityFactor = ((growthFactor - 1) / monthlyRate) * (1 + monthlyRate);
-    return (target - initial * growthFactor) / annuityFactor;
+    return sb.capPart + sb.excessPart;
+  }
+
+  // Calculadora reversa do simulador de metas: dado um valor-alvo, um valor
+  // inicial e um produto (com limite de valor opcional), resolve pro aporte
+  // mensal necessário. Como o limite de valor torna a taxa efetiva não-linear
+  // (o saldo pode "vazar" pra taxa do excedente no meio do caminho), resolve
+  // por busca binária em vez de fórmula fechada — funciona igual pra produtos
+  // sem limite, e certinho pra produtos com limite.
+  function requiredMonthlyContribution(target, initial, months, item, netCapRate, netExcessRate) {
+    if (!months || months <= 0) return null;
+
+    const balanceWithZero = simulateGoalBalance(initial, 0, months, item, netCapRate, netExcessRate);
+    if (balanceWithZero >= target) return 0;
+
+    let lo = 0, hi = Math.max(1, (target - initial) / months || 1);
+    let balHi = simulateGoalBalance(initial, hi, months, item, netCapRate, netExcessRate);
+    let guard = 0;
+    while (balHi < target && guard < 100) {
+      hi *= 2;
+      balHi = simulateGoalBalance(initial, hi, months, item, netCapRate, netExcessRate);
+      guard++;
+    }
+    for (let i = 0; i < 60; i++) {
+      const mid = (lo + hi) / 2;
+      const bal = simulateGoalBalance(initial, mid, months, item, netCapRate, netExcessRate);
+      if (bal < target) lo = mid; else hi = mid;
+    }
+    return hi;
   }
 
   // Greedy allocator: ranks every catalog product by its net-of-tax monthly
@@ -2874,10 +2902,11 @@
   function renderMeta() {
     const months = parseInt(metaMonthsInput.value, 10) || 0;
     const product = currentMetaProduct();
-    const { mode, rate, exempt, cap, note } = product;
+    const { exempt, cap, note } = product;
 
     if (cap) {
-      metaProductNoteEl.innerHTML = glossarize(`⚠ Esse investimento tem limite de valor (até ${fmtBRL.format(cap)} na taxa cheia) — a simulação abaixo não considera isso, então se o saldo passar do limite ao longo do caminho, o rendimento real pode ficar um pouco menor do que o calculado aqui.${note ? ' ' + note : ''}`);
+      const excessLabel = product.excessMode === 'fixed' ? `${product.excessRate}% a.m.` : `${product.excessRate}% do CDI`;
+      metaProductNoteEl.innerHTML = glossarize(`Rende a taxa cheia até ${fmtBRL.format(cap)}; o que passar disso rende ${excessLabel} — a simulação já considera essa troca de taxa no meio do caminho.${note ? ' ' + note : ''}`);
     } else if (note) {
       metaProductNoteEl.innerHTML = glossarize(note);
     } else {
@@ -2890,19 +2919,19 @@
       return;
     }
 
-    const nominalMonthlyRate = monthlyRateFor(mode, rate);
     const ir = irRateForMonths(months);
     // Simplificação: aplica a alíquota de IR direto na taxa (não só no ganho final) —
-    // ver aviso na tela. Mantém o mesmo espírito das outras seções, só que resolvendo
-    // pro aporte em vez de pro saldo. Também não considera o limite de valor (cap),
-    // se o produto tiver um — ver aviso acima quando for o caso.
-    const netMonthlyRate = exempt ? nominalMonthlyRate : nominalMonthlyRate * (1 - ir.rate);
+    // ver aviso no card de resultado. O limite de valor (cap), quando existe, já é
+    // simulado mês a mês de verdade (ver simulateGoalBalance), não é aproximado.
+    const nominalCapRate = monthlyRateFor(product.mode, product.rate);
+    const nominalExcessRate = cap ? excessMonthlyRate(product) : 0;
+    const netCapRate = exempt ? nominalCapRate : nominalCapRate * (1 - ir.rate);
+    const netExcessRate = exempt ? nominalExcessRate : nominalExcessRate * (1 - ir.rate);
 
-    const required = requiredMonthlyContribution(metaTarget, metaInitial, months, netMonthlyRate);
+    const required = requiredMonthlyContribution(metaTarget, metaInitial, months, product, netCapRate, netExcessRate);
 
     if (required <= 0) {
-      const growthFactor = Math.pow(1 + netMonthlyRate, months);
-      const projected = metaInitial * growthFactor;
+      const projected = simulateGoalBalance(metaInitial, 0, months, product, netCapRate, netExcessRate);
       metaMonthlyResultEl.textContent = 'R$ 0,00 🎉';
       metaBreakdownEl.textContent = `Só com o valor inicial rendendo, você já deve alcançar a meta — a estimativa é terminar com ${fmtBRL.format(projected)} em ${months} ${months === 1 ? 'mês' : 'meses'}, sem precisar guardar mais nada.`;
       return;
