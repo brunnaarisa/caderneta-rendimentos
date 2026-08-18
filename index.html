@@ -1102,17 +1102,76 @@
         <label for="metaTarget">Valor da meta (R$)</label>
         <input type="text" inputmode="decimal" id="metaTarget" placeholder="0,00">
       </div>
-      <div class="field" id="metaInitialField">
-        <label for="metaInitial">Já tenho guardado (R$, opcional)</label>
-        <input type="text" inputmode="decimal" id="metaInitial" placeholder="0,00">
-      </div>
-      <div class="field cap-toggle-field" id="metaUsePotsField" hidden>
-        <label class="cap-toggle-label"><input type="checkbox" id="metaUsePots"> usar minhas caixinhas atuais (com a taxa de cada uma) em vez de um valor único</label>
-      </div>
       <div class="field">
         <label for="metaMonths">Prazo (meses)</label>
         <input type="number" id="metaMonths" min="1" max="480" value="12">
       </div>
+    </div>
+
+    <h3 style="font-size: 0.98rem; margin: 1.4rem 0 0.35rem;">O que você já tem guardado (opcional)</h3>
+    <p class="section-sub">Adicione um ou mais investimentos que já tem hoje — pode misturar bancos diferentes, cada um rendendo na sua própria taxa. Se preferir, importe direto da aba "Caixinhas".</p>
+
+    <div class="picker">
+      <div class="field">
+        <label for="metaHoldingBank">Banco / corretora</label>
+        <select id="metaHoldingBank"></select>
+      </div>
+      <div class="field" id="metaHoldingCustomBankField" hidden>
+        <label for="metaHoldingCustomBank">Nome do banco/corretora</label>
+        <input type="text" id="metaHoldingCustomBank" placeholder="ex: Banco XP">
+      </div>
+      <div class="field" id="metaHoldingProductField">
+        <label for="metaHoldingProduct">Investimento</label>
+        <select id="metaHoldingProduct"></select>
+      </div>
+      <div class="field" id="metaHoldingCustomNameField" hidden>
+        <label for="metaHoldingCustomName">Nome do investimento</label>
+        <input type="text" id="metaHoldingCustomName" placeholder="ex: CDB negociado">
+      </div>
+      <div class="field" id="metaHoldingCustomModeField" hidden>
+        <label for="metaHoldingCustomMode">Como rende</label>
+        <select id="metaHoldingCustomMode">
+          <option value="cdi">% do CDI</option>
+          <option value="fixed">Taxa fixa a.m.</option>
+        </select>
+      </div>
+      <div class="field rate-field" id="metaHoldingCustomRateField" hidden>
+        <label for="metaHoldingCustomRate">Taxa</label>
+        <input type="number" id="metaHoldingCustomRate" step="0.01" min="0" value="100">
+      </div>
+      <div class="field cap-toggle-field" id="metaHoldingCustomExemptField" hidden>
+        <label class="cap-toggle-label"><input type="checkbox" id="metaHoldingCustomExempt"> isento de IR (ex: LCI/LCA)</label>
+      </div>
+      <div class="field">
+        <label for="metaHoldingAmount">Valor guardado (R$)</label>
+        <input type="text" inputmode="decimal" id="metaHoldingAmount" placeholder="0,00">
+      </div>
+      <button class="add-btn ghost" id="addMetaHolding" type="button">+ Adicionar</button>
+    </div>
+
+    <div class="add-row" style="padding-top: 0;">
+      <button class="add-btn" id="importPotsBtn" type="button">↺ importar caixinhas da aba "Caixinhas"</button>
+    </div>
+
+    <div class="table-scroll">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th>Banco / Opção</th>
+            <th>Valor guardado</th>
+            <th>Saldo estimado</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="metaHoldingsBody"></tbody>
+      </table>
+    </div>
+    <p class="cap-info" id="metaHoldingsTotal"></p>
+
+    <h3 style="font-size: 0.98rem; margin: 1.6rem 0 0.35rem;">Onde vão os novos aportes mensais</h3>
+    <p class="section-sub">Escolha onde o valor que falta pra meta vai ser guardado todo mês.</p>
+
+    <div class="picker">
       <div class="field">
         <label for="metaBank">Banco / corretora</label>
         <select id="metaBank"></select>
@@ -1141,7 +1200,6 @@
       </div>
     </div>
     <p class="cap-info" id="metaProductNote"></p>
-    <p class="cap-info" id="metaPotsBreakdown"></p>
 
     <div class="winner-card" id="metaResultCard">
       <div class="winner-figures">
@@ -1572,7 +1630,8 @@
       months: 3,
       pots: [],
       compareAmount: 0,
-      combination: []
+      combination: [],
+      metaHoldings: []
     };
   }
 
@@ -1584,6 +1643,7 @@
       if (!Array.isArray(parsed.pots)) return defaultState();
       if (typeof parsed.compareAmount !== 'number') parsed.compareAmount = parsed.pots.reduce((a, p) => a + p.amount, 0);
       if (!Array.isArray(parsed.combination)) parsed.combination = [];
+      if (!Array.isArray(parsed.metaHoldings)) parsed.metaHoldings = [];
       if (typeof parsed.ipcaAnnual !== 'number') parsed.ipcaAnnual = 4.50;
       if (parsed.ipcaFetchedDate === undefined) parsed.ipcaFetchedDate = null;
       parsed.pots.forEach(p => {
@@ -2857,11 +2917,6 @@
 
   // ---------- Simulador de metas ----------
   const metaTargetInput = document.getElementById('metaTarget');
-  const metaInitialField = document.getElementById('metaInitialField');
-  const metaInitialInput = document.getElementById('metaInitial');
-  const metaUsePotsField = document.getElementById('metaUsePotsField');
-  const metaUsePotsInput = document.getElementById('metaUsePots');
-  const metaPotsBreakdownEl = document.getElementById('metaPotsBreakdown');
   const metaMonthsInput = document.getElementById('metaMonths');
   const metaBankSelect = document.getElementById('metaBank');
   const metaCustomBankField = document.getElementById('metaCustomBankField');
@@ -2917,25 +2972,195 @@
   }
 
   let metaTarget = 0;
-  let metaInitial = 0;
 
-  // Soma o saldo final estimado de todas as caixinhas já cadastradas, cada
-  // uma crescendo na sua própria taxa/limite — é a "mistura de investimentos"
-  // real da pessoa (ex: um pouco no Nubank, um pouco no BB), não um valor único.
-  function computePotsFinalTotal(months) {
-    const ir = irRateForMonths(months);
-    let total = 0;
-    const lines = [];
+  // ---- Lista de "o que já tenho guardado" (mistura de investimentos) ----
+  const metaHoldingBankSelect = document.getElementById('metaHoldingBank');
+  const metaHoldingCustomBankField = document.getElementById('metaHoldingCustomBankField');
+  const metaHoldingCustomBankInput = document.getElementById('metaHoldingCustomBank');
+  const metaHoldingProductField = document.getElementById('metaHoldingProductField');
+  const metaHoldingProductSelect = document.getElementById('metaHoldingProduct');
+  const metaHoldingCustomNameField = document.getElementById('metaHoldingCustomNameField');
+  const metaHoldingCustomNameInput = document.getElementById('metaHoldingCustomName');
+  const metaHoldingCustomModeField = document.getElementById('metaHoldingCustomModeField');
+  const metaHoldingCustomModeSelect = document.getElementById('metaHoldingCustomMode');
+  const metaHoldingCustomRateField = document.getElementById('metaHoldingCustomRateField');
+  const metaHoldingCustomRateInput = document.getElementById('metaHoldingCustomRate');
+  const metaHoldingCustomExemptField = document.getElementById('metaHoldingCustomExemptField');
+  const metaHoldingCustomExemptInput = document.getElementById('metaHoldingCustomExempt');
+  const metaHoldingAmountInput = document.getElementById('metaHoldingAmount');
+  const addMetaHoldingBtn = document.getElementById('addMetaHolding');
+  const importPotsBtn = document.getElementById('importPotsBtn');
+  const metaHoldingsBody = document.getElementById('metaHoldingsBody');
+  const metaHoldingsTotalEl = document.getElementById('metaHoldingsTotal');
+
+  const META_HOLDING_CUSTOM_BANK = '__custom_bank__';
+
+  function populateMetaHoldingBankSelect() {
+    metaHoldingBankSelect.innerHTML = Object.keys(BANK_CATALOG).map(b => `<option value="${b}">${b}</option>`).join('')
+      + `<option value="${META_HOLDING_CUSTOM_BANK}">Outro (digitar manualmente)…</option>`;
+  }
+  function populateMetaHoldingProductSelect() {
+    const products = BANK_CATALOG[metaHoldingBankSelect.value] || [];
+    metaHoldingProductSelect.innerHTML = products.map((p, i) => `<option value="${i}">${p.name}</option>`).join('');
+  }
+  function updateMetaHoldingPickerMode() {
+    const isCustom = metaHoldingBankSelect.value === META_HOLDING_CUSTOM_BANK;
+    metaHoldingCustomBankField.hidden = !isCustom;
+    metaHoldingProductField.hidden = isCustom;
+    metaHoldingCustomNameField.hidden = !isCustom;
+    metaHoldingCustomModeField.hidden = !isCustom;
+    metaHoldingCustomRateField.hidden = !isCustom;
+    metaHoldingCustomExemptField.hidden = !isCustom;
+    if (!isCustom) populateMetaHoldingProductSelect();
+  }
+  metaHoldingBankSelect.addEventListener('change', updateMetaHoldingPickerMode);
+  populateMetaHoldingBankSelect();
+  updateMetaHoldingPickerMode();
+  maskCurrencyInput(metaHoldingAmountInput, () => {});
+
+  addMetaHoldingBtn.addEventListener('click', () => {
+    const amt = parseBRLMasked(metaHoldingAmountInput.value);
+    if (amt <= 0) { metaHoldingAmountInput.focus(); return; }
+
+    if (metaHoldingBankSelect.value === META_HOLDING_CUSTOM_BANK) {
+      const bankName = metaHoldingCustomBankInput.value.trim();
+      if (!bankName) { metaHoldingCustomBankInput.focus(); return; }
+      const productName = metaHoldingCustomNameInput.value.trim() || 'Investimento personalizado';
+      state.metaHoldings.push({
+        id: crypto.randomUUID(),
+        bank: bankName,
+        name: productName,
+        mode: metaHoldingCustomModeSelect.value,
+        rate: parseFloat(metaHoldingCustomRateInput.value) || 0,
+        exempt: metaHoldingCustomExemptInput.checked,
+        cap: null,
+        amount: amt
+      });
+      metaHoldingCustomBankInput.value = '';
+      metaHoldingCustomNameInput.value = '';
+    } else {
+      const bankName = metaHoldingBankSelect.value;
+      const idx = parseInt(metaHoldingProductSelect.value, 10);
+      const template = (BANK_CATALOG[bankName] || [])[idx];
+      if (!template) return;
+      state.metaHoldings.push({
+        id: crypto.randomUUID(),
+        bank: bankName,
+        name: template.name,
+        mode: template.mode,
+        rate: template.rate,
+        exempt: !!template.exempt,
+        cap: template.cap ?? null,
+        excessMode: template.excessMode,
+        excessRate: template.excessRate,
+        note: template.note,
+        amount: amt
+      });
+    }
+    save();
+    metaHoldingAmountInput.value = '';
+    renderMetaHoldings();
+  });
+
+  importPotsBtn.addEventListener('click', () => {
+    if (state.pots.length === 0) return;
     state.pots.forEach(pot => {
-      const nominalCap = monthlyRateFor(pot.mode, pot.rate);
-      const nominalExcess = pot.cap ? excessMonthlyRate(pot) : 0;
-      const netCap = pot.exempt ? nominalCap : nominalCap * (1 - ir.rate);
-      const netExcess = pot.exempt ? nominalExcess : nominalExcess * (1 - ir.rate);
-      const final = simulateGoalBalance(pot.amount, 0, months, pot, netCap, netExcess);
-      total += final;
-      lines.push(`${pot.name} (${fmtBRL.format(pot.amount)})`);
+      state.metaHoldings.push({
+        id: crypto.randomUUID(),
+        bank: pot.name.split(' — ')[0] || pot.name,
+        name: pot.name.split(' — ').slice(1).join(' — ') || pot.name,
+        mode: pot.mode, rate: pot.rate, exempt: !!pot.exempt, cap: pot.cap ?? null,
+        excessMode: pot.excessMode, excessRate: pot.excessRate, note: pot.note,
+        amount: pot.amount
+      });
     });
-    return { total, lines, principal: state.pots.reduce((a, p) => a + p.amount, 0) };
+    save();
+    renderMetaHoldings();
+  });
+
+  // Simula o saldo final de cada item da lista (cada um na sua própria taxa/
+  // limite) e monta a tabela — é a "mistura de investimentos" pra meta.
+  function renderMetaHoldings() {
+    metaHoldingsBody.innerHTML = '';
+    const months = parseInt(metaMonthsInput.value, 10) || 0;
+    const ir = irRateForMonths(Math.max(months, 1));
+
+    state.metaHoldings.forEach(item => {
+      const tr = document.createElement('tr');
+
+      const nameTd = document.createElement('td');
+      const nameCell = document.createElement('div');
+      nameCell.className = 'name-cell';
+      const bankLabel = document.createElement('div');
+      bankLabel.className = 'bank-label';
+      bankLabel.textContent = item.bank;
+      nameCell.appendChild(bankLabel);
+      const nameLine = document.createElement('div');
+      nameLine.className = 'combine-name';
+      nameLine.textContent = item.name;
+      nameCell.appendChild(nameLine);
+      nameTd.appendChild(nameCell);
+      tr.appendChild(nameTd);
+
+      const amountTd = document.createElement('td');
+      amountTd.className = 'mono';
+      amountTd.textContent = fmtBRL.format(item.amount);
+      tr.appendChild(amountTd);
+
+      const estTd = document.createElement('td');
+      estTd.className = 'mono';
+      if (months > 0) {
+        const nominalCap = monthlyRateFor(item.mode, item.rate);
+        const nominalExcess = item.cap ? excessMonthlyRate(item) : 0;
+        const netCap = item.exempt ? nominalCap : nominalCap * (1 - ir.rate);
+        const netExcess = item.exempt ? nominalExcess : nominalExcess * (1 - ir.rate);
+        const final = simulateGoalBalance(item.amount, 0, months, item, netCap, netExcess);
+        estTd.textContent = fmtBRL.format(final);
+      } else {
+        estTd.textContent = '—';
+      }
+      tr.appendChild(estTd);
+
+      const removeTd = document.createElement('td');
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'compare-remove';
+      removeBtn.textContent = '✕';
+      removeBtn.setAttribute('aria-label', 'Remover da lista');
+      removeBtn.addEventListener('click', () => {
+        state.metaHoldings = state.metaHoldings.filter(i => i.id !== item.id);
+        save(); renderMetaHoldings();
+      });
+      removeTd.appendChild(removeBtn);
+      tr.appendChild(removeTd);
+
+      metaHoldingsBody.appendChild(tr);
+    });
+
+    if (state.metaHoldings.length === 0) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td colspan="4" style="text-align:center; color:var(--ink-soft);">Nenhum investimento adicionado ainda — é opcional, pode calcular a meta do zero também.</td>`;
+      metaHoldingsBody.appendChild(tr);
+      metaHoldingsTotalEl.textContent = '';
+    } else if (months > 0) {
+      const total = metaHoldingsFinalTotal(months);
+      metaHoldingsTotalEl.textContent = `Total estimado em ${months} ${months === 1 ? 'mês' : 'meses'}: ${fmtBRL.format(total)} (cada investimento rendendo na sua própria taxa).`;
+    } else {
+      metaHoldingsTotalEl.textContent = '';
+    }
+
+    renderMeta();
+  }
+
+  function metaHoldingsFinalTotal(months) {
+    const ir = irRateForMonths(months);
+    return state.metaHoldings.reduce((sum, item) => {
+      const nominalCap = monthlyRateFor(item.mode, item.rate);
+      const nominalExcess = item.cap ? excessMonthlyRate(item) : 0;
+      const netCap = item.exempt ? nominalCap : nominalCap * (1 - ir.rate);
+      const netExcess = item.exempt ? nominalExcess : nominalExcess * (1 - ir.rate);
+      return sum + simulateGoalBalance(item.amount, 0, months, item, netCap, netExcess);
+    }, 0);
   }
 
   function renderMeta() {
@@ -2952,16 +3177,9 @@
       metaProductNoteEl.textContent = '';
     }
 
-    const havePots = state.pots.length > 0;
-    metaUsePotsField.hidden = !havePots;
-    if (!havePots) metaUsePotsInput.checked = false;
-    const usingPots = havePots && metaUsePotsInput.checked;
-    metaInitialField.hidden = usingPots;
-
     if (metaTarget <= 0 || months <= 0) {
       metaMonthlyResultEl.textContent = '—';
       metaBreakdownEl.textContent = 'Preencha o valor da meta e o prazo pra calcular.';
-      metaPotsBreakdownEl.textContent = '';
       return;
     }
 
@@ -2974,26 +3192,15 @@
     const netCapRate = exempt ? nominalCapRate : nominalCapRate * (1 - ir.rate);
     const netExcessRate = exempt ? nominalExcessRate : nominalExcessRate * (1 - ir.rate);
 
-    let required, baseFutureValue, basePrincipal;
-
-    if (usingPots) {
-      const potsCalc = computePotsFinalTotal(months);
-      baseFutureValue = potsCalc.total;
-      basePrincipal = potsCalc.principal;
-      required = requiredMonthlyContribution(metaTarget - baseFutureValue, 0, months, product, netCapRate, netExcessRate);
-      metaPotsBreakdownEl.innerHTML = glossarize(`Misturando o que já está guardado — ${potsCalc.lines.join(', ')} — a estimativa é ${fmtBRL.format(baseFutureValue)} em ${months} ${months === 1 ? 'mês' : 'meses'} (cada caixinha rendendo na sua própria taxa), antes de contar novos aportes.`);
-    } else {
-      baseFutureValue = simulateGoalBalance(metaInitial, 0, months, product, netCapRate, netExcessRate);
-      basePrincipal = metaInitial;
-      required = requiredMonthlyContribution(metaTarget, metaInitial, months, product, netCapRate, netExcessRate);
-      metaPotsBreakdownEl.textContent = '';
-    }
+    const basePrincipal = state.metaHoldings.reduce((a, i) => a + i.amount, 0);
+    const baseFutureValue = metaHoldingsFinalTotal(months);
+    const required = requiredMonthlyContribution(metaTarget - baseFutureValue, 0, months, product, netCapRate, netExcessRate);
 
     if (required === null) return;
 
     if (required <= 0) {
       metaMonthlyResultEl.textContent = 'R$ 0,00 🎉';
-      metaBreakdownEl.textContent = `Só com o que você já tem rendendo, você já deve alcançar a meta — a estimativa é terminar com ${fmtBRL.format(baseFutureValue)} em ${months} ${months === 1 ? 'mês' : 'meses'}, sem precisar guardar mais nada.`;
+      metaBreakdownEl.textContent = `Só com o que você já tem guardado rendendo, você já deve alcançar a meta — a estimativa é terminar com ${fmtBRL.format(baseFutureValue)} em ${months} ${months === 1 ? 'mês' : 'meses'}, sem precisar guardar mais nada.`;
       return;
     }
 
@@ -3001,12 +3208,11 @@
     const totalContributed = required * months;
     const totalIn = basePrincipal + totalContributed;
     const totalGain = metaTarget - totalIn;
-    metaBreakdownEl.textContent = `Guardando ${fmtBRL.format(required)} por mês durante ${months} ${months === 1 ? 'mês' : 'meses'} (${fmtBRL.format(totalContributed)} no total, além do que já está guardado), você deve chegar a ${fmtBRL.format(metaTarget)} — sendo ${fmtBRL.format(totalGain)} de rendimento no total (o novo aporte mensal ${exempt ? 'é isento de IR' : `já descontando IR de ${(ir.rate * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`}).`;
+    metaBreakdownEl.textContent = `Guardando ${fmtBRL.format(required)} por mês durante ${months} ${months === 1 ? 'mês' : 'meses'}${basePrincipal > 0 ? ` (além do que já está guardado)` : ''}, você deve chegar a ${fmtBRL.format(metaTarget)} — sendo ${fmtBRL.format(totalGain)} de rendimento no total (o novo aporte mensal ${exempt ? 'é isento de IR' : `já descontando IR de ${(ir.rate * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`}).`;
   }
 
   maskCurrencyInput(metaTargetInput, (value) => { metaTarget = value; renderMeta(); });
-  maskCurrencyInput(metaInitialInput, (value) => { metaInitial = value; renderMeta(); });
-  metaMonthsInput.addEventListener('input', renderMeta);
+  metaMonthsInput.addEventListener('input', renderMetaHoldings);
   metaBankSelect.addEventListener('change', () => { updateMetaPickerMode(); renderMeta(); });
   metaProductSelect.addEventListener('change', renderMeta);
   metaCustomModeSelect.addEventListener('change', () => {
@@ -3015,8 +3221,7 @@
   });
   metaCustomRateInput.addEventListener('input', renderMeta);
   metaCustomExemptInput.addEventListener('change', renderMeta);
-  metaUsePotsInput.addEventListener('change', renderMeta);
-  renderMeta();
+  renderMetaHoldings();
 
   function renderCatalogFreshness() {
     const el = document.getElementById('catalogFreshness');
