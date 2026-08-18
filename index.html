@@ -1040,6 +1040,9 @@
         <label for="potCustomRate">Taxa</label>
         <input type="number" id="potCustomRate" step="0.01" min="0" value="100">
       </div>
+      <div class="field cap-toggle-field" id="potCustomExemptField" hidden>
+        <label class="cap-toggle-label"><input type="checkbox" id="potCustomExempt"> isento de IR (ex: LCI/LCA)</label>
+      </div>
       <div class="field">
         <label for="potAmount">Valor aplicado (R$)</label>
         <input type="text" inputmode="decimal" id="potAmount" placeholder="0,00">
@@ -1099,9 +1102,12 @@
         <label for="metaTarget">Valor da meta (R$)</label>
         <input type="text" inputmode="decimal" id="metaTarget" placeholder="0,00">
       </div>
-      <div class="field">
+      <div class="field" id="metaInitialField">
         <label for="metaInitial">Já tenho guardado (R$, opcional)</label>
         <input type="text" inputmode="decimal" id="metaInitial" placeholder="0,00">
+      </div>
+      <div class="field cap-toggle-field" id="metaUsePotsField" hidden>
+        <label class="cap-toggle-label"><input type="checkbox" id="metaUsePots"> usar minhas caixinhas atuais (com a taxa de cada uma) em vez de um valor único</label>
       </div>
       <div class="field">
         <label for="metaMonths">Prazo (meses)</label>
@@ -1135,6 +1141,7 @@
       </div>
     </div>
     <p class="cap-info" id="metaProductNote"></p>
+    <p class="cap-info" id="metaPotsBreakdown"></p>
 
     <div class="winner-card" id="metaResultCard">
       <div class="winner-figures">
@@ -1579,7 +1586,10 @@
       if (!Array.isArray(parsed.combination)) parsed.combination = [];
       if (typeof parsed.ipcaAnnual !== 'number') parsed.ipcaAnnual = 4.50;
       if (parsed.ipcaFetchedDate === undefined) parsed.ipcaFetchedDate = null;
-      parsed.pots.forEach(p => { if (typeof p.monthlyContribution !== 'number') p.monthlyContribution = 0; });
+      parsed.pots.forEach(p => {
+        if (typeof p.monthlyContribution !== 'number') p.monthlyContribution = 0;
+        if (typeof p.exempt !== 'boolean') p.exempt = false;
+      });
       return parsed;
     } catch (e) {
       return defaultState();
@@ -1754,6 +1764,8 @@
   const potCustomModeSelect = document.getElementById('potCustomMode');
   const potCustomRateField = document.getElementById('potCustomRateField');
   const potCustomRateInput = document.getElementById('potCustomRate');
+  const potCustomExemptField = document.getElementById('potCustomExemptField');
+  const potCustomExemptInput = document.getElementById('potCustomExempt');
   const potAmountInput = document.getElementById('potAmount');
   const addPotBtn = document.getElementById('addPot');
   const monthsRange = document.getElementById('monthsRange');
@@ -1850,6 +1862,7 @@
     potCustomNameField.hidden = !isCustom;
     potCustomModeField.hidden = !isCustom;
     potCustomRateField.hidden = !isCustom;
+    potCustomExemptField.hidden = !isCustom;
     if (!isCustom) populatePotProductSelect();
   }
   potBankSelect.addEventListener('change', updatePotPickerMode);
@@ -2302,6 +2315,7 @@
     totalMonth1El.textContent = '+ ' + fmtBRL.format(totalMonth1);
 
     renderProjection();
+    renderMeta();
   }
 
   // Shared by any "list of amounts that grow over time" table: each item's
@@ -2726,6 +2740,7 @@
         monthlyContribution: 0,
         mode: potCustomModeSelect.value,
         rate: parseFloat(potCustomRateInput.value) || 0,
+        exempt: potCustomExemptInput.checked,
         cap: null
       });
       save();
@@ -2745,6 +2760,7 @@
         monthlyContribution: 0,
         mode: template.mode,
         rate: template.rate,
+        exempt: !!template.exempt,
         cap: template.cap ?? null,
         excessMode: template.excessMode,
         excessRate: template.excessRate,
@@ -2841,7 +2857,11 @@
 
   // ---------- Simulador de metas ----------
   const metaTargetInput = document.getElementById('metaTarget');
+  const metaInitialField = document.getElementById('metaInitialField');
   const metaInitialInput = document.getElementById('metaInitial');
+  const metaUsePotsField = document.getElementById('metaUsePotsField');
+  const metaUsePotsInput = document.getElementById('metaUsePots');
+  const metaPotsBreakdownEl = document.getElementById('metaPotsBreakdown');
   const metaMonthsInput = document.getElementById('metaMonths');
   const metaBankSelect = document.getElementById('metaBank');
   const metaCustomBankField = document.getElementById('metaCustomBankField');
@@ -2899,6 +2919,25 @@
   let metaTarget = 0;
   let metaInitial = 0;
 
+  // Soma o saldo final estimado de todas as caixinhas já cadastradas, cada
+  // uma crescendo na sua própria taxa/limite — é a "mistura de investimentos"
+  // real da pessoa (ex: um pouco no Nubank, um pouco no BB), não um valor único.
+  function computePotsFinalTotal(months) {
+    const ir = irRateForMonths(months);
+    let total = 0;
+    const lines = [];
+    state.pots.forEach(pot => {
+      const nominalCap = monthlyRateFor(pot.mode, pot.rate);
+      const nominalExcess = pot.cap ? excessMonthlyRate(pot) : 0;
+      const netCap = pot.exempt ? nominalCap : nominalCap * (1 - ir.rate);
+      const netExcess = pot.exempt ? nominalExcess : nominalExcess * (1 - ir.rate);
+      const final = simulateGoalBalance(pot.amount, 0, months, pot, netCap, netExcess);
+      total += final;
+      lines.push(`${pot.name} (${fmtBRL.format(pot.amount)})`);
+    });
+    return { total, lines, principal: state.pots.reduce((a, p) => a + p.amount, 0) };
+  }
+
   function renderMeta() {
     const months = parseInt(metaMonthsInput.value, 10) || 0;
     const product = currentMetaProduct();
@@ -2913,9 +2952,16 @@
       metaProductNoteEl.textContent = '';
     }
 
+    const havePots = state.pots.length > 0;
+    metaUsePotsField.hidden = !havePots;
+    if (!havePots) metaUsePotsInput.checked = false;
+    const usingPots = havePots && metaUsePotsInput.checked;
+    metaInitialField.hidden = usingPots;
+
     if (metaTarget <= 0 || months <= 0) {
       metaMonthlyResultEl.textContent = '—';
       metaBreakdownEl.textContent = 'Preencha o valor da meta e o prazo pra calcular.';
+      metaPotsBreakdownEl.textContent = '';
       return;
     }
 
@@ -2928,20 +2974,34 @@
     const netCapRate = exempt ? nominalCapRate : nominalCapRate * (1 - ir.rate);
     const netExcessRate = exempt ? nominalExcessRate : nominalExcessRate * (1 - ir.rate);
 
-    const required = requiredMonthlyContribution(metaTarget, metaInitial, months, product, netCapRate, netExcessRate);
+    let required, baseFutureValue, basePrincipal;
+
+    if (usingPots) {
+      const potsCalc = computePotsFinalTotal(months);
+      baseFutureValue = potsCalc.total;
+      basePrincipal = potsCalc.principal;
+      required = requiredMonthlyContribution(metaTarget - baseFutureValue, 0, months, product, netCapRate, netExcessRate);
+      metaPotsBreakdownEl.innerHTML = glossarize(`Misturando o que já está guardado — ${potsCalc.lines.join(', ')} — a estimativa é ${fmtBRL.format(baseFutureValue)} em ${months} ${months === 1 ? 'mês' : 'meses'} (cada caixinha rendendo na sua própria taxa), antes de contar novos aportes.`);
+    } else {
+      baseFutureValue = simulateGoalBalance(metaInitial, 0, months, product, netCapRate, netExcessRate);
+      basePrincipal = metaInitial;
+      required = requiredMonthlyContribution(metaTarget, metaInitial, months, product, netCapRate, netExcessRate);
+      metaPotsBreakdownEl.textContent = '';
+    }
+
+    if (required === null) return;
 
     if (required <= 0) {
-      const projected = simulateGoalBalance(metaInitial, 0, months, product, netCapRate, netExcessRate);
       metaMonthlyResultEl.textContent = 'R$ 0,00 🎉';
-      metaBreakdownEl.textContent = `Só com o valor inicial rendendo, você já deve alcançar a meta — a estimativa é terminar com ${fmtBRL.format(projected)} em ${months} ${months === 1 ? 'mês' : 'meses'}, sem precisar guardar mais nada.`;
+      metaBreakdownEl.textContent = `Só com o que você já tem rendendo, você já deve alcançar a meta — a estimativa é terminar com ${fmtBRL.format(baseFutureValue)} em ${months} ${months === 1 ? 'mês' : 'meses'}, sem precisar guardar mais nada.`;
       return;
     }
 
     metaMonthlyResultEl.textContent = fmtBRL.format(required);
     const totalContributed = required * months;
-    const totalIn = metaInitial + totalContributed;
+    const totalIn = basePrincipal + totalContributed;
     const totalGain = metaTarget - totalIn;
-    metaBreakdownEl.textContent = `Guardando ${fmtBRL.format(required)} por mês durante ${months} ${months === 1 ? 'mês' : 'meses'} (${fmtBRL.format(totalContributed)} no total, além do valor inicial), você deve chegar a ${fmtBRL.format(metaTarget)} — sendo ${fmtBRL.format(totalGain)} de rendimento (${exempt ? 'isento de IR' : `já descontando IR de ${(ir.rate * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`}).`;
+    metaBreakdownEl.textContent = `Guardando ${fmtBRL.format(required)} por mês durante ${months} ${months === 1 ? 'mês' : 'meses'} (${fmtBRL.format(totalContributed)} no total, além do que já está guardado), você deve chegar a ${fmtBRL.format(metaTarget)} — sendo ${fmtBRL.format(totalGain)} de rendimento no total (o novo aporte mensal ${exempt ? 'é isento de IR' : `já descontando IR de ${(ir.rate * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`}).`;
   }
 
   maskCurrencyInput(metaTargetInput, (value) => { metaTarget = value; renderMeta(); });
@@ -2955,6 +3015,7 @@
   });
   metaCustomRateInput.addEventListener('input', renderMeta);
   metaCustomExemptInput.addEventListener('change', renderMeta);
+  metaUsePotsInput.addEventListener('change', renderMeta);
   renderMeta();
 
   function renderCatalogFreshness() {
