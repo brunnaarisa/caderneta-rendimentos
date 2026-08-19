@@ -3,6 +3,9 @@
       "target": {
         "namespace": "android_app",
         "package_name": "br.com.cadernetaderendimentos.twa",
-        "sha256_cert_fingerprints": ["B9:66:6A:F7:5F:AE:A6:7D:1F:06:EC:72:91:FE:27:C1:82:79:28:21:AA:C3:51:A9:8E:4F:A1:3E:A8:DF:C3:39"]
+        "sha256_cert_fingerprints": [
+          "B9:66:6A:F7:5F:AE:A6:7D:1F:06:EC:72:91:FE:27:C1:82:79:28:21:AA:C3:51:A9:8E:4F:A1:3E:A8:DF:C3:39",
+          "AC:DF:F8:9D:26:CC:AD:30:F0:E4:99:AF:E3:3F:AA:1A:31:D2:F1:4D:68:B3:DA:0A:56:22:2C:0F:C1:1C:08:5D"
+        ]
       }
     }]
