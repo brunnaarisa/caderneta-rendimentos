@@ -154,44 +154,69 @@ async def receber_conhecimento(update: Update, context: ContextTypes.DEFAULT_TYP
 
     await update_profile(telegram_id, renda_mensal=renda, perfil_json=perfil)
 
-    # Montar mensagem de boas-vindas personalizada
-    dicas_por_objetivo = {
+    # Montar mensagem de boas-vindas personalizada por objetivo
+    blocos_objetivo = {
         "Começar a investir": (
-            "Use /investir para comparar onde seu dinheiro rende mais, "
-            "ou me pergunte qualquer dúvida sobre investimentos!"
+            "🚀 **Comece por aqui:**\n"
+            "1️⃣ /aprender — Curso do zero (não precisa saber nada!)\n"
+            "2️⃣ /oquefazer — Digo exatamente O QUE comprar hoje\n"
+            "3️⃣ /aporte — Configuro aviso mensal no dia do salário\n"
+            "4️⃣ /comocomprar — Passo a passo para comprar (com prints)\n\n"
+            "💡 _Depois de comprar, use /comprei para eu monitorar "
+            "e te avisar quando vender!_"
         ),
         "Sair das dívidas": (
-            "Use /dividas para cadastrar suas dívidas e eu monto "
-            "uma estratégia personalizada para você quitar tudo!"
+            "🚀 **Comece por aqui:**\n"
+            "1️⃣ /dividas — Cadastre suas dívidas\n"
+            "2️⃣ /estrategia — Monto um plano para quitar tudo\n"
+            "3️⃣ /gasto — Registre gastos para achar onde economizar\n"
+            "4️⃣ /aprender — Aprenda a nunca mais se endividar\n\n"
+            "💡 _Depois de quitar, use /aporte para começar a investir!_"
         ),
         "Juntar para algo grande": (
-            "Use /meta para criar sua meta e eu calculo quanto "
-            "você precisa guardar por mês!"
+            "🚀 **Comece por aqui:**\n"
+            "1️⃣ /meta — Crie sua meta (eu calculo quanto guardar/mês)\n"
+            "2️⃣ /simular — Veja quanto terá em 1, 5, 10 anos\n"
+            "3️⃣ /aporte — Configuro aviso mensal automático\n"
+            "4️⃣ /oquefazer — Onde colocar o dinheiro da meta\n\n"
+            "💡 _Use /painel para acompanhar tudo num só lugar!_"
         ),
         "Organizar gastos": (
-            "Use /gasto para registrar seus gastos e eu analiso "
-            "para onde está indo seu dinheiro!"
+            "🚀 **Comece por aqui:**\n"
+            "1️⃣ /gasto — Registre seus gastos (leva 5 segundos)\n"
+            "2️⃣ /resumo — Veja para onde vai seu dinheiro\n"
+            "3️⃣ /painel — Dashboard completo da sua vida financeira\n"
+            "4️⃣ /aporte — Sobrou? Configure investimento mensal\n\n"
+            "💡 _Registre gastos todo dia — é o hábito que mais "
+            "transforma suas finanças!_"
         ),
         "Aprender sobre finanças": (
-            "Me pergunte qualquer coisa! Tipo: 'O que é CDI?', "
-            "'Como funciona o IR nos investimentos?'"
+            "🚀 **Comece por aqui:**\n"
+            "1️⃣ /aprender — Curso completo do zero (aulas curtinhas)\n"
+            "2️⃣ /dicadodia — Dica financeira todo dia\n"
+            "3️⃣ /perfil — Descubra seu perfil de investidor\n"
+            "4️⃣ Mande qualquer pergunta que eu respondo com IA!\n\n"
+            "💡 _Exemplos: \"O que é CDI?\", \"Como funciona o IR?\", "
+            "\"Bitcoin é seguro?\"_"
         ),
     }
 
-    dica = dicas_por_objetivo.get(objetivo, "Me pergunte qualquer coisa!")
+    bloco = blocos_objetivo.get(
+        objetivo,
+        "🚀 **Comece por aqui:**\n"
+        "1️⃣ /aprender — Curso do zero\n"
+        "2️⃣ /oquefazer — O que comprar hoje\n"
+        "3️⃣ /aporte — Investimento mensal automático\n"
+        "4️⃣ /ajuda — Ver todos os comandos\n",
+    )
 
     await query.edit_message_text(
         "Pronto! Agora te conheço melhor 🎉\n\n"
-        "Aqui está o que posso fazer por você:\n\n"
-        "📝 **Comandos disponíveis:**\n"
-        "/investir — Calcular e comparar rendimentos\n"
-        "/gasto — Registrar um gasto\n"
-        "/resumo — Ver resumo dos gastos do mês\n"
-        "/dividas — Gerenciar dívidas\n"
-        "/meta — Criar metas financeiras\n"
-        "/premium — Ver plano premium\n"
-        "/ajuda — Ver todos os comandos\n\n"
-        f"💡 **Dica para você:** {dica}\n\n"
+        f"{bloco}\n\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "📊 /painel — Dashboard financeiro\n"
+        "🏖️ /aposentar — Quando posso parar de trabalhar?\n"
+        "📖 /ajuda — Todos os comandos\n\n"
         "Ou simplesmente **me mande uma mensagem** com qualquer "
         "dúvida sobre finanças que eu respondo! 🧠",
         parse_mode="Markdown",

@@ -392,6 +392,51 @@ async def job_relatorio_semanal(context: ContextTypes.DEFAULT_TYPE):
         logger.error("Erro no job de relatório semanal: %s", e)
 
 
+# ── Job 4: Dica financeira diária ──────────────────────────
+
+
+async def job_dica_diaria(context: ContextTypes.DEFAULT_TYPE):
+    """
+    Roda todo dia às 9h BRT (12h UTC). Envia uma dica financeira
+    para todos os usuários que têm carteira ativa.
+    """
+    from handlers.ferramentas import DICAS_FINANCEIRAS
+    from services.aporte_service import get_usuarios_com_carteira
+
+    logger.info("Enviando dica financeira diária...")
+
+    try:
+        usuarios = await get_usuarios_com_carteira()
+        if not usuarios:
+            logger.info("Nenhum usuário para enviar dica diária.")
+            return
+
+        # Dica baseada no dia do ano (mesma para todos)
+        indice = datetime.date.today().timetuple().tm_yday % len(DICAS_FINANCEIRAS)
+        dica = DICAS_FINANCEIRAS[indice]
+
+        for user in usuarios:
+            telegram_id = user["telegram_id"]
+            try:
+                await context.bot.send_message(
+                    chat_id=telegram_id,
+                    text=(
+                        f"☀️ **Bom dia! Sua dica financeira de hoje:**\n\n"
+                        f"{dica}\n\n"
+                        "📊 /painel — Seu dashboard\n"
+                        "📈 /oquefazer — O que comprar hoje"
+                    ),
+                    parse_mode="Markdown",
+                )
+            except Exception as e:
+                logger.error("Erro ao enviar dica para %s: %s", telegram_id, e)
+
+        logger.info("Dica diária enviada para %d usuários.", len(usuarios))
+
+    except Exception as e:
+        logger.error("Erro no job de dica diária: %s", e)
+
+
 # ── Registrar todos os jobs ──────────────────────────────────
 
 
@@ -425,7 +470,14 @@ def registrar_jobs(app):
         name="relatorio_semanal",
     )
 
+    # 4. Dica financeira diária — todo dia às 9h BRT (12h UTC)
+    job_queue.run_daily(
+        job_dica_diaria,
+        time=datetime.time(hour=12, minute=0, second=0),
+        name="dica_diaria",
+    )
+
     logger.info(
         "Jobs registrados: alertas (1h), aporte diário (8h BRT), "
-        "relatório semanal (dom 10h BRT)"
+        "relatório semanal (dom 10h BRT), dica diária (9h BRT)"
     )
