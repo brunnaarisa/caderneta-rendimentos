@@ -17,8 +17,10 @@ from handlers.dividas import get_dividas_handlers
 from handlers.gastos import get_gastos_handlers
 from handlers.investimentos import get_investimentos_handlers
 from handlers.metas import get_metas_handlers
+from handlers.perfil_risco import get_perfil_risco_handler
 from handlers.premium import get_premium_handlers
 from handlers.start import get_start_handler
+from handlers.sugestoes import get_sugestoes_handlers
 
 # Configurar logging
 logging.basicConfig(
@@ -50,27 +52,34 @@ def main():
     # 1. Onboarding (ConversationHandler do /start)
     app.add_handler(get_start_handler())
 
-    # 2. Investimentos (ConversationHandler)
+    # 2. Perfil de risco (ConversationHandler)
+    app.add_handler(get_perfil_risco_handler())
+
+    # 3. Investimentos (ConversationHandler)
     for handler in get_investimentos_handlers():
         app.add_handler(handler)
 
-    # 3. Gastos (ConversationHandler)
+    # 4. Gastos (ConversationHandler)
     for handler in get_gastos_handlers():
         app.add_handler(handler)
 
-    # 4. Dívidas (ConversationHandler)
+    # 5. Dívidas (ConversationHandler)
     for handler in get_dividas_handlers():
         app.add_handler(handler)
 
-    # 5. Metas (ConversationHandler)
+    # 6. Metas (ConversationHandler)
     for handler in get_metas_handlers():
         app.add_handler(handler)
 
-    # 6. Premium
+    # 7. Sugestões de investimento
+    for handler in get_sugestoes_handlers():
+        app.add_handler(handler)
+
+    # 8. Premium
     for handler in get_premium_handlers():
         app.add_handler(handler)
 
-    # 7. Consultas IA + Ajuda (por último, pois pega qualquer texto)
+    # 9. Consultas IA + Ajuda (por último, pois pega qualquer texto)
     for handler in get_consulta_handlers():
         app.add_handler(handler)
 

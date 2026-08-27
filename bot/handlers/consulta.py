@@ -89,7 +89,9 @@ async def ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'Ex: "O que é CDI?"\n\n'
         "📊 **Investimentos:**\n"
         "/investir — Calcular rendimento de um investimento\n"
-        "/comparar — Comparar bancos/corretoras\n\n"
+        "/comparar — Comparar bancos/corretoras\n"
+        "/perfil — Descobrir seu perfil de investidor\n"
+        "/sugestoes — Ver investimentos para o seu perfil\n\n"
         "💸 **Controle de gastos:**\n"
         "/gasto — Registrar um gasto\n"
         "/resumo — Ver resumo dos gastos do mês\n\n"
