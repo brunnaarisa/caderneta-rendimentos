@@ -1,0 +1,226 @@
+"""Handler do /start — onboarding do usuário."""
+
+import json
+import logging
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import (
+    CallbackQueryHandler,
+    CommandHandler,
+    ContextTypes,
+    ConversationHandler,
+    MessageHandler,
+    filters,
+)
+
+from services.user_service import get_or_create_user, update_profile
+
+logger = logging.getLogger(__name__)
+
+# Estados da conversa de onboarding
+PERGUNTA_OBJETIVO, PERGUNTA_RENDA, PERGUNTA_CONHECIMENTO = range(3)
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Mensagem de boas-vindas e início do onboarding."""
+    user = update.effective_user
+    await get_or_create_user(user.id, user.first_name)
+
+    await update.message.reply_text(
+        f"Olá, {user.first_name}! 👋\n\n"
+        "Eu sou o **FinançasIA** — seu consultor financeiro pessoal "
+        "com inteligência artificial.\n\n"
+        "Vou te ajudar a:\n"
+        "💰 Organizar seus gastos\n"
+        "📈 Encontrar os melhores investimentos\n"
+        "🎯 Alcançar seus objetivos financeiros\n"
+        "💳 Sair de dívidas (se tiver)\n\n"
+        "Para te dar conselhos melhores, quero te conhecer. "
+        "Vamos lá? 😊\n\n"
+        "**Qual seu principal objetivo financeiro agora?**",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [InlineKeyboardButton("🏦 Começar a investir", callback_data="obj_investir")],
+                [InlineKeyboardButton("💳 Sair das dívidas", callback_data="obj_dividas")],
+                [InlineKeyboardButton("🏠 Juntar para algo grande", callback_data="obj_juntar")],
+                [InlineKeyboardButton("📊 Organizar meus gastos", callback_data="obj_organizar")],
+                [InlineKeyboardButton("💡 Só quero aprender", callback_data="obj_aprender")],
+            ]
+        ),
+    )
+    return PERGUNTA_OBJETIVO
+
+
+async def receber_objetivo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Recebe o objetivo e pergunta a renda."""
+    query = update.callback_query
+    await query.answer()
+
+    objetivos = {
+        "obj_investir": "Começar a investir",
+        "obj_dividas": "Sair das dívidas",
+        "obj_juntar": "Juntar para algo grande",
+        "obj_organizar": "Organizar gastos",
+        "obj_aprender": "Aprender sobre finanças",
+    }
+
+    objetivo = objetivos.get(query.data, "Não informado")
+    context.user_data["objetivo"] = objetivo
+
+    await query.edit_message_text(
+        f"Ótimo! Seu objetivo: **{objetivo}** ✅\n\n"
+        "Agora, qual sua **renda mensal aproximada**?\n"
+        "(Pode ser o salário + outras rendas. Isso fica só entre nós! 🤫)",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [InlineKeyboardButton("Até R$1.500", callback_data="renda_1500")],
+                [InlineKeyboardButton("R$1.500 – R$3.000", callback_data="renda_3000")],
+                [InlineKeyboardButton("R$3.000 – R$5.000", callback_data="renda_5000")],
+                [InlineKeyboardButton("R$5.000 – R$10.000", callback_data="renda_10000")],
+                [InlineKeyboardButton("Acima de R$10.000", callback_data="renda_15000")],
+                [InlineKeyboardButton("Prefiro não dizer", callback_data="renda_0")],
+            ]
+        ),
+    )
+    return PERGUNTA_RENDA
+
+
+async def receber_renda(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Recebe a renda e pergunta o nível de conhecimento."""
+    query = update.callback_query
+    await query.answer()
+
+    rendas = {
+        "renda_1500": 1500,
+        "renda_3000": 3000,
+        "renda_5000": 5000,
+        "renda_10000": 10000,
+        "renda_15000": 15000,
+        "renda_0": 0,
+    }
+
+    renda = rendas.get(query.data, 0)
+    context.user_data["renda"] = renda
+
+    await query.edit_message_text(
+        "Entendi! 👍\n\n"
+        "Última pergunta: como você avalia seu **conhecimento sobre finanças**?",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "🌱 Iniciante — sei pouco", callback_data="nivel_iniciante"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🌿 Intermediário — sei o básico",
+                        callback_data="nivel_intermediario",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🌳 Avançado — já invisto",
+                        callback_data="nivel_avancado",
+                    )
+                ],
+            ]
+        ),
+    )
+    return PERGUNTA_CONHECIMENTO
+
+
+async def receber_conhecimento(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Recebe o nível de conhecimento e finaliza o onboarding."""
+    query = update.callback_query
+    await query.answer()
+
+    niveis = {
+        "nivel_iniciante": "Iniciante",
+        "nivel_intermediario": "Intermediário",
+        "nivel_avancado": "Avançado",
+    }
+
+    conhecimento = niveis.get(query.data, "Iniciante")
+    objetivo = context.user_data.get("objetivo", "")
+    renda = context.user_data.get("renda", 0)
+
+    # Salvar no banco
+    telegram_id = query.from_user.id
+    perfil = json.dumps({"objetivo": objetivo, "conhecimento": conhecimento})
+
+    await update_profile(telegram_id, renda_mensal=renda, perfil_json=perfil)
+
+    # Montar mensagem de boas-vindas personalizada
+    dicas_por_objetivo = {
+        "Começar a investir": (
+            "Use /investir para comparar onde seu dinheiro rende mais, "
+            "ou me pergunte qualquer dúvida sobre investimentos!"
+        ),
+        "Sair das dívidas": (
+            "Use /dividas para cadastrar suas dívidas e eu monto "
+            "uma estratégia personalizada para você quitar tudo!"
+        ),
+        "Juntar para algo grande": (
+            "Use /meta para criar sua meta e eu calculo quanto "
+            "você precisa guardar por mês!"
+        ),
+        "Organizar gastos": (
+            "Use /gasto para registrar seus gastos e eu analiso "
+            "para onde está indo seu dinheiro!"
+        ),
+        "Aprender sobre finanças": (
+            "Me pergunte qualquer coisa! Tipo: 'O que é CDI?', "
+            "'Como funciona o IR nos investimentos?'"
+        ),
+    }
+
+    dica = dicas_por_objetivo.get(objetivo, "Me pergunte qualquer coisa!")
+
+    await query.edit_message_text(
+        "Pronto! Agora te conheço melhor 🎉\n\n"
+        "Aqui está o que posso fazer por você:\n\n"
+        "📝 **Comandos disponíveis:**\n"
+        "/investir — Calcular e comparar rendimentos\n"
+        "/gasto — Registrar um gasto\n"
+        "/resumo — Ver resumo dos gastos do mês\n"
+        "/dividas — Gerenciar dívidas\n"
+        "/meta — Criar metas financeiras\n"
+        "/premium — Ver plano premium\n"
+        "/ajuda — Ver todos os comandos\n\n"
+        f"💡 **Dica para você:** {dica}\n\n"
+        "Ou simplesmente **me mande uma mensagem** com qualquer "
+        "dúvida sobre finanças que eu respondo! 🧠",
+        parse_mode="Markdown",
+    )
+    return ConversationHandler.END
+
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Cancela o onboarding."""
+    await update.message.reply_text(
+        "Tudo bem! Quando quiser começar, é só digitar /start 😊"
+    )
+    return ConversationHandler.END
+
+
+def get_start_handler() -> ConversationHandler:
+    """Retorna o ConversationHandler completo do onboarding."""
+    return ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={
+            PERGUNTA_OBJETIVO: [
+                CallbackQueryHandler(receber_objetivo, pattern="^obj_"),
+            ],
+            PERGUNTA_RENDA: [
+                CallbackQueryHandler(receber_renda, pattern="^renda_"),
+            ],
+            PERGUNTA_CONHECIMENTO: [
+                CallbackQueryHandler(receber_conhecimento, pattern="^nivel_"),
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
