@@ -12,11 +12,13 @@ from telegram.ext import ApplicationBuilder
 
 from config import LOG_LEVEL, TELEGRAM_BOT_TOKEN
 from database.db import init_db
+from handlers.aprender import get_aprender_handlers
 from handlers.consulta import get_consulta_handlers
 from handlers.dividas import get_dividas_handlers
 from handlers.gastos import get_gastos_handlers
 from handlers.investimentos import get_investimentos_handlers
 from handlers.metas import get_metas_handlers
+from handlers.oquefazer import get_oquefazer_handlers
 from handlers.perfil_risco import get_perfil_risco_handler
 from handlers.premium import get_premium_handlers
 from handlers.start import get_start_handler
@@ -55,7 +57,11 @@ def main():
     # 2. Perfil de risco (ConversationHandler)
     app.add_handler(get_perfil_risco_handler())
 
-    # 3. Investimentos (ConversationHandler)
+    # 3. O que eu faria (ConversationHandler)
+    for handler in get_oquefazer_handlers():
+        app.add_handler(handler)
+
+    # 4. Investimentos (ConversationHandler)
     for handler in get_investimentos_handlers():
         app.add_handler(handler)
 
@@ -71,11 +77,15 @@ def main():
     for handler in get_metas_handlers():
         app.add_handler(handler)
 
-    # 7. Sugestões de investimento
+    # 8. Sugestões de investimento
     for handler in get_sugestoes_handlers():
         app.add_handler(handler)
 
-    # 8. Premium
+    # 9. Aprender (aulas educacionais)
+    for handler in get_aprender_handlers():
+        app.add_handler(handler)
+
+    # 10. Premium
     for handler in get_premium_handlers():
         app.add_handler(handler)
 

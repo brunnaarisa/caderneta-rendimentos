@@ -87,7 +87,10 @@ async def ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'Ex: "Onde rende mais, Nubank ou PicPay?"\n'
         'Ex: "Tenho R$5000, onde investir?"\n'
         'Ex: "O que é CDI?"\n\n'
+        "🎓 **Aprender do zero:**\n"
+        "/aprender — Aulas passo a passo (do zero mesmo!)\n\n"
         "📊 **Investimentos:**\n"
+        "/oquefazer — 🔥 Me diz o valor e eu digo O QUE comprar\n"
         "/investir — Calcular rendimento de um investimento\n"
         "/comparar — Comparar bancos/corretoras\n"
         "/perfil — Descobrir seu perfil de investidor\n"
