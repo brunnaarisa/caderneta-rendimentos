@@ -89,6 +89,7 @@ async def ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/comocomprar — 📖 Como comprar cada tipo de ativo\n\n"
         "📊 **Investimentos:**\n"
         "/oquefazer — 🔥 Digo O QUE comprar com análise ao vivo\n"
+        "/desafio — 🎯 \"Quero ganhar X investindo Y em Z tempo\"\n"
         "/analisar [ativo] — 📈 Análise de mercado em tempo real\n"
         "/simular — 📈 Projeção de patrimônio futuro\n"
         "/investir — Calcular rendimento\n"

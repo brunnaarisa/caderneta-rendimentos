@@ -17,6 +17,7 @@ from handlers.aporte import get_aporte_handlers
 from handlers.carteira import get_carteira_handlers
 from handlers.como_comprar import get_como_comprar_handlers
 from handlers.consulta import get_consulta_handlers
+from handlers.desafio import get_desafio_handlers
 from handlers.dividas import get_dividas_handlers
 from handlers.ferramentas import get_ferramentas_handlers
 from handlers.gastos import get_gastos_handlers
@@ -106,11 +107,15 @@ def main():
     for handler in get_premium_handlers():
         app.add_handler(handler)
 
-    # 14. Ferramentas (painel, comparador, FIRE, dica)
+    # 14. Desafio de rendimento
+    for handler in get_desafio_handlers():
+        app.add_handler(handler)
+
+    # 15. Ferramentas (painel, comparador, FIRE, dica)
     for handler in get_ferramentas_handlers():
         app.add_handler(handler)
 
-    # 15. Consultas IA + Ajuda (por último — pega qualquer texto)
+    # 16. Consultas IA + Ajuda (por último — pega qualquer texto)
     for handler in get_consulta_handlers():
         app.add_handler(handler)
 
