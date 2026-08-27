@@ -1,12 +1,16 @@
 """
-Handler do /oquefazer — sugestões concretas de investimento com valores reais.
+Handler do /oquefazer — sugestões concretas de investimento com valores reais,
+agora com análise de mercado em tempo real.
 
 A feature mais valiosa do bot: diz EXATAMENTE o que fazer com o dinheiro,
-com valores, ativos e proporções — como um amigo que entende do mercado faria.
+com valores, ativos e proporções — e verifica se é um bom momento de compra.
 """
 
+import asyncio
 import json
 import logging
+import re
+from datetime import datetime
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
@@ -20,12 +24,33 @@ from telegram.ext import (
 
 from services.ai_advisor import consultar_ia
 from services.cdi_service import cdi_anual, get_cdi_atual
+from services.market_analysis import (
+    analise_completa_acao,
+    analise_completa_crypto,
+    SINAL_EMOJI,
+    SINAL_TEXTO,
+)
 from services.user_service import get_financial_context, get_or_create_user
 
 logger = logging.getLogger(__name__)
 
 # Estados
 VALOR_DISPONIVEL, ESCOLHER_PERFIL = range(2)
+
+# Mapeamento de palavras-chave para IDs de cripto (para análise de mercado)
+_CRYPTO_KEYWORDS = {
+    "bitcoin": "bitcoin",
+    "btc": "bitcoin",
+    "ethereum": "ethereum",
+    "eth": "ethereum",
+    "solana": "solana",
+    "sol": "solana",
+    "bnb": "binancecoin",
+    "cardano": "cardano",
+    "ada": "cardano",
+    "dogecoin": "dogecoin",
+    "doge": "dogecoin",
+}
 
 # Estratégias concretas por perfil e faixa de valor
 # Cada uma diz exatamente: "com R$X, eu faria isso"
@@ -409,8 +434,95 @@ def _classificar_faixa(valor: float) -> str:
     return "grande"
 
 
+def _extrair_ativos_para_analise(nome_ativo: str) -> list[dict]:
+    """
+    Extrai ativos analisáveis de uma string de estratégia.
+    Ex: "Bitcoin (BTC)" → [{"id": "bitcoin", "tipo": "crypto"}]
+    Ex: "WEGE3, PRIO3" → [{"id": "WEGE3", "tipo": "acao"}, ...]
+    """
+    ativos = []
+    seen = set()
+    nome_lower = nome_ativo.lower()
+
+    # Detectar criptomoedas
+    for keyword, coin_id in _CRYPTO_KEYWORDS.items():
+        if re.search(rf"\b{re.escape(keyword)}\b", nome_lower):
+            if coin_id not in seen:
+                ativos.append({"id": coin_id, "tipo": "crypto"})
+                seen.add(coin_id)
+
+    # Detectar tickers B3 (4 letras + 1-2 dígitos)
+    tickers = re.findall(r"\b([A-Z]{4}\d{1,2})\b", nome_ativo)
+    for ticker in tickers[:2]:  # max 2 por linha para limitar chamadas
+        if ticker not in seen:
+            ativos.append({"id": ticker, "tipo": "acao"})
+            seen.add(ticker)
+
+    return ativos
+
+
+async def _analisar_ativos_em_lote(acoes_estrategia: list[dict]) -> dict:
+    """
+    Analisa todos os ativos de uma estratégia em paralelo.
+    Retorna {id_ativo: resultado_analise}.
+    """
+    todos = []
+    seen = set()
+    for acao in acoes_estrategia:
+        for ativo in _extrair_ativos_para_analise(acao["ativo"]):
+            if ativo["id"] not in seen:
+                todos.append(ativo)
+                seen.add(ativo["id"])
+
+    todos = todos[:6]  # limitar chamadas
+
+    if not todos:
+        return {}
+
+    async def _analisar(ativo):
+        try:
+            if ativo["tipo"] == "crypto":
+                return ativo["id"], await analise_completa_crypto(ativo["id"])
+            return ativo["id"], await analise_completa_acao(ativo["id"])
+        except Exception as e:
+            logger.warning("Erro ao analisar %s: %s", ativo["id"], e)
+            return ativo["id"], None
+
+    results = await asyncio.gather(*[_analisar(a) for a in todos])
+    return {aid: res for aid, res in results if res is not None}
+
+
+def _formatar_sinal_curto(ativo_id: str, tipo: str, analise: dict) -> str:
+    """Formata uma linha curta com o sinal de mercado."""
+    sinal_info = analise.get("sinal", {})
+    sinal_nome = sinal_info.get("sinal", "NEUTRO")
+    emoji = SINAL_EMOJI.get(sinal_nome, "🟡")
+    texto = SINAL_TEXTO.get(sinal_nome, "Sem sinal")
+
+    if tipo == "crypto":
+        preco = analise.get("preco", {}).get("preco_brl", 0)
+        mom = analise.get("momentum", {})
+        rsi = mom.get("rsi_14")
+        var_7d = mom.get("var_7d", 0)
+        detalhes = []
+        if rsi is not None:
+            detalhes.append(f"RSI {rsi:.0f}")
+        if var_7d:
+            s = "+" if var_7d > 0 else ""
+            detalhes.append(f"{s}{var_7d:.1f}% 7d")
+        fg = analise.get("fear_greed")
+        if fg:
+            detalhes.append(f"F&G {fg['valor']}")
+        det = f" ({', '.join(detalhes)})" if detalhes else ""
+        return f"   {emoji} R${preco:,.2f} — {texto}{det}"
+    else:
+        preco = analise.get("stock", {}).get("preco", 0)
+        dist = analise.get("dist_topo_52sem", 0)
+        return f"   {emoji} R${preco:.2f} — {texto} ({dist:.0f}% do topo 52s)"
+
+
 def _montar_plano(perfil_key: str, valor: float) -> str:
-    """Monta o texto do plano concreto de investimento."""
+    """Monta o texto do plano (versão sem análise — fallback)."""
     estrategia = ESTRATEGIAS[perfil_key]
     faixa = _classificar_faixa(valor)
     acoes = estrategia["faixas"][faixa]["acoes"]
@@ -422,12 +534,6 @@ def _montar_plano(perfil_key: str, valor: float) -> str:
             f"**{acao['percentual']}% → R${valor_acao:,.2f} em {acao['ativo']}**\n"
             f"   _{acao['porque']}_"
         )
-
-    faixa_labels = {
-        "pequeno": "até R$500",
-        "medio": "R$500 a R$5.000",
-        "grande": "acima de R$5.000",
-    }
 
     texto = (
         f"{estrategia['emoji']} **Se eu tivesse R${valor:,.2f} hoje "
@@ -446,7 +552,84 @@ def _montar_plano(perfil_key: str, valor: float) -> str:
         "diferente. Consulte um profissional certificado para "
         "decisões de grande valor._"
     )
+    return texto
 
+
+async def _montar_plano_com_analise(perfil_key: str, valor: float) -> str:
+    """Monta o plano com análise de mercado em tempo real."""
+    estrategia = ESTRATEGIAS[perfil_key]
+    faixa = _classificar_faixa(valor)
+    acoes = estrategia["faixas"][faixa]["acoes"]
+
+    # Analisar todos os ativos em paralelo
+    resultados = await _analisar_ativos_em_lote(acoes)
+
+    linhas = []
+    for acao in acoes:
+        valor_acao = valor * acao["percentual"] / 100
+        linha = (
+            f"**{acao['percentual']}% → R${valor_acao:,.2f} em {acao['ativo']}**\n"
+            f"   _{acao['porque']}_"
+        )
+
+        # Adicionar análise de mercado para cada ativo detectado
+        ativos_desta = _extrair_ativos_para_analise(acao["ativo"])
+        for ativo in ativos_desta:
+            if ativo["id"] in resultados:
+                linha += "\n" + _formatar_sinal_curto(
+                    ativo["id"], ativo["tipo"], resultados[ativo["id"]]
+                )
+
+        linhas.append(linha)
+
+    agora = datetime.now().strftime("%d/%m/%Y %H:%M")
+
+    texto = (
+        f"{estrategia['emoji']} **Se eu tivesse R${valor:,.2f} hoje "
+        f"(perfil {estrategia['nome']}):**\n\n"
+        + "\n\n".join(linhas)
+        + "\n\n━━━━━━━━━━━━━━━━━━━\n"
+    )
+
+    if resultados:
+        texto += f"📡 _Análise atualizada em {agora}_\n\n"
+
+        # Resumo de alertas
+        bom = [
+            aid.upper()
+            for aid, a in resultados.items()
+            if a.get("sinal", {}).get("sinal") in ("COMPRA_FORTE", "COMPRA")
+        ]
+        cuidado = [
+            aid.upper()
+            for aid, a in resultados.items()
+            if a.get("sinal", {}).get("sinal") in ("VENDA", "VENDA_FORTE")
+        ]
+        if cuidado:
+            v = "está" if len(cuidado) == 1 else "estão"
+            texto += (
+                f"⚠️ {', '.join(cuidado)} {v} com sinal de cautela — "
+                f"considere esperar ou reduzir nesses ativos.\n"
+            )
+        if bom:
+            v = "está" if len(bom) == 1 else "estão"
+            texto += f"✅ {', '.join(bom)} {v} com sinal positivo!\n"
+        texto += "\n"
+
+    texto += (
+        "📌 **Próximos passos concretos:**\n"
+        "1. Abra conta em uma corretora (Nubank, Inter, ou XP)\n"
+        "2. Transfira o valor\n"
+        "3. Compre cada ativo na proporção acima\n"
+        "4. Repita todo mês com o que conseguir aportar\n\n"
+        "🔑 **Regra de ouro:** compre um pouco todo mês (DCA), "
+        "não tente acertar o momento perfeito.\n\n"
+        "📋 /analisar [ativo] — Análise detalhada de qualquer ativo\n"
+        "📝 /comprei — Registrar compra na carteira\n\n"
+        "⚠️ _Isso é o que eu faria — não é recomendação oficial. "
+        "Análise baseada em indicadores técnicos que não garantem "
+        "resultados futuros._"
+    )
     return texto
 
 
@@ -564,16 +747,33 @@ async def receber_valor(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def receber_perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Recebe o perfil e mostra o plano concreto."""
+    """Recebe o perfil e mostra o plano com análise de mercado em tempo real."""
     query = update.callback_query
     await query.answer()
 
     perfil_key = query.data.replace("oqf_", "")
     valor = context.user_data.get("oqf_valor", 100)
 
-    # Montar e enviar o plano
-    plano = _montar_plano(perfil_key, valor)
-    await query.edit_message_text(plano, parse_mode="Markdown")
+    # Avisar que está analisando (chamadas de API demoram alguns segundos)
+    await query.edit_message_text(
+        "🔍 **Analisando o mercado em tempo real...**\n\n"
+        "_Verificando indicadores técnicos, médias móveis, RSI "
+        "e Fear & Greed para montar seu plano..._",
+        parse_mode="Markdown",
+    )
+
+    # Montar plano com análise de mercado
+    try:
+        plano = await _montar_plano_com_analise(perfil_key, valor)
+    except Exception as e:
+        logger.error("Erro na análise de mercado: %s", e)
+        plano = _montar_plano(perfil_key, valor)
+
+    await context.bot.send_message(
+        chat_id=query.message.chat_id,
+        text=plano,
+        parse_mode="Markdown",
+    )
 
     # Oferecer análise IA personalizada
     await context.bot.send_message(

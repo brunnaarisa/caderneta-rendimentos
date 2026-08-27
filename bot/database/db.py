@@ -79,6 +79,31 @@ async def init_db():
                 FOREIGN KEY (telegram_id) REFERENCES usuarios(telegram_id)
             );
 
+            CREATE TABLE IF NOT EXISTS carteira (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                ativo TEXT NOT NULL,
+                tipo TEXT NOT NULL DEFAULT 'crypto',
+                preco_compra REAL NOT NULL,
+                quantidade REAL,
+                valor_investido REAL NOT NULL,
+                data_compra TEXT DEFAULT (date('now')),
+                vendido INTEGER DEFAULT 0,
+                preco_venda REAL,
+                data_venda TEXT,
+                criado_em TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (telegram_id) REFERENCES usuarios(telegram_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS alertas_config (
+                telegram_id INTEGER PRIMARY KEY,
+                alertas_ativos INTEGER DEFAULT 1,
+                hora_alerta TEXT DEFAULT '09:00',
+                intervalo_horas INTEGER DEFAULT 24,
+                ultimo_alerta TEXT,
+                FOREIGN KEY (telegram_id) REFERENCES usuarios(telegram_id)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_gastos_user
                 ON gastos(telegram_id, data);
             CREATE INDEX IF NOT EXISTS idx_dividas_user
@@ -87,6 +112,10 @@ async def init_db():
                 ON metas(telegram_id);
             CREATE INDEX IF NOT EXISTS idx_investimentos_user
                 ON investimentos(telegram_id);
+            CREATE INDEX IF NOT EXISTS idx_carteira_user
+                ON carteira(telegram_id, vendido);
+            CREATE INDEX IF NOT EXISTS idx_alertas_user
+                ON alertas_config(telegram_id);
             """
         )
         await db.commit()
