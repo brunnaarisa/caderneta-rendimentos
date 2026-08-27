@@ -13,7 +13,9 @@ from telegram.ext import ApplicationBuilder
 from config import LOG_LEVEL, TELEGRAM_BOT_TOKEN
 from database.db import init_db
 from handlers.aprender import get_aprender_handlers
+from handlers.aporte import get_aporte_handlers
 from handlers.carteira import get_carteira_handlers
+from handlers.como_comprar import get_como_comprar_handlers
 from handlers.consulta import get_consulta_handlers
 from handlers.dividas import get_dividas_handlers
 from handlers.gastos import get_gastos_handlers
@@ -67,35 +69,43 @@ def main():
     for handler in get_carteira_handlers():
         app.add_handler(handler)
 
-    # 5. Investimentos (calculadora)
+    # 5. Plano de aporte mensal
+    for handler in get_aporte_handlers():
+        app.add_handler(handler)
+
+    # 6. Como comprar (guias passo a passo)
+    for handler in get_como_comprar_handlers():
+        app.add_handler(handler)
+
+    # 7. Investimentos (calculadora)
     for handler in get_investimentos_handlers():
         app.add_handler(handler)
 
-    # 6. Gastos
+    # 8. Gastos
     for handler in get_gastos_handlers():
         app.add_handler(handler)
 
-    # 7. Dívidas
+    # 9. Dívidas
     for handler in get_dividas_handlers():
         app.add_handler(handler)
 
-    # 8. Metas
+    # 10. Metas
     for handler in get_metas_handlers():
         app.add_handler(handler)
 
-    # 9. Sugestões
+    # 11. Sugestões
     for handler in get_sugestoes_handlers():
         app.add_handler(handler)
 
-    # 10. Aprender
+    # 12. Aprender
     for handler in get_aprender_handlers():
         app.add_handler(handler)
 
-    # 11. Premium
+    # 13. Premium
     for handler in get_premium_handlers():
         app.add_handler(handler)
 
-    # 12. Consultas IA + Ajuda (por último — pega qualquer texto)
+    # 14. Consultas IA + Ajuda (por último — pega qualquer texto)
     for handler in get_consulta_handlers():
         app.add_handler(handler)
 

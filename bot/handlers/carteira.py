@@ -494,6 +494,68 @@ async def alertas_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+# ── Registro rápido (1 toque) ────────────────────────────────
+
+
+async def quick_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Registra uma compra com 1 toque a partir do callback data.
+    Formato: qreg_{tipo}_{ativo}_{valor}
+    Ex: qreg_c_bitcoin_100, qreg_a_IVVB11_125
+    """
+    query = update.callback_query
+    await query.answer("Registrando compra...")
+
+    try:
+        _, tipo_code, ativo, valor_str = query.data.split("_", 3)
+        valor = float(valor_str)
+        tipo = "crypto" if tipo_code == "c" else "acao"
+
+        # Buscar preço atual
+        if tipo == "crypto":
+            preco_data = await get_crypto_price(ativo)
+            preco = preco_data["preco_brl"] if preco_data else 0
+        else:
+            stock = await get_stock_price(ativo)
+            preco = stock["preco"] if stock else 0
+
+        if not preco:
+            await query.edit_message_text(
+                "❌ Não consegui buscar o preço atual. "
+                f"Use /comprei para registrar manualmente."
+            )
+            return
+
+        quantidade = valor / preco if preco else 0
+        nome = CRYPTO_NOMES.get(ativo, ativo.upper())
+
+        await registrar_compra(
+            telegram_id=query.from_user.id,
+            ativo=ativo,
+            tipo=tipo,
+            preco_compra=preco,
+            valor_investido=valor,
+            quantidade=quantidade,
+        )
+
+        await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text=(
+                f"✅ **Compra registrada!** {nome}\n"
+                f"💰 R${valor:,.2f} a R${preco:,.2f}\n\n"
+                f"📋 /carteira — Ver suas posições\n"
+                f"🔔 Vou te avisar quando for hora de vender!"
+            ),
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        logger.error("Erro no quick register: %s", e)
+        await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text="❌ Erro ao registrar. Use /comprei para registrar manualmente.",
+        )
+
+
 def get_carteira_handlers() -> list:
     """Retorna os handlers da carteira."""
     conv_compra = ConversationHandler(
@@ -518,4 +580,5 @@ def get_carteira_handlers() -> list:
         CommandHandler("carteira", carteira),
         CommandHandler("alertas", alertas_cmd),
         CallbackQueryHandler(alertas_toggle, pattern=r"^alertas_(on|off)$"),
+        CallbackQueryHandler(quick_register, pattern=r"^qreg_"),
     ]

@@ -104,6 +104,16 @@ async def init_db():
                 FOREIGN KEY (telegram_id) REFERENCES usuarios(telegram_id)
             );
 
+            CREATE TABLE IF NOT EXISTS plano_mensal (
+                telegram_id INTEGER PRIMARY KEY,
+                valor_mensal REAL NOT NULL,
+                dia_pagamento INTEGER NOT NULL DEFAULT 5,
+                perfil_risco TEXT NOT NULL DEFAULT 'moderado',
+                ativo INTEGER DEFAULT 1,
+                criado_em TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (telegram_id) REFERENCES usuarios(telegram_id)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_gastos_user
                 ON gastos(telegram_id, data);
             CREATE INDEX IF NOT EXISTS idx_dividas_user
