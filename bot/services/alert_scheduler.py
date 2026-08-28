@@ -5,6 +5,8 @@ Jobs:
 1. Verificar alertas de carteira — a cada 1 hora
 2. Lembrete de aporte mensal — todo dia às 8h
 3. Relatório semanal — todo domingo às 10h
+4. Dica financeira diária — todo dia às 9h
+5. Oportunidades de mercado — a cada 2 horas (alertas URGENTES)
 """
 
 import asyncio
@@ -437,6 +439,344 @@ async def job_dica_diaria(context: ContextTypes.DEFAULT_TYPE):
         logger.error("Erro no job de dica diária: %s", e)
 
 
+# ── Job 5: Oportunidades urgentes de mercado ─────────────────
+
+# Ativos monitorados pelo scanner de oportunidades
+_SCANNER_CRYPTOS = [
+    ("bitcoin", "Bitcoin", "BTC"),
+    ("ethereum", "Ethereum", "ETH"),
+    ("solana", "Solana", "SOL"),
+]
+
+_SCANNER_ACOES = [
+    ("BOVA11", "BOVA11 (Ibovespa)"),
+    ("IVVB11", "IVVB11 (S&P 500)"),
+    ("WEGE3", "WEG"),
+    ("PETR4", "Petrobras"),
+    ("VALE3", "Vale"),
+]
+
+
+async def job_oportunidades_mercado(context: ContextTypes.DEFAULT_TYPE):
+    """
+    Roda a cada 2 horas. Escaneia criptos e ações monitorados
+    em busca de condições extremas de mercado e envia alertas
+    URGENTES de compra/venda para usuários inscritos.
+
+    Condições de COMPRA urgente:
+    - Queda > 5% em 24h (oportunidade de compra)
+    - RSI < 25 (sobrevendido)
+    - Fear & Greed < 20 (pânico no mercado)
+
+    Condições de VENDA urgente:
+    - Alta > 15% em 24h (possível topo)
+    - RSI > 80 (sobrecomprado)
+    - Fear & Greed > 80 (euforia/ganância)
+    """
+    from handlers.alerta_mercado import (
+        get_usuarios_alerta_mercado,
+        update_ultimo_alerta_mercado,
+    )
+
+    logger.info("Escaneando oportunidades de mercado...")
+
+    try:
+        usuarios = await get_usuarios_alerta_mercado()
+        if not usuarios:
+            logger.info("Nenhum usuário com alertas de mercado ativos.")
+            return
+
+        # Filtrar usuários que não receberam alerta nas últimas 6h
+        agora = datetime.datetime.now()
+        usuarios_elegíveis = []
+        for u in usuarios:
+            ultimo = u.get("ultimo_alerta")
+            if ultimo:
+                try:
+                    ultimo_dt = datetime.datetime.fromisoformat(ultimo)
+                    if (agora - ultimo_dt).total_seconds() < 21600:  # 6h
+                        continue
+                except (ValueError, TypeError):
+                    pass
+            usuarios_elegíveis.append(u)
+
+        if not usuarios_elegíveis:
+            logger.info("Todos os usuários já receberam alerta recente.")
+            return
+
+        # Escanear mercado cripto
+        alertas_urgentes = []
+
+        # Fear & Greed Index (afeta todas as criptos)
+        from services.market_analysis import get_fear_greed_index
+
+        fg = await get_fear_greed_index()
+        fg_valor = fg.get("valor", 50) if fg else 50
+        fg_class = fg.get("classificacao", "") if fg else ""
+
+        # Alerta global de Fear & Greed extremo
+        if fg and fg_valor <= 20:
+            alertas_urgentes.append({
+                "tipo": "COMPRA",
+                "emoji": "🟢🟢",
+                "urgencia": "🚨🚨",
+                "ativo": "MERCADO CRIPTO",
+                "motivo": (
+                    f"Índice de Medo em **{fg_valor}** ({fg_class}) — "
+                    "PÂNICO no mercado! Historicamente, comprar no "
+                    "medo extremo gera os maiores retornos."
+                ),
+                "acao": "Considere comprar Bitcoin, Ethereum ou Solana",
+            })
+        elif fg and fg_valor >= 80:
+            alertas_urgentes.append({
+                "tipo": "VENDA",
+                "emoji": "🔴🔴",
+                "urgencia": "🚨🚨",
+                "ativo": "MERCADO CRIPTO",
+                "motivo": (
+                    f"Índice de Ganância em **{fg_valor}** ({fg_class}) — "
+                    "EUFORIA no mercado! Historicamente, o mercado "
+                    "costuma cair forte depois de euforia extrema."
+                ),
+                "acao": "Considere realizar lucros em criptos",
+            })
+
+        # Escanear cada cripto
+        for coin_id, nome, sigla in _SCANNER_CRYPTOS:
+            try:
+                analise = await analise_completa_crypto(coin_id)
+                if not analise:
+                    continue
+
+                preco = analise["preco"]
+                var_24h = preco.get("variacao_24h", 0)
+                momentum = analise.get("momentum", {})
+                rsi = momentum.get("rsi_14", 50)
+                preco_brl = preco["preco_brl"]
+
+                # Queda forte > 5% em 24h
+                if var_24h <= -5:
+                    alertas_urgentes.append({
+                        "tipo": "COMPRA",
+                        "emoji": "🟢",
+                        "urgencia": "🚨",
+                        "ativo": f"{nome} ({sigla})",
+                        "motivo": (
+                            f"Caiu **{abs(var_24h):.1f}%** nas últimas 24h!\n"
+                            f"   Preço: R${preco_brl:,.2f}\n"
+                            f"   Quedas bruscas podem ser oportunidade de compra."
+                        ),
+                        "acao": f"Analisar se é hora de comprar {sigla}",
+                    })
+
+                # RSI sobrevendido
+                if rsi < 25:
+                    alertas_urgentes.append({
+                        "tipo": "COMPRA",
+                        "emoji": "🟢🟢",
+                        "urgencia": "🚨🚨",
+                        "ativo": f"{nome} ({sigla})",
+                        "motivo": (
+                            f"RSI em **{rsi:.0f}** — SOBREVENDIDO!\n"
+                            f"   Preço: R${preco_brl:,.2f}\n"
+                            f"   Indicador sugere que está 'barato demais' — "
+                            f"possível reversão em breve."
+                        ),
+                        "acao": f"Forte sinal de compra para {sigla}",
+                    })
+
+                # Alta forte > 15% em 24h
+                if var_24h >= 15:
+                    alertas_urgentes.append({
+                        "tipo": "VENDA",
+                        "emoji": "🔴",
+                        "urgencia": "🚨",
+                        "ativo": f"{nome} ({sigla})",
+                        "motivo": (
+                            f"Subiu **{var_24h:.1f}%** nas últimas 24h!\n"
+                            f"   Preço: R${preco_brl:,.2f}\n"
+                            f"   Altas muito rápidas podem ser seguidas de correção."
+                        ),
+                        "acao": f"Se tem {sigla}, considere vender parte",
+                    })
+
+                # RSI sobrecomprado
+                if rsi > 80:
+                    alertas_urgentes.append({
+                        "tipo": "VENDA",
+                        "emoji": "🔴🔴",
+                        "urgencia": "🚨🚨",
+                        "ativo": f"{nome} ({sigla})",
+                        "motivo": (
+                            f"RSI em **{rsi:.0f}** — SOBRECOMPRADO!\n"
+                            f"   Preço: R${preco_brl:,.2f}\n"
+                            f"   Indicador sugere que está 'caro demais' — "
+                            f"risco de queda."
+                        ),
+                        "acao": f"Sinal de venda para {sigla}",
+                    })
+
+            except Exception as e:
+                logger.warning("Erro ao escanear %s: %s", nome, e)
+
+        # Escanear ações
+        for ticker, nome in _SCANNER_ACOES:
+            try:
+                stock = await get_stock_price(ticker)
+                if not stock:
+                    continue
+
+                var_dia = stock.get("variacao_dia", 0)
+                preco = stock["preco"]
+                max_52 = stock.get("max_52sem", preco)
+                min_52 = stock.get("min_52sem", preco)
+
+                # Queda forte > 5% no dia
+                if var_dia <= -5:
+                    alertas_urgentes.append({
+                        "tipo": "COMPRA",
+                        "emoji": "🟢",
+                        "urgencia": "🚨",
+                        "ativo": nome,
+                        "motivo": (
+                            f"Caiu **{abs(var_dia):.1f}%** hoje!\n"
+                            f"   Preço: R${preco:.2f}\n"
+                            f"   Quedas acentuadas em ações sólidas podem "
+                            f"ser ponto de entrada."
+                        ),
+                        "acao": f"Analisar se é hora de comprar {ticker}",
+                    })
+
+                # Perto da mínima de 52 semanas (< 5% acima)
+                if min_52 > 0:
+                    dist_fundo = ((preco - min_52) / min_52) * 100
+                    if dist_fundo < 5:
+                        alertas_urgentes.append({
+                            "tipo": "COMPRA",
+                            "emoji": "🟢",
+                            "urgencia": "⚡",
+                            "ativo": nome,
+                            "motivo": (
+                                f"Perto da **mínima de 52 semanas**!\n"
+                                f"   Preço: R${preco:.2f} "
+                                f"(mín: R${min_52:.2f})\n"
+                                f"   Pode ser zona de suporte forte."
+                            ),
+                            "acao": f"Possível fundo — avaliar {ticker}",
+                        })
+
+                # Alta forte > 8% no dia
+                if var_dia >= 8:
+                    alertas_urgentes.append({
+                        "tipo": "VENDA",
+                        "emoji": "🔴",
+                        "urgencia": "🚨",
+                        "ativo": nome,
+                        "motivo": (
+                            f"Subiu **{var_dia:.1f}%** hoje!\n"
+                            f"   Preço: R${preco:.2f}\n"
+                            f"   Alta muito rápida — se você tem, pode ser "
+                            f"hora de garantir lucro."
+                        ),
+                        "acao": f"Se tem {ticker}, considere vender parte",
+                    })
+
+                # Perto da máxima de 52 semanas (< 3% abaixo)
+                if max_52 > 0:
+                    dist_topo = ((max_52 - preco) / max_52) * 100
+                    if dist_topo < 3 and var_dia > 2:
+                        alertas_urgentes.append({
+                            "tipo": "VENDA",
+                            "emoji": "🔴",
+                            "urgencia": "⚡",
+                            "ativo": nome,
+                            "motivo": (
+                                f"Perto da **máxima de 52 semanas**!\n"
+                                f"   Preço: R${preco:.2f} "
+                                f"(máx: R${max_52:.2f})\n"
+                                f"   Pode ser zona de resistência."
+                            ),
+                            "acao": f"Se tem lucro em {ticker}, considere vender",
+                        })
+
+            except Exception as e:
+                logger.warning("Erro ao escanear %s: %s", ticker, e)
+
+        # Se não há alertas urgentes, sair
+        if not alertas_urgentes:
+            logger.info("Nenhuma oportunidade urgente detectada.")
+            return
+
+        logger.info(
+            "Oportunidades detectadas: %d — enviando para %d usuários",
+            len(alertas_urgentes),
+            len(usuarios_elegíveis),
+        )
+
+        # Agrupar alertas por tipo
+        compras = [a for a in alertas_urgentes if a["tipo"] == "COMPRA"]
+        vendas = [a for a in alertas_urgentes if a["tipo"] == "VENDA"]
+
+        # Montar mensagem
+        msg = "🚨 **ALERTA URGENTE DE MERCADO** 🚨\n\n"
+
+        agora_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+        msg += f"📡 _Análise em {agora_str}_\n\n"
+
+        if compras:
+            msg += "🟢 **OPORTUNIDADES DE COMPRA:**\n\n"
+            for a in compras:
+                msg += (
+                    f"{a['urgencia']} **{a['ativo']}**\n"
+                    f"   {a['motivo']}\n"
+                    f"   👉 _{a['acao']}_\n\n"
+                )
+
+        if vendas:
+            msg += "🔴 **SINAIS DE VENDA:**\n\n"
+            for a in vendas:
+                msg += (
+                    f"{a['urgencia']} **{a['ativo']}**\n"
+                    f"   {a['motivo']}\n"
+                    f"   👉 _{a['acao']}_\n\n"
+                )
+
+        msg += (
+            "━━━━━━━━━━━━━━━━━━━\n"
+            "⚠️ _Estes são sinais técnicos, não garantia de lucro. "
+            "Faça sua própria análise!_\n\n"
+            "📈 /analisar [ativo] — Análise detalhada\n"
+            "📋 /oquefazer — Plano completo do que comprar\n"
+            "📖 /comocomprar — Passo a passo para comprar\n"
+            "🔕 /alertamercado — Desativar alertas"
+        )
+
+        # Limitar tamanho da mensagem
+        if len(msg) > 4000:
+            msg = msg[:3950] + "\n\n_...mais sinais disponíveis via /analisar_"
+
+        # Enviar para todos os usuários elegíveis
+        for u in usuarios_elegíveis:
+            telegram_id = u["telegram_id"]
+            try:
+                await context.bot.send_message(
+                    chat_id=telegram_id,
+                    text=msg,
+                    parse_mode="Markdown",
+                )
+                await update_ultimo_alerta_mercado(telegram_id)
+                logger.info("Alerta de mercado enviado para %s", telegram_id)
+            except Exception as e:
+                logger.error(
+                    "Erro ao enviar alerta de mercado para %s: %s",
+                    telegram_id, e,
+                )
+
+    except Exception as e:
+        logger.error("Erro no job de oportunidades de mercado: %s", e)
+
+
 # ── Registrar todos os jobs ──────────────────────────────────
 
 
@@ -477,7 +817,16 @@ def registrar_jobs(app):
         name="dica_diaria",
     )
 
+    # 5. Oportunidades urgentes de mercado — a cada 2 horas
+    job_queue.run_repeating(
+        job_oportunidades_mercado,
+        interval=7200,
+        first=300,  # 5 min após iniciar (dá tempo de estabilizar)
+        name="oportunidades_mercado",
+    )
+
     logger.info(
         "Jobs registrados: alertas (1h), aporte diário (8h BRT), "
-        "relatório semanal (dom 10h BRT), dica diária (9h BRT)"
+        "relatório semanal (dom 10h BRT), dica diária (9h BRT), "
+        "oportunidades mercado (2h)"
     )

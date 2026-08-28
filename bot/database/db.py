@@ -145,6 +145,14 @@ async def init_db():
                 FOREIGN KEY (telegram_id) REFERENCES usuarios(telegram_id)
             );
 
+            CREATE TABLE IF NOT EXISTS alerta_mercado_config (
+                telegram_id INTEGER PRIMARY KEY,
+                ativo INTEGER DEFAULT 1,
+                ultimo_alerta TEXT,
+                criado_em TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (telegram_id) REFERENCES usuarios(telegram_id)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_gastos_user
                 ON gastos(telegram_id, data);
             CREATE INDEX IF NOT EXISTS idx_dividas_user
