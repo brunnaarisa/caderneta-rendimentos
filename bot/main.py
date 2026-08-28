@@ -17,6 +17,10 @@ from handlers.aporte import get_aporte_handlers
 from handlers.carteira import get_carteira_handlers
 from handlers.como_comprar import get_como_comprar_handlers
 from handlers.alerta_mercado import get_alerta_mercado_handlers
+from handlers.alerta_preco import get_alerta_preco_handlers
+from handlers.imposto_renda import get_ir_handlers
+from handlers.radar import get_radar_handlers
+from handlers.resumo_matinal import get_resumo_matinal_handlers
 from handlers.consulta import get_consulta_handlers
 from handlers.desafio import get_desafio_handlers
 from handlers.dividas import get_dividas_handlers
@@ -125,7 +129,23 @@ def main():
     for handler in get_alerta_mercado_handlers():
         app.add_handler(handler)
 
-    # 18. Consultas IA + Ajuda (por último — pega qualquer texto)
+    # 18. Calculadora de Imposto de Renda
+    for handler in get_ir_handlers():
+        app.add_handler(handler)
+
+    # 19. Alertas de preço-alvo
+    for handler in get_alerta_preco_handlers():
+        app.add_handler(handler)
+
+    # 20. Radar de oportunidades
+    for handler in get_radar_handlers():
+        app.add_handler(handler)
+
+    # 21. Resumo matinal
+    for handler in get_resumo_matinal_handlers():
+        app.add_handler(handler)
+
+    # 22. Consultas IA + Ajuda (por último — pega qualquer texto)
     for handler in get_consulta_handlers():
         app.add_handler(handler)
 

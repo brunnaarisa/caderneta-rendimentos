@@ -153,6 +153,28 @@ async def init_db():
                 FOREIGN KEY (telegram_id) REFERENCES usuarios(telegram_id)
             );
 
+            CREATE TABLE IF NOT EXISTS alertas_preco (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                ativo TEXT NOT NULL,
+                tipo TEXT NOT NULL DEFAULT 'crypto',
+                direcao TEXT NOT NULL DEFAULT 'acima',
+                preco_alvo REAL NOT NULL,
+                ativo_flag INTEGER DEFAULT 1,
+                notificado INTEGER DEFAULT 0,
+                criado_em TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (telegram_id) REFERENCES usuarios(telegram_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS resumo_matinal_config (
+                telegram_id INTEGER PRIMARY KEY,
+                ativo INTEGER DEFAULT 1,
+                criado_em TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (telegram_id) REFERENCES usuarios(telegram_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_alertas_preco_user
+                ON alertas_preco(telegram_id, ativo_flag);
             CREATE INDEX IF NOT EXISTS idx_gastos_user
                 ON gastos(telegram_id, data);
             CREATE INDEX IF NOT EXISTS idx_dividas_user

@@ -777,6 +777,184 @@ async def job_oportunidades_mercado(context: ContextTypes.DEFAULT_TYPE):
         logger.error("Erro no job de oportunidades de mercado: %s", e)
 
 
+# ── Job 6: Verificar alertas de preço-alvo ──────────────────
+
+
+async def job_verificar_alertas_preco(context: ContextTypes.DEFAULT_TYPE):
+    """
+    Roda a cada 1 hora. Verifica todos os alertas de preço-alvo ativos,
+    compara com o preço atual e envia notificação quando o alvo é atingido.
+    """
+    from handlers.alerta_preco import (
+        get_todos_alertas_preco_ativos,
+        marcar_alerta_notificado,
+    )
+
+    logger.info("Verificando alertas de preço-alvo...")
+
+    try:
+        alertas = await get_todos_alertas_preco_ativos()
+        if not alertas:
+            logger.info("Nenhum alerta de preço ativo.")
+            return
+
+        logger.info("Alertas de preço ativos: %d", len(alertas))
+
+        for alerta in alertas:
+            try:
+                ativo = alerta["ativo"]
+                tipo = alerta["tipo"]
+                direcao = alerta["direcao"]
+                preco_alvo = alerta["preco_alvo"]
+                telegram_id = alerta["telegram_id"]
+
+                # Buscar preço atual
+                preco_atual = None
+                if tipo == "crypto":
+                    pd = await get_crypto_price(ativo)
+                    if pd:
+                        preco_atual = pd["preco_brl"]
+                else:
+                    sd = await get_stock_price(ativo)
+                    if sd:
+                        preco_atual = sd["preco"]
+
+                if preco_atual is None:
+                    continue
+
+                # Verificar se o alvo foi atingido
+                atingido = False
+                if direcao == "acima" and preco_atual >= preco_alvo:
+                    atingido = True
+                elif direcao == "abaixo" and preco_atual <= preco_alvo:
+                    atingido = True
+
+                if atingido:
+                    nome = CRYPTO_NOMES.get(ativo, ativo.upper())
+                    emoji_dir = "📈" if direcao == "acima" else "📉"
+                    texto_dir = "subiu" if direcao == "acima" else "caiu"
+
+                    msg = (
+                        f"🎯🔔 **ALERTA DE PREÇO ATINGIDO!**\n\n"
+                        f"📌 **{nome}** {texto_dir} até o seu alvo!\n\n"
+                        f"{emoji_dir} Preço atual: **R${preco_atual:,.2f}**\n"
+                        f"🎯 Seu alvo: R${preco_alvo:,.2f}\n\n"
+                    )
+
+                    if direcao == "acima":
+                        msg += (
+                            "💡 _O ativo atingiu o preço que você esperava. "
+                            "Se era um alvo de venda, considere realizar lucro!_\n\n"
+                        )
+                    else:
+                        msg += (
+                            "💡 _O ativo caiu até o preço que você esperava. "
+                            "Se era um alvo de compra, pode ser hora de entrar!_\n\n"
+                        )
+
+                    msg += (
+                        "━━━━━━━━━━━━━━━━━━━\n"
+                        "📈 /analisar — Análise completa\n"
+                        "📋 /alvos — Seus alertas ativos\n"
+                        "🎯 /alvo — Criar novo alerta"
+                    )
+
+                    await context.bot.send_message(
+                        chat_id=telegram_id,
+                        text=msg,
+                        parse_mode="Markdown",
+                    )
+                    await marcar_alerta_notificado(alerta["id"])
+                    logger.info(
+                        "Alerta #%d notificado — %s atingiu R$%.2f para user %s",
+                        alerta["id"], ativo, preco_alvo, telegram_id,
+                    )
+
+            except Exception as e:
+                logger.error(
+                    "Erro ao verificar alerta #%s: %s",
+                    alerta.get("id"), e,
+                )
+
+    except Exception as e:
+        logger.error("Erro no job de alertas de preço: %s", e)
+
+
+# ── Job 7: Resumo matinal ──────────────────────────────────
+
+
+async def job_resumo_matinal(context: ContextTypes.DEFAULT_TYPE):
+    """
+    Roda todo dia às 7h BRT (10h UTC).
+    Envia o resumo matinal personalizado para todos os usuários inscritos.
+    """
+    from handlers.resumo_matinal import (
+        get_usuarios_resumo_matinal,
+        montar_resumo_matinal,
+    )
+
+    logger.info("Enviando resumos matinais...")
+
+    try:
+        usuarios = await get_usuarios_resumo_matinal()
+        if not usuarios:
+            logger.info("Nenhum usuário com resumo matinal ativo.")
+            return
+
+        logger.info("Usuários com resumo matinal: %d", len(usuarios))
+        enviados = 0
+
+        for user in usuarios:
+            telegram_id = user["telegram_id"]
+            try:
+                msg = await montar_resumo_matinal(telegram_id)
+
+                # Dividir se necessário (resumo pode ser longo)
+                if len(msg) > 4000:
+                    partes = []
+                    remaining = msg
+                    while remaining:
+                        if len(remaining) <= 4000:
+                            partes.append(remaining)
+                            break
+                        corte = remaining.rfind("\n", 0, 4000)
+                        if corte == -1:
+                            corte = 4000
+                        partes.append(remaining[:corte])
+                        remaining = remaining[corte:].lstrip("\n")
+                    for parte in partes:
+                        await context.bot.send_message(
+                            chat_id=telegram_id,
+                            text=parte,
+                            parse_mode="Markdown",
+                        )
+                else:
+                    await context.bot.send_message(
+                        chat_id=telegram_id,
+                        text=msg,
+                        parse_mode="Markdown",
+                    )
+
+                enviados += 1
+                logger.info("Resumo matinal enviado para %s", telegram_id)
+
+                # Pequena pausa entre envios para evitar rate limit
+                await asyncio.sleep(0.5)
+
+            except Exception as e:
+                logger.error(
+                    "Erro ao enviar resumo matinal para %s: %s",
+                    telegram_id, e,
+                )
+
+        logger.info(
+            "Resumos matinais enviados: %d/%d", enviados, len(usuarios)
+        )
+
+    except Exception as e:
+        logger.error("Erro no job de resumo matinal: %s", e)
+
+
 # ── Registrar todos os jobs ──────────────────────────────────
 
 
@@ -825,8 +1003,24 @@ def registrar_jobs(app):
         name="oportunidades_mercado",
     )
 
+    # 6. Verificar alertas de preço-alvo — a cada 1 hora
+    job_queue.run_repeating(
+        job_verificar_alertas_preco,
+        interval=3600,
+        first=120,
+        name="alertas_preco",
+    )
+
+    # 7. Resumo matinal — todo dia às 7h BRT (10h UTC)
+    job_queue.run_daily(
+        job_resumo_matinal,
+        time=datetime.time(hour=10, minute=0, second=0),
+        name="resumo_matinal",
+    )
+
     logger.info(
         "Jobs registrados: alertas (1h), aporte diário (8h BRT), "
         "relatório semanal (dom 10h BRT), dica diária (9h BRT), "
-        "oportunidades mercado (2h)"
+        "oportunidades mercado (2h), alertas preço (1h), "
+        "resumo matinal (7h BRT)"
     )
