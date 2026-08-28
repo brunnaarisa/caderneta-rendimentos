@@ -59,7 +59,7 @@ def main():
     logger.info("Inicializando FinançasIA Bot...")
 
     # Inicializar banco de dados
-    asyncio.get_event_loop().run_until_complete(init_db())
+    asyncio.run(init_db())
     logger.info("Banco de dados inicializado.")
 
     # Criar aplicação

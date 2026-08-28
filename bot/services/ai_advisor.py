@@ -8,7 +8,16 @@ from config import ANTHROPIC_API_KEY, AI_MODEL
 
 logger = logging.getLogger(__name__)
 
-client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+# Inicialização lazy para evitar criar o client no import (problemas com proxy)
+_client: anthropic.AsyncAnthropic | None = None
+
+
+def _get_client() -> anthropic.AsyncAnthropic:
+    """Retorna o client async da Anthropic, criando na primeira chamada."""
+    global _client
+    if _client is None:
+        _client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+    return _client
 
 SYSTEM_PROMPT = """Você é o FinançasIA, um consultor financeiro pessoal brasileiro.
 
@@ -91,7 +100,8 @@ async def consultar_ia(pergunta: str, contexto_financeiro: str) -> str:
         )
 
     try:
-        response = client.messages.create(
+        client = _get_client()
+        response = await client.messages.create(
             model=AI_MODEL,
             max_tokens=1024,
             system=SYSTEM_PROMPT,

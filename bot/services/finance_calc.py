@@ -12,7 +12,7 @@ def calcular_rendimento(
     Calcula o rendimento de um investimento atrelado ao CDI.
 
     Retorna:
-        - valor_final: montante total
+        - valor_final_bruto: montante total (antes do IR)
         - total_investido: soma dos aportes
         - rendimento_bruto: ganho antes do IR
         - ir: imposto de renda retido
