@@ -955,6 +955,253 @@ async def job_resumo_matinal(context: ContextTypes.DEFAULT_TYPE):
         logger.error("Erro no job de resumo matinal: %s", e)
 
 
+# ── Job 8: Snapshots diários da carteira ───────────────────
+
+
+async def job_portfolio_snapshots(context: ContextTypes.DEFAULT_TYPE):
+    """
+    Roda todo dia às 20h BRT (23h UTC).
+    Salva um snapshot do valor da carteira de cada usuário.
+    """
+    from handlers.evolucao import salvar_snapshot
+    from services.aporte_service import get_usuarios_com_carteira
+
+    logger.info("Salvando snapshots de carteira...")
+
+    try:
+        usuarios = await get_usuarios_com_carteira()
+        if not usuarios:
+            return
+
+        salvos = 0
+        for user in usuarios:
+            try:
+                snap = await salvar_snapshot(user["telegram_id"])
+                if snap:
+                    salvos += 1
+            except Exception as e:
+                logger.error(
+                    "Erro ao salvar snapshot de %s: %s",
+                    user["telegram_id"], e,
+                )
+
+        logger.info("Snapshots salvos: %d/%d", salvos, len(usuarios))
+
+    except Exception as e:
+        logger.error("Erro no job de snapshots: %s", e)
+
+
+# ── Job 9: Verificar pagamentos Pix pendentes ──────────────
+
+
+async def job_verificar_pagamentos(context: ContextTypes.DEFAULT_TYPE):
+    """
+    Roda a cada 5 minutos.
+    Verifica pagamentos Pix pendentes e ativa premium se aprovado.
+    """
+    from services.payment_service import (
+        ativar_premium,
+        atualizar_status_pagamento,
+        get_pagamentos_pendentes,
+        verificar_pagamento,
+    )
+
+    try:
+        pendentes = await get_pagamentos_pendentes()
+        if not pendentes:
+            return
+
+        logger.info("Verificando %d pagamentos pendentes...", len(pendentes))
+
+        for pag in pendentes:
+            payment_id = pag["external_id"]
+            telegram_id = pag["telegram_id"]
+
+            try:
+                status = await verificar_pagamento(payment_id)
+                if not status:
+                    continue
+
+                if status == "approved":
+                    await atualizar_status_pagamento(payment_id, "approved")
+                    await ativar_premium(telegram_id, 1)
+
+                    await context.bot.send_message(
+                        chat_id=telegram_id,
+                        text=(
+                            "🎉🎉🎉 **PAGAMENTO CONFIRMADO!** 🎉🎉🎉\n\n"
+                            "💎 Seu **Premium** está ATIVO!\n\n"
+                            "Aproveite:\n"
+                            "📈 /oquefazer — O que comprar hoje\n"
+                            "📝 /comprei — Registrar compra\n"
+                            "📊 /painel — Dashboard completo\n\n"
+                            "Obrigado por apoiar o FinançasIA! 🚀"
+                        ),
+                        parse_mode="Markdown",
+                    )
+                    logger.info(
+                        "Premium ativado via Pix para %s", telegram_id
+                    )
+
+                elif status in ("rejected", "cancelled"):
+                    await atualizar_status_pagamento(payment_id, status)
+
+            except Exception as e:
+                logger.error(
+                    "Erro ao verificar pagamento %s: %s", payment_id, e
+                )
+
+    except Exception as e:
+        logger.error("Erro no job de verificação de pagamentos: %s", e)
+
+
+# ── Job 10: Consultor proativo ─────────────────────────────
+
+
+async def job_consultor_proativo(context: ContextTypes.DEFAULT_TYPE):
+    """
+    Roda 1x por dia às 14h BRT (17h UTC).
+    Analisa a situação de cada usuário e envia sugestões proativas.
+
+    Cenários:
+    - Carteira vazia + saldo parado → "Que tal começar a investir?"
+    - Posição com grande lucro → "Considere realizar parte do lucro"
+    - Posição em queda forte → "Hora de comprar mais?"
+    - Sem acesso há dias → "Sentimos sua falta!"
+    """
+    from services.aporte_service import get_usuarios_com_carteira
+
+    from database.db import get_db
+
+    logger.info("Executando consultor proativo...")
+
+    try:
+        # Buscar TODOS os usuários (não só os com carteira)
+        db = await get_db()
+        try:
+            cursor = await db.execute(
+                "SELECT telegram_id, criado_em FROM usuarios"
+            )
+            todos_usuarios = [dict(r) for r in await cursor.fetchall()]
+        finally:
+            await db.close()
+
+        if not todos_usuarios:
+            return
+
+        for user in todos_usuarios:
+            telegram_id = user["telegram_id"]
+
+            try:
+                posicoes = await get_carteira_ativa(telegram_id)
+
+                # Cenário 1: Carteira vazia — incentivar primeiro investimento
+                if not posicoes:
+                    # Só enviar para quem criou conta há mais de 1 dia
+                    # e nunca recebeu essa dica (baseado no XP)
+                    db = await get_db()
+                    try:
+                        cursor = await db.execute(
+                            "SELECT xp FROM gamificacao WHERE telegram_id = ?",
+                            (telegram_id,),
+                        )
+                        row = await cursor.fetchone()
+                        xp = dict(row)["xp"] if row else 0
+                    finally:
+                        await db.close()
+
+                    # Só usuários novos (pouco XP) e que não interagem muito
+                    if xp < 50:
+                        await context.bot.send_message(
+                            chat_id=telegram_id,
+                            text=(
+                                "👋 Ei! Vi que você ainda não registrou "
+                                "nenhum investimento.\n\n"
+                                "💡 **Sabia que dá pra começar com R$50?**\n\n"
+                                "Me diz quanto você tem disponível e eu "
+                                "monto um plano personalizado! Basta digitar:\n\n"
+                                "_\"Quero investir 100 reais\"_\n\n"
+                                "📈 /oquefazer — Ver o que eu compraria hoje\n"
+                                "📚 /aprender — Aprender do zero"
+                            ),
+                            parse_mode="Markdown",
+                        )
+                    continue
+
+                # Cenário 2: Posições com lucro alto (>30%)
+                for pos in posicoes:
+                    preco_compra = pos["preco_compra"]
+                    ativo = pos["ativo"]
+                    tipo = pos["tipo"]
+
+                    preco_atual = preco_compra
+                    if tipo == "crypto":
+                        pd = await get_crypto_price(ativo)
+                        if pd:
+                            preco_atual = pd["preco_brl"]
+                    else:
+                        sd = await get_stock_price(ativo)
+                        if sd:
+                            preco_atual = sd["preco"]
+
+                    var = (
+                        (preco_atual - preco_compra) / preco_compra * 100
+                        if preco_compra
+                        else 0
+                    )
+                    nome = CRYPTO_NOMES.get(ativo, ativo.upper())
+
+                    if var >= 30:
+                        await context.bot.send_message(
+                            chat_id=telegram_id,
+                            text=(
+                                f"🤖💡 **Sugestão do seu consultor:**\n\n"
+                                f"Seu {nome} está com **+{var:.1f}%** de lucro! "
+                                f"🟢🟢\n\n"
+                                f"💰 Você investiu R${pos['valor_investido']:,.2f}\n"
+                                f"📈 Hoje vale ~R${pos['valor_investido'] * (1 + var/100):,.2f}\n\n"
+                                f"💡 **Considere vender parte (ex: 50%)** para "
+                                f"garantir o lucro e manter o restante crescendo.\n\n"
+                                f"⚠️ _\"Lucro bom é lucro no bolso\"_\n\n"
+                                f"📊 /analisar {ativo} — Ver análise completa"
+                            ),
+                            parse_mode="Markdown",
+                        )
+                        break  # 1 sugestão por dia por usuário
+
+                    elif var <= -20:
+                        await context.bot.send_message(
+                            chat_id=telegram_id,
+                            text=(
+                                f"🤖💡 **Sugestão do seu consultor:**\n\n"
+                                f"Seu {nome} está com **{var:.1f}%**. "
+                                f"📉\n\n"
+                                f"Mas calma! Quedas são normais.\n\n"
+                                f"**O que eu faria:**\n"
+                                f"• Se acredita no ativo → comprar mais "
+                                f"(reduz seu preço médio)\n"
+                                f"• Se não tem certeza → manter e aguardar\n"
+                                f"• Se precisa do dinheiro → vender e aceitar\n\n"
+                                f"📊 /analisar {ativo} — Ver se os indicadores "
+                                f"favorecem compra\n"
+                                f"📈 /oquefazer — O que eu compraria hoje"
+                            ),
+                            parse_mode="Markdown",
+                        )
+                        break
+
+            except Exception as e:
+                # Silently skip users who blocked the bot, etc.
+                if "Forbidden" not in str(e):
+                    logger.error(
+                        "Erro no consultor proativo para %s: %s",
+                        telegram_id, e,
+                    )
+
+    except Exception as e:
+        logger.error("Erro no job de consultor proativo: %s", e)
+
+
 # ── Registrar todos os jobs ──────────────────────────────────
 
 
@@ -1018,9 +1265,32 @@ def registrar_jobs(app):
         name="resumo_matinal",
     )
 
+    # 8. Snapshots diários da carteira — todo dia 20h BRT (23h UTC)
+    job_queue.run_daily(
+        job_portfolio_snapshots,
+        time=datetime.time(hour=23, minute=0, second=0),
+        name="portfolio_snapshots",
+    )
+
+    # 9. Verificar pagamentos Pix — a cada 5 minutos
+    job_queue.run_repeating(
+        job_verificar_pagamentos,
+        interval=300,
+        first=60,
+        name="verificar_pagamentos",
+    )
+
+    # 10. Consultor proativo — todo dia às 14h BRT (17h UTC)
+    job_queue.run_daily(
+        job_consultor_proativo,
+        time=datetime.time(hour=17, minute=0, second=0),
+        name="consultor_proativo",
+    )
+
     logger.info(
         "Jobs registrados: alertas (1h), aporte diário (8h BRT), "
         "relatório semanal (dom 10h BRT), dica diária (9h BRT), "
         "oportunidades mercado (2h), alertas preço (1h), "
-        "resumo matinal (7h BRT)"
+        "resumo matinal (7h BRT), snapshots (20h BRT), "
+        "pagamentos (5min), consultor proativo (14h BRT)"
     )

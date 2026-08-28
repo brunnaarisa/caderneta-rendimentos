@@ -18,9 +18,12 @@ from handlers.carteira import get_carteira_handlers
 from handlers.como_comprar import get_como_comprar_handlers
 from handlers.alerta_mercado import get_alerta_mercado_handlers
 from handlers.alerta_preco import get_alerta_preco_handlers
+from handlers.compartilhar import get_compartilhar_handlers
+from handlers.evolucao import get_evolucao_handlers
 from handlers.imposto_renda import get_ir_handlers
 from handlers.radar import get_radar_handlers
 from handlers.resumo_matinal import get_resumo_matinal_handlers
+from handlers.watchlist import get_watchlist_handlers
 from handlers.consulta import get_consulta_handlers
 from handlers.desafio import get_desafio_handlers
 from handlers.dividas import get_dividas_handlers
@@ -145,7 +148,19 @@ def main():
     for handler in get_resumo_matinal_handlers():
         app.add_handler(handler)
 
-    # 22. Consultas IA + Ajuda (por último — pega qualquer texto)
+    # 22. Watchlist personalizada
+    for handler in get_watchlist_handlers():
+        app.add_handler(handler)
+
+    # 23. Evolução/histórico da carteira
+    for handler in get_evolucao_handlers():
+        app.add_handler(handler)
+
+    # 24. Compartilhamento social
+    for handler in get_compartilhar_handlers():
+        app.add_handler(handler)
+
+    # 25. Consultas IA + Ajuda (por último — pega qualquer texto)
     for handler in get_consulta_handlers():
         app.add_handler(handler)
 

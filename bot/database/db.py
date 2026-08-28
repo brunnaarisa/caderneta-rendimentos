@@ -173,6 +173,41 @@ async def init_db():
                 FOREIGN KEY (telegram_id) REFERENCES usuarios(telegram_id)
             );
 
+            CREATE TABLE IF NOT EXISTS watchlist (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                ativo TEXT NOT NULL,
+                tipo TEXT NOT NULL DEFAULT 'crypto',
+                criado_em TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (telegram_id) REFERENCES usuarios(telegram_id),
+                UNIQUE(telegram_id, ativo)
+            );
+
+            CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                data TEXT NOT NULL,
+                valor_total REAL NOT NULL,
+                lucro_total REAL NOT NULL DEFAULT 0,
+                num_ativos INTEGER NOT NULL DEFAULT 0,
+                criado_em TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (telegram_id) REFERENCES usuarios(telegram_id),
+                UNIQUE(telegram_id, data)
+            );
+
+            CREATE TABLE IF NOT EXISTS pagamentos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                external_id TEXT NOT NULL,
+                valor REAL NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                tipo TEXT NOT NULL DEFAULT 'pix',
+                expiracao TEXT,
+                criado_em TEXT DEFAULT (datetime('now')),
+                pago_em TEXT,
+                FOREIGN KEY (telegram_id) REFERENCES usuarios(telegram_id)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_alertas_preco_user
                 ON alertas_preco(telegram_id, ativo_flag);
             CREATE INDEX IF NOT EXISTS idx_gastos_user
@@ -189,6 +224,14 @@ async def init_db():
                 ON alertas_config(telegram_id);
             CREATE INDEX IF NOT EXISTS idx_indicacoes_referrer
                 ON indicacoes(referrer_id);
+            CREATE INDEX IF NOT EXISTS idx_watchlist_user
+                ON watchlist(telegram_id);
+            CREATE INDEX IF NOT EXISTS idx_snapshots_user
+                ON portfolio_snapshots(telegram_id, data);
+            CREATE INDEX IF NOT EXISTS idx_pagamentos_user
+                ON pagamentos(telegram_id, status);
+            CREATE INDEX IF NOT EXISTS idx_pagamentos_external
+                ON pagamentos(external_id);
             """
         )
         await db.commit()

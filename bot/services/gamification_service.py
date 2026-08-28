@@ -39,6 +39,8 @@ XP_REWARDS = {
     "completar_aula": 25,
     "indicar_amigo": 100,
     "desafio": 15,
+    "compartilhar": 20,
+    "assinar_premium": 200,
     "streak_diario": 10,  # multiplicado pelo streak
 }
 

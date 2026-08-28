@@ -37,6 +37,9 @@ CATEGORIAS_GASTOS = [
     "📦 Outros",
 ]
 
+# Mercado Pago (Pix)
+MERCADOPAGO_ACCESS_TOKEN = os.getenv("MERCADOPAGO_ACCESS_TOKEN", "")
+
 # API Banco Central — CDI
 BCB_CDI_URL = (
     "https://api.bcb.gov.br/dados/serie/bcdata.sgs.4389/dados/ultimos/1?formato=json"

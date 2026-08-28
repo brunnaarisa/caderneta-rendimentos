@@ -330,16 +330,33 @@ async def comprei_preco(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tipo_label = "cripto" if tipo == "crypto" else "ação/FII"
     qtd_fmt = f"{quantidade:.8f}" if tipo == "crypto" else f"{quantidade:.2f}"
 
+    # Calcular stop-loss e take-profit automáticos
+    stop_loss = preco * 0.90  # -10%
+    take_profit = preco * 1.25  # +25%
+
+    # Criar alertas automaticamente
+    from handlers.alerta_preco import criar_alerta_preco
+
+    sl_id = await criar_alerta_preco(
+        update.effective_user.id, ativo, tipo, "abaixo", stop_loss
+    )
+    tp_id = await criar_alerta_preco(
+        update.effective_user.id, ativo, tipo, "acima", take_profit
+    )
+
     await update.message.reply_text(
         f"✅ **Compra registrada!**\n\n"
         f"📦 Ativo: {ativo.upper()} ({tipo_label})\n"
         f"💰 Valor: R${valor:,.2f}\n"
         f"💵 Preço de compra: R${preco:,.2f}\n"
         f"📊 Quantidade: {qtd_fmt}\n\n"
-        f"Vou acompanhar esse ativo pra você! 🔔\n"
-        f"Quando for hora de vender, eu te aviso.\n\n"
-        f"📋 Use /carteira para ver suas posições\n"
-        f"📊 Use /analisar {ativo} para ver a análise atual",
+        f"🛡️ **Proteção automática criada:**\n"
+        f"   🛑 Stop-loss: R${stop_loss:,.2f} (-10%)\n"
+        f"   🎯 Take-profit: R${take_profit:,.2f} (+25%)\n\n"
+        f"_Vou te avisar se o preço atingir esses valores!_\n"
+        f"_Use /alvos para ver/gerenciar seus alertas._\n\n"
+        f"📋 /carteira — Ver suas posições\n"
+        f"📊 /analisar {ativo} — Ver a análise atual",
         parse_mode="Markdown",
     )
     return ConversationHandler.END
