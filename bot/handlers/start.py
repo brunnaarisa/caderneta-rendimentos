@@ -26,6 +26,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await get_or_create_user(user.id, user.first_name)
 
+    # Processar indicação (ref_XXXXX)
+    if context.args and context.args[0].startswith("ref_"):
+        try:
+            referrer_id = int(context.args[0].replace("ref_", ""))
+            from handlers.gamificacao import processar_indicacao
+
+            bonus_msg = await processar_indicacao(referrer_id, user.id)
+            if bonus_msg:
+                await update.message.reply_text(
+                    bonus_msg, parse_mode="Markdown"
+                )
+        except (ValueError, Exception) as e:
+            logger.debug("Erro ao processar indicação: %s", e)
+
     await update.message.reply_text(
         f"Olá, {user.first_name}! 👋\n\n"
         "Eu sou o **FinançasIA** — seu consultor financeiro pessoal "

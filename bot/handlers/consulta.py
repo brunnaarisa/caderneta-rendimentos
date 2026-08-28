@@ -63,6 +63,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Consultar a IA
     resposta = await consultar_ia(pergunta, contexto)
 
+    # Dar XP pela consulta + registrar acesso diário
+    from services.gamification_service import add_xp, registrar_acesso_diario
+
+    await registrar_acesso_diario(telegram_id)
+    resultado_xp = await add_xp(telegram_id, "consulta_ia")
+
     # Mostrar quantas consultas restam (só para free)
     restantes = await get_remaining_consultas(telegram_id, FREE_DAILY_LIMIT)
     rodape = ""
@@ -71,6 +77,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             rodape = f"\n\n---\n_Última consulta grátis de hoje. /premium para ilimitado._"
         else:
             rodape = f"\n\n---\n_{restantes}/{FREE_DAILY_LIMIT} consultas grátis restantes hoje._"
+
+    # Adicionar XP no rodapé
+    xp_ganho = resultado_xp.get("xp_ganho", 0)
+    if xp_ganho:
+        rodape += f" | ⭐ +{xp_ganho} XP"
+    if resultado_xp.get("subiu_nivel"):
+        from handlers.gamificacao import formatar_xp_ganho
+
+        rodape += f"\n🎉 {formatar_xp_ganho(resultado_xp)}"
 
     await update.message.reply_text(
         resposta + rodape,
@@ -106,7 +121,8 @@ async def ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/alertas — Notificações automáticas de venda/compra\n\n"
         "💸 **Controle de gastos:**\n"
         "/gasto — Registrar um gasto\n"
-        "/resumo — Resumo dos gastos do mês\n\n"
+        "/resumo — Resumo dos gastos do mês\n"
+        "/orcamento — 💰 Orçamento mensal inteligente\n\n"
         "💳 **Dívidas:**\n"
         "/dividas — Ver/cadastrar dívidas\n"
         "/estrategia — Plano para quitar dívidas\n\n"
@@ -118,6 +134,10 @@ async def ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/versus — ⚔️ Comparar dois ativos ao vivo\n"
         "/aposentar — 🏖️ Calculadora de independência financeira\n"
         "/dicadodia — 💡 Dica financeira do dia\n\n"
+        "🏆 **Gamificação:**\n"
+        "/conquistas — ⭐ XP, nível, conquistas e streak\n"
+        "/ranking — 🏅 Ranking global\n"
+        "/indicar — 🤝 Convide amigos e ganhe bônus\n\n"
         "⚙️ **Outros:**\n"
         "/premium — Plano premium\n"
         "/start — Recomeçar\n"

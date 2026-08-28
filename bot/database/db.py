@@ -114,6 +114,37 @@ async def init_db():
                 FOREIGN KEY (telegram_id) REFERENCES usuarios(telegram_id)
             );
 
+            CREATE TABLE IF NOT EXISTS gamificacao (
+                telegram_id INTEGER PRIMARY KEY,
+                xp INTEGER DEFAULT 0,
+                nivel INTEGER DEFAULT 1,
+                streak_dias INTEGER DEFAULT 0,
+                maior_streak INTEGER DEFAULT 0,
+                ultimo_acesso TEXT,
+                conquistas TEXT DEFAULT '[]',
+                FOREIGN KEY (telegram_id) REFERENCES usuarios(telegram_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS indicacoes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                referrer_id INTEGER NOT NULL,
+                referred_id INTEGER NOT NULL,
+                bonus_aplicado INTEGER DEFAULT 0,
+                criado_em TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (referrer_id) REFERENCES usuarios(telegram_id),
+                FOREIGN KEY (referred_id) REFERENCES usuarios(telegram_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS orcamento (
+                telegram_id INTEGER PRIMARY KEY,
+                necessidades_pct REAL DEFAULT 50,
+                desejos_pct REAL DEFAULT 30,
+                investimentos_pct REAL DEFAULT 20,
+                alertas_ativo INTEGER DEFAULT 1,
+                criado_em TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (telegram_id) REFERENCES usuarios(telegram_id)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_gastos_user
                 ON gastos(telegram_id, data);
             CREATE INDEX IF NOT EXISTS idx_dividas_user
@@ -126,6 +157,8 @@ async def init_db():
                 ON carteira(telegram_id, vendido);
             CREATE INDEX IF NOT EXISTS idx_alertas_user
                 ON alertas_config(telegram_id);
+            CREATE INDEX IF NOT EXISTS idx_indicacoes_referrer
+                ON indicacoes(referrer_id);
             """
         )
         await db.commit()
