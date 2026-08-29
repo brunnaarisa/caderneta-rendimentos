@@ -13,7 +13,7 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 AI_MODEL = "claude-sonnet-4-20250514"
 
 # Limites
-FREE_DAILY_LIMIT = int(os.getenv("FREE_DAILY_LIMIT", "3"))
+FREE_DAILY_LIMIT = int(os.getenv("FREE_DAILY_LIMIT", "5"))
 PREMIUM_PRICE = float(os.getenv("PREMIUM_PRICE", "14.90"))
 
 # Banco de dados

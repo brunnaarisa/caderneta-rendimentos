@@ -18,6 +18,7 @@ from services.user_service import (
     get_financial_context,
     get_or_create_user,
     get_remaining_consultas,
+    rollback_consulta,
 )
 
 logger = logging.getLogger(__name__)
@@ -422,6 +423,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Consultar a IA
     resposta = await consultar_ia(pergunta, contexto)
+
+    # Se a IA retornou erro, devolver a consulta ao usuário
+    if resposta.startswith("😕") or resposta.startswith("⚠️") or resposta.startswith("🔄"):
+        await rollback_consulta(telegram_id)
+        await update.message.reply_text(resposta)
+        return
 
     # Dar XP pela consulta + registrar acesso diário
     from services.gamification_service import add_xp, registrar_acesso_diario

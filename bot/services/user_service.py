@@ -105,6 +105,23 @@ async def check_and_use_consulta(telegram_id: int, daily_limit: int) -> bool:
         await db.close()
 
 
+async def rollback_consulta(telegram_id: int) -> None:
+    """
+    Desfaz o incremento de uma consulta (ex: quando a API falha).
+    Evita que o usuário perca consultas grátis por erros do sistema.
+    """
+    db = await get_db()
+    try:
+        await db.execute(
+            "UPDATE usuarios SET consultas_hoje = MAX(0, consultas_hoje - 1) "
+            "WHERE telegram_id = ? AND is_premium = 0",
+            (telegram_id,),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
 async def get_remaining_consultas(telegram_id: int, daily_limit: int) -> int | None:
     """Retorna quantas consultas restam hoje. None = ilimitado (premium)."""
     db = await get_db()
