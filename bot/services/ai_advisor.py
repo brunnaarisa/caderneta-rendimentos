@@ -127,12 +127,10 @@ async def consultar_ia(pergunta: str, contexto_financeiro: str) -> str:
     except anthropic.APIStatusError as e:
         logger.error("Erro API Anthropic (status %s): %s", e.status_code, e.message)
         return (
-            "😕 Tive um problema ao processar sua pergunta. "
-            "Tente novamente em instantes!"
+            f"😕 Erro API (status {e.status_code}): {e.message[:200]}"
         )
     except Exception as e:
         logger.error("Erro na consulta IA (%s): %s", type(e).__name__, e)
         return (
-            "😕 Tive um problema ao processar sua pergunta. "
-            "Tente novamente em instantes!"
+            f"😕 Erro ({type(e).__name__}): {str(e)[:200]}"
         )
