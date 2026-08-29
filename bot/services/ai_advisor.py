@@ -16,6 +16,10 @@ def _get_client() -> anthropic.AsyncAnthropic:
     """Retorna o client async da Anthropic, criando na primeira chamada."""
     global _client
     if _client is None:
+        if not ANTHROPIC_API_KEY:
+            logger.error("ANTHROPIC_API_KEY não configurada!")
+            raise ValueError("ANTHROPIC_API_KEY não configurada")
+        logger.info("Inicializando cliente Anthropic (modelo: %s)", AI_MODEL)
         _client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
     return _client
 
@@ -120,8 +124,14 @@ async def consultar_ia(pergunta: str, contexto_financeiro: str) -> str:
     except anthropic.AuthenticationError:
         logger.error("Chave da API Anthropic inválida")
         return "⚠️ Erro de configuração do bot. Contate o administrador."
+    except anthropic.APIStatusError as e:
+        logger.error("Erro API Anthropic (status %s): %s", e.status_code, e.message)
+        return (
+            "😕 Tive um problema ao processar sua pergunta. "
+            "Tente novamente em instantes!"
+        )
     except Exception as e:
-        logger.error("Erro na consulta IA: %s", e)
+        logger.error("Erro na consulta IA (%s): %s", type(e).__name__, e)
         return (
             "😕 Tive um problema ao processar sua pergunta. "
             "Tente novamente em instantes!"
