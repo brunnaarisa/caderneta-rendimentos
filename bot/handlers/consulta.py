@@ -296,7 +296,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     telegram_id = update.effective_user.id
+    nome = update.effective_user.first_name or "Usuário"
     pergunta = update.message.text.strip()
+
+    # Garantir que o usuário existe no banco (caso o container tenha reiniciado)
+    await get_or_create_user(telegram_id, nome)
 
     if len(pergunta) < 3:
         await update.message.reply_text(
