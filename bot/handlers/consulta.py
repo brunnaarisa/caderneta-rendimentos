@@ -530,7 +530,7 @@ async def ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def resetlimite(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler do /resetlimite — reseta o contador de consultas do usuário."""
     telegram_id = update.effective_user.id
-    from services.database import get_db
+    from database.db import get_db
 
     db = await get_db()
     try:
