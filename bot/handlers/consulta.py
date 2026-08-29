@@ -527,6 +527,42 @@ async def ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def resetlimite(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler do /resetlimite — reseta o contador de consultas do usuário."""
+    telegram_id = update.effective_user.id
+    from services.database import get_db
+
+    db = await get_db()
+    try:
+        # Mostrar estado atual
+        cursor = await db.execute(
+            "SELECT consultas_hoje, data_ultima_consulta FROM usuarios "
+            "WHERE telegram_id = ?",
+            (telegram_id,),
+        )
+        row = await cursor.fetchone()
+        if row:
+            info = dict(row)
+            await update.message.reply_text(
+                f"📊 Estado atual:\n"
+                f"• consultas_hoje: {info['consultas_hoje']}\n"
+                f"• data_ultima_consulta: {info['data_ultima_consulta']}\n"
+                f"• FREE_DAILY_LIMIT: {FREE_DAILY_LIMIT}\n\n"
+                f"🔄 Resetando..."
+            )
+        # Resetar
+        await db.execute(
+            "UPDATE usuarios SET consultas_hoje = 0 WHERE telegram_id = ?",
+            (telegram_id,),
+        )
+        await db.commit()
+        await update.message.reply_text(
+            "✅ Limite resetado! Agora mande sua pergunta. 😊"
+        )
+    finally:
+        await db.close()
+
+
 def get_consulta_handlers() -> list:
     """Retorna os handlers de consulta."""
     from telegram.ext import CommandHandler
@@ -534,6 +570,7 @@ def get_consulta_handlers() -> list:
     return [
         CommandHandler("ajuda", ajuda),
         CommandHandler("help", ajuda),
+        CommandHandler("resetlimite", resetlimite),
         # Este deve ser adicionado por último (pega qualquer texto)
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message),
     ]
