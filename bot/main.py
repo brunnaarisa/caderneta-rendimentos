@@ -1,5 +1,5 @@
 """
-FinançasIA — Consultor Financeiro Pessoal no Telegram.
+FinançasIA — Assistente de Educação Financeira no Telegram.
 
 Ponto de entrada do bot. Inicializa o banco de dados,
 registra todos os handlers e inicia o polling.
@@ -37,6 +37,7 @@ from handlers.perfil_risco import get_perfil_risco_handler
 from handlers.premium import get_premium_handlers
 from handlers.start import get_start_handler
 from handlers.sugestoes import get_sugestoes_handlers
+from handlers.termos import get_termos_handlers
 from services.alert_scheduler import registrar_jobs
 
 # Configurar logging
@@ -160,7 +161,11 @@ def main():
     for handler in get_compartilhar_handlers():
         app.add_handler(handler)
 
-    # 25. Consultas IA + Ajuda (por último — pega qualquer texto)
+    # 25. Termos de Uso e Privacidade (LGPD)
+    for handler in get_termos_handlers():
+        app.add_handler(handler)
+
+    # 26. Consultas IA + Ajuda (por último — pega qualquer texto)
     for handler in get_consulta_handlers():
         app.add_handler(handler)
 

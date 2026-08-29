@@ -1066,7 +1066,7 @@ async def job_consultor_proativo(context: ContextTypes.DEFAULT_TYPE):
     Cenários:
     - Carteira vazia + saldo parado → "Que tal começar a investir?"
     - Posição com grande lucro → "Considere realizar parte do lucro"
-    - Posição em queda forte → "Hora de comprar mais?"
+    - Posição em queda forte → "Avaliar se vale reforçar posição"
     - Sem acesso há dias → "Sentimos sua falta!"
     """
     from services.aporte_service import get_usuarios_com_carteira

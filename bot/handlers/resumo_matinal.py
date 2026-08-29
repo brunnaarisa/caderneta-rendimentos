@@ -286,7 +286,7 @@ async def montar_resumo_matinal(telegram_id: int) -> str:
         fg_class = fg["classificacao"]
         if fg_valor <= 25:
             fg_emoji = "😰"
-            fg_dica = "Medo extremo — historicamente bom para comprar!"
+            fg_dica = "Medo extremo — historicamente, períodos assim precederam recuperações"
         elif fg_valor <= 45:
             fg_emoji = "😟"
             fg_dica = "Mercado com medo — fique atento a oportunidades"
@@ -362,10 +362,11 @@ async def montar_resumo_matinal(telegram_id: int) -> str:
     # ── Links rápidos ──
     msg += (
         "━━━━━━━━━━━━━━━━━━━\n"
-        "📡 /radar — Todas as oportunidades\n"
-        "📈 /oquefazer — O que comprar hoje\n"
+        "📡 /radar — Análise de ativos\n"
+        "📈 /oquefazer — Estudo de alocação\n"
         "📋 /carteira — Suas posições\n"
-        "📊 /painel — Dashboard completo"
+        "📊 /painel — Dashboard completo\n\n"
+        "⚠️ _Conteúdo educacional — não é recomendação de investimento._"
     )
 
     return msg

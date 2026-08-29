@@ -1,8 +1,9 @@
 """
-Handler do /desafio — Objetivo de rendimento personalizado.
+Handler do /desafio — Estudo de rendimento educacional.
 
-O usuário diz quanto quer investir, quanto quer ganhar e em quanto tempo.
-O bot analisa o mercado ao vivo e monta um plano concreto com os riscos.
+O usuário informa quanto quer investir, o retorno desejado e o prazo.
+O bot analisa o mercado ao vivo e mostra cenários educacionais com os riscos.
+Conteúdo educacional — não é recomendação de investimento.
 
 Uso:
   /desafio            — Modo guiado (passo a passo)
@@ -334,7 +335,10 @@ async def _montar_plano(
         "📝 /comprei — Registrar compra\n"
         "📋 /carteira — Acompanhar resultado\n"
         "🔔 /alertas — Aviso automático de venda\n"
-        "📖 /comocomprar — Passo a passo detalhado"
+        "📖 /comocomprar — Passo a passo educacional\n\n"
+        "⚠️ _Conteúdo educacional — não é recomendação de investimento. "
+        "Rentabilidade passada não garante resultados futuros. "
+        "Consulte um profissional certificado pela CVM._"
     )
 
     return msg

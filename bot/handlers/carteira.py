@@ -464,8 +464,8 @@ async def alertas_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🔔 **Alertas Inteligentes**\n\n"
         "Eu monitoro seus ativos e te aviso quando:\n"
-        "• 📈 É um bom momento para vender (com lucro)\n"
-        "• 📉 Caiu muito e pode ser hora de comprar mais\n"
+        "• 📈 Indicadores sugerem possível momento de venda\n"
+        "• 📉 Queda forte — possível oportunidade de reforço\n"
         "• 🚀 Seu investimento dobrou de valor\n"
         "• ⚠️ Algo precisa da sua atenção\n\n"
         "O que deseja?",

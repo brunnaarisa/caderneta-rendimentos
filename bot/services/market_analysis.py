@@ -538,7 +538,7 @@ async def verificar_carteira(compras: list[dict]) -> list[dict]:
                 alerta["mensagem"] = (
                     f"📉 Seu {ativo.upper()} caiu {abs(variacao_pct):.0f}%, "
                     f"mas os indicadores sugerem recuperação. "
-                    f"Pode ser hora de comprar mais (se tiver reserva)."
+                    f"Indicadores sugerem possível recuperação."
                 )
             elif variacao_pct <= -40:
                 alerta["acao"] = "ATENÇÃO"

@@ -42,14 +42,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         f"Olá, {user.first_name}! 👋\n\n"
-        "Eu sou o **FinançasIA** — seu consultor financeiro pessoal "
-        "com inteligência artificial.\n\n"
+        "Eu sou o **FinançasIA** — seu assistente de educação "
+        "financeira com inteligência artificial.\n\n"
         "Vou te ajudar a:\n"
         "💰 Organizar seus gastos\n"
-        "📈 Encontrar os melhores investimentos\n"
+        "📈 Estudar opções de investimento\n"
         "🎯 Alcançar seus objetivos financeiros\n"
         "💳 Sair de dívidas (se tiver)\n\n"
-        "Para te dar conselhos melhores, quero te conhecer. "
+        "⚠️ _Conteúdo educacional — não somos consultores "
+        "de investimentos certificados (CVM)._\n\n"
+        "Para te ajudar melhor, quero te conhecer. "
         "Vamos lá? 😊\n\n"
         "**Qual seu principal objetivo financeiro agora?**",
         parse_mode="Markdown",
@@ -173,16 +175,16 @@ async def receber_conhecimento(update: Update, context: ContextTypes.DEFAULT_TYP
         "Começar a investir": (
             "🚀 **Comece por aqui:**\n"
             "1️⃣ /aprender — Curso do zero (não precisa saber nada!)\n"
-            "2️⃣ /oquefazer — Digo exatamente O QUE comprar hoje\n"
-            "3️⃣ /aporte — Configuro aviso mensal no dia do salário\n"
-            "4️⃣ /comocomprar — Passo a passo para comprar (com prints)\n\n"
-            "💡 _Depois de comprar, use /comprei para eu monitorar "
-            "e te avisar quando vender!_"
+            "2️⃣ /oquefazer — Estudo de alocação para seu perfil\n"
+            "3️⃣ /aporte — Configuro lembrete mensal no dia do salário\n"
+            "4️⃣ /comocomprar — Passo a passo educacional\n\n"
+            "💡 _Depois de investir, use /comprei para acompanhar "
+            "e receber alertas de variação!_"
         ),
         "Sair das dívidas": (
             "🚀 **Comece por aqui:**\n"
             "1️⃣ /dividas — Cadastre suas dívidas\n"
-            "2️⃣ /estrategia — Monto um plano para quitar tudo\n"
+            "2️⃣ /estrategia — Estudo de estratégia para quitar tudo\n"
             "3️⃣ /gasto — Registre gastos para achar onde economizar\n"
             "4️⃣ /aprender — Aprenda a nunca mais se endividar\n\n"
             "💡 _Depois de quitar, use /aporte para começar a investir!_"
@@ -192,7 +194,7 @@ async def receber_conhecimento(update: Update, context: ContextTypes.DEFAULT_TYP
             "1️⃣ /meta — Crie sua meta (eu calculo quanto guardar/mês)\n"
             "2️⃣ /simular — Veja quanto terá em 1, 5, 10 anos\n"
             "3️⃣ /aporte — Configuro aviso mensal automático\n"
-            "4️⃣ /oquefazer — Onde colocar o dinheiro da meta\n\n"
+            "4️⃣ /oquefazer — Estudo de onde alocar o dinheiro da meta\n\n"
             "💡 _Use /painel para acompanhar tudo num só lugar!_"
         ),
         "Organizar gastos": (
@@ -219,8 +221,8 @@ async def receber_conhecimento(update: Update, context: ContextTypes.DEFAULT_TYP
         objetivo,
         "🚀 **Comece por aqui:**\n"
         "1️⃣ /aprender — Curso do zero\n"
-        "2️⃣ /oquefazer — O que comprar hoje\n"
-        "3️⃣ /aporte — Investimento mensal automático\n"
+        "2️⃣ /oquefazer — Estudo de alocação\n"
+        "3️⃣ /aporte — Lembrete de aporte mensal\n"
         "4️⃣ /ajuda — Ver todos os comandos\n",
     )
 

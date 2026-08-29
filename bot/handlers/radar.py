@@ -116,7 +116,7 @@ async def radar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Top oportunidades de compra
     if compras:
-        msg += "🟢 **MELHORES OPORTUNIDADES DE COMPRA:**\n\n"
+        msg += "🟢 **ATIVOS COM SINAIS POSITIVOS:**\n\n"
         for i, a in enumerate(compras[:5], 1):
             medal = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"][i - 1]
             msg += (
@@ -134,7 +134,7 @@ async def radar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Sinais de venda
     if vendas:
-        msg += "🔴 **SINAIS DE VENDA / CAUTELA:**\n\n"
+        msg += "🔴 **ATIVOS COM SINAIS DE CAUTELA:**\n\n"
         for a in vendas[:3]:
             msg += (
                 f"⚠️ **{a['nome']}** ({a['categoria']})\n"
@@ -159,24 +159,26 @@ async def radar_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += (
         "━━━━━━━━━━━━━━━━━━━\n"
         f"📊 **Resumo:** {total} ativos analisados\n"
-        f"🟢 {n_compra} para comprar | "
-        f"🔴 {n_venda} para vender | "
+        f"🟢 {n_compra} com sinal positivo | "
+        f"🔴 {n_venda} com sinal de cautela | "
         f"🟡 {n_neutro} neutros\n\n"
     )
 
-    # Melhor ação
+    # Destaque
     if compras:
         best = compras[0]
         msg += (
-            f"⭐ **Melhor oportunidade agora:** "
+            f"⭐ **Destaque do momento:** "
             f"{best['nome']} (score {best['score']:+d})\n\n"
         )
 
     msg += (
         "📈 /analisar [ativo] — Análise detalhada\n"
-        "📋 /oquefazer — Plano completo do que comprar\n"
-        "📖 /comocomprar — Passo a passo para comprar\n"
-        "🎯 /alvo [ativo] [preço] — Alerta de preço"
+        "📋 /oquefazer — Estudo de alocação\n"
+        "📖 /comocomprar — Passo a passo educacional\n"
+        "🎯 /alvo [ativo] [preço] — Alerta de preço\n\n"
+        "⚠️ _Conteúdo educacional baseado em indicadores técnicos — "
+        "não é recomendação de investimento._"
     )
 
     # Enviar (dividir se necessário)

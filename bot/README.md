@@ -9,7 +9,7 @@ Bot de Telegram com inteligência artificial que funciona como um **consultor fi
 - **🎯 Planos personalizados** — "Quero investir 500 e ganhar 100" → plano com análise ao vivo
 - **💼 Carteira inteligente** — Registra compras, mostra lucro/prejuízo em tempo real
 - **🛑 Stop-loss automático** — Proteção criada a cada compra (-10% / +25%)
-- **🚨 Alertas urgentes** — "COMPRE BTC AGORA!" quando detecta oportunidade
+- **🚨 Alertas urgentes** — Avisa quando detecta oportunidade no mercado
 - **🎯 Alertas de preço** — Avisa quando o ativo chega no preço que você quer
 - **📡 Radar de oportunidades** — Escaneia 13 ativos e rankeia os melhores
 - **☀️ Resumo matinal** — Briefing diário às 7h com mercado + carteira

@@ -465,7 +465,7 @@ async def ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/aprender — Aulas passo a passo (do zero mesmo!)\n"
         "/comocomprar — 📖 Como comprar cada tipo de ativo\n\n"
         "📊 **Investimentos:**\n"
-        "/oquefazer — 🔥 Digo O QUE comprar com análise ao vivo\n"
+        "/oquefazer — 🔥 Estudo de alocação com análise ao vivo\n"
         "/desafio — 🎯 \"Quero ganhar X investindo Y em Z tempo\"\n"
         "/analisar [ativo] — 📈 Análise de mercado em tempo real\n"
         "/simular — 📈 Projeção de patrimônio futuro\n"
@@ -513,6 +513,7 @@ async def ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/indicar — 🤝 Convide amigos e ganhe bônus\n\n"
         "⚙️ **Outros:**\n"
         "/premium — Plano premium\n"
+        "/termos — 📜 Termos de uso e privacidade\n"
         "/start — Recomeçar\n"
         "/ajuda — Esta mensagem\n",
         parse_mode="Markdown",

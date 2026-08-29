@@ -1,9 +1,10 @@
 """
-Handler do /oquefazer — sugestões concretas de investimento com valores reais,
+Handler do /oquefazer — estudo de alocação educacional com valores reais,
 agora com análise de mercado em tempo real.
 
-A feature mais valiosa do bot: diz EXATAMENTE o que fazer com o dinheiro,
-com valores, ativos e proporções — e verifica se é um bom momento de compra.
+Mostra como um investidor alocaria o dinheiro com base no perfil de risco,
+com valores, ativos e proporções — e verifica indicadores técnicos atuais.
+Conteúdo educacional — não é recomendação de investimento.
 """
 
 import asyncio
@@ -52,8 +53,8 @@ _CRYPTO_KEYWORDS = {
     "doge": "dogecoin",
 }
 
-# Estratégias concretas por perfil e faixa de valor
-# Cada uma diz exatamente: "com R$X, eu faria isso"
+# Modelos de alocação educacionais por perfil e faixa de valor
+# Cada modelo mostra como um investidor típico desse perfil alocaria
 ESTRATEGIAS = {
     "conservador": {
         "nome": "Conservador",
@@ -536,21 +537,20 @@ def _montar_plano(perfil_key: str, valor: float) -> str:
         )
 
     texto = (
-        f"{estrategia['emoji']} **Se eu tivesse R${valor:,.2f} hoje "
+        f"{estrategia['emoji']} **Estudo de alocação — R${valor:,.2f} "
         f"(perfil {estrategia['nome']}):**\n\n"
         + "\n\n".join(linhas)
         + "\n\n━━━━━━━━━━━━━━━━━━━\n\n"
-        "📌 **Próximos passos concretos:**\n"
-        "1. Abra conta em uma corretora (Nubank, Inter, ou XP)\n"
-        "2. Transfira o valor\n"
-        "3. Compre cada ativo na proporção acima\n"
-        "4. Repita todo mês com o que conseguir aportar\n\n"
-        "🔑 **Regra de ouro:** compre um pouco todo mês (DCA), "
-        "não tente acertar o momento perfeito.\n\n"
-        "⚠️ _Isso é o que eu faria — não é uma recomendação "
-        "oficial de investimento. Cada pessoa tem uma situação "
-        "diferente. Consulte um profissional certificado para "
-        "decisões de grande valor._"
+        "📌 **Passos que muitos investidores seguem:**\n"
+        "1. Abrir conta em uma corretora (Nubank, Inter, ou XP)\n"
+        "2. Transferir o valor\n"
+        "3. Alocar em cada ativo na proporção estudada\n"
+        "4. Repetir todo mês (estratégia DCA)\n\n"
+        "🔑 **Dica educacional:** aportes regulares (DCA) tendem a "
+        "diluir o risco de timing.\n\n"
+        "⚠️ _Conteúdo educacional — não é recomendação de investimento. "
+        "Decisões financeiras são de sua responsabilidade. Consulte um "
+        "profissional certificado pela CVM para orientação personalizada._"
     )
     return texto
 
@@ -585,7 +585,7 @@ async def _montar_plano_com_analise(perfil_key: str, valor: float) -> str:
     agora = datetime.now().strftime("%d/%m/%Y %H:%M")
 
     texto = (
-        f"{estrategia['emoji']} **Se eu tivesse R${valor:,.2f} hoje "
+        f"{estrategia['emoji']} **Estudo de alocação — R${valor:,.2f} "
         f"(perfil {estrategia['nome']}):**\n\n"
         + "\n\n".join(linhas)
         + "\n\n━━━━━━━━━━━━━━━━━━━\n"
@@ -617,18 +617,18 @@ async def _montar_plano_com_analise(perfil_key: str, valor: float) -> str:
         texto += "\n"
 
     texto += (
-        "📌 **Próximos passos concretos:**\n"
-        "1. Abra conta em uma corretora (Nubank, Inter, ou XP)\n"
-        "2. Transfira o valor\n"
-        "3. Compre cada ativo na proporção acima\n"
-        "4. Repita todo mês com o que conseguir aportar\n\n"
-        "🔑 **Regra de ouro:** compre um pouco todo mês (DCA), "
-        "não tente acertar o momento perfeito.\n\n"
+        "📌 **Passos que muitos investidores seguem:**\n"
+        "1. Abrir conta em uma corretora (Nubank, Inter, ou XP)\n"
+        "2. Transferir o valor\n"
+        "3. Alocar em cada ativo na proporção estudada\n"
+        "4. Repetir todo mês (estratégia DCA)\n\n"
+        "🔑 **Dica educacional:** aportes regulares (DCA) tendem a "
+        "diluir o risco de timing.\n\n"
         "📋 /analisar [ativo] — Análise detalhada de qualquer ativo\n"
         "📝 /comprei — Registrar compra na carteira\n\n"
-        "⚠️ _Isso é o que eu faria — não é recomendação oficial. "
-        "Análise baseada em indicadores técnicos que não garantem "
-        "resultados futuros._"
+        "⚠️ _Conteúdo educacional — não é recomendação de investimento. "
+        "Indicadores técnicos não garantem resultados futuros. "
+        "Consulte um profissional certificado pela CVM._"
     )
     return texto
 
@@ -636,9 +636,9 @@ async def _montar_plano_com_analise(perfil_key: str, valor: float) -> str:
 async def oquefazer_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Pergunta quanto a pessoa quer investir."""
     await update.message.reply_text(
-        "💰 **O que eu faria com seu dinheiro hoje**\n\n"
-        "Vou te dar um plano concreto — com nomes de ativos, "
-        "valores exatos e onde comprar.\n\n"
+        "💰 **Estudo de alocação para o seu perfil**\n\n"
+        "Vou montar um estudo educacional — com exemplos de ativos, "
+        "proporções e onde pesquisar.\n\n"
         "**Quanto você quer investir agora?**\n"
         "_(Digite o valor, ex: 100, 500, 1000, 5000)_",
         parse_mode="Markdown",
@@ -779,12 +779,12 @@ async def receber_perfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
         chat_id=query.message.chat_id,
         text=(
-            "💡 Quer que eu analise **para a sua situação específica**?\n\n"
+            "💡 Quer um **estudo mais personalizado**?\n\n"
             "Me mande uma mensagem tipo:\n"
             f'_"Tenho R${valor:,.0f}, ganho R$X por mês, '
             'tenho/não tenho reserva de emergência, '
-            'quero investir para Y. O que eu faço?"_\n\n'
-            "Quanto mais detalhes, melhor o conselho! 🧠"
+            'quero investir para Y. O que estudar?"_\n\n'
+            "Quanto mais detalhes, mais completo o estudo! 🧠"
         ),
         parse_mode="Markdown",
     )
