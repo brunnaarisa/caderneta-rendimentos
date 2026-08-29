@@ -5,4 +5,4 @@ nixPkgs = ["python311"]
 cmds = ["cd bot && pip install -r requirements.txt"]
 
 [start]
-cmd = "cd bot && python main.py"
+cmd = "cd bot && python3 main.py"
