@@ -59,12 +59,18 @@ def main():
 
     logger.info("Inicializando FinançasIA Bot...")
 
-    # Inicializar banco de dados
-    asyncio.run(init_db())
-    logger.info("Banco de dados inicializado.")
+    # Callback para inicializar o DB dentro do event loop da aplicação
+    async def post_init(application):
+        await init_db()
+        logger.info("Banco de dados inicializado.")
 
     # Criar aplicação
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    app = (
+        ApplicationBuilder()
+        .token(TELEGRAM_BOT_TOKEN)
+        .post_init(post_init)
+        .build()
+    )
 
     # Registrar handlers (ordem importa!)
     # 1. Onboarding
