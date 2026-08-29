@@ -4,6 +4,8 @@ import logging
 
 import anthropic
 
+import os
+
 from config import ANTHROPIC_API_KEY, AI_MODEL
 
 logger = logging.getLogger(__name__)
@@ -19,8 +21,15 @@ def _get_client() -> anthropic.AsyncAnthropic:
         if not ANTHROPIC_API_KEY:
             logger.error("ANTHROPIC_API_KEY não configurada!")
             raise ValueError("ANTHROPIC_API_KEY não configurada")
+        workspace_id = os.getenv("ANTHROPIC_WORKSPACE_ID", "")
+        headers = {}
+        if workspace_id:
+            headers["anthropic-workspace-id"] = workspace_id
         logger.info("Inicializando cliente Anthropic (modelo: %s)", AI_MODEL)
-        _client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+        _client = anthropic.AsyncAnthropic(
+            api_key=ANTHROPIC_API_KEY,
+            default_headers=headers if headers else None,
+        )
     return _client
 
 SYSTEM_PROMPT = """Você é o FinançasIA, um assistente de EDUCAÇÃO FINANCEIRA brasileiro.
