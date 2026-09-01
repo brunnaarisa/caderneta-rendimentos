@@ -1510,10 +1510,10 @@
 
   // Update this date every time BANK_CATALOG below is re-researched/verified —
   // it drives the staleness badge, since this static site can't check it live.
-  const CATALOG_VERIFIED_DATE = '2026-08-13';
+  const CATALOG_VERIFIED_DATE = '2026-09-01';
 
   // Catálogo de referência: banco/corretora -> investimentos típicos disponíveis lá.
-  // Taxas verificadas em 13/08/2026 (ver rodapé). `note`, quando presente, é uma
+  // Taxas verificadas em 01/09/2026 (ver rodapé). `note`, quando presente, é uma
   // ressalva ESPECÍFICA sobre o que conferir antes de aplicar — não é enfeite.
   const BANK_CATALOG = {
     'Nubank': [
@@ -1525,9 +1525,11 @@
         cap: 10000, excessMode: 'cdi', excessRate: 100,
         note: 'Só pra clientes Ultravioleta ou Nubank+.' },
       { name: 'LCI/LCA Nubank ~95% do CDI', mode: 'cdi', rate: 95, exempt: true,
-        note: 'Carência mínima legal: 270 dias. Valor mínimo costuma ficar entre R$500 e R$1.000. A taxa exata varia por título disponível no momento no app.' },
-      { name: 'Nu Reserva Imediata (fundo DI)', mode: 'cdi', rate: 108, exempt: false,
-        note: 'Rentabilidade histórica de ~108% do CDI — não é uma taxa contratada, pode variar mês a mês, e o fundo não tem cobertura do FGC.' },
+        note: 'Carência mínima legal: 180 dias (6 meses, Resolução CMN 5.215/2025). Valor mínimo costuma ficar entre R$500 e R$1.000. A taxa exata varia por título disponível no momento no app.' },
+      { name: 'Nu Reserva Imediata (fundo DI)', mode: 'cdi', rate: 100, exempt: false,
+        note: 'Rentabilidade histórica variável, não é uma taxa contratada — em 2022 rendeu perto de 108% do CDI, mas nos últimos 12 meses ficou perto de 100% do CDI. O fundo não tem cobertura do FGC.' },
+      { name: 'CDB Croma 130% do CDI (só novos investidores, até R$10 mil, promocional)', mode: 'cdi', rate: 130, exempt: false,
+        note: 'Exclusivo para clientes do segmento Nubank Croma que ainda não investem na plataforma; limite de R$10 mil e taxa promocional válida por 3 meses, depois reverte para as taxas padrão. Não é claro qual taxa vale pra excedente acima de R$10 mil — confirme no app.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'Banco Inter': [
@@ -1535,14 +1537,14 @@
       { name: 'CDB Inter (avulso) 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
       { name: 'Poupança Inter', mode: 'fixed', rate: 0.50, exempt: true },
       { name: 'LCI/LCA Inter (liquidez diária) 92% do CDI', mode: 'cdi', rate: 92, exempt: true,
-        note: 'Isenta de IR — o "110% do CDI" que aparece em comparativos é só a forma de expressar essa isenção em termos de CDB, não é uma taxa extra. Carência mínima legal: 270 dias, depois disso vira liquidez diária. Títulos assim costumam esgotar rápido — confira se ainda está disponível no app.' },
+        note: 'Isenta de IR — o "110% do CDI" que aparece em comparativos é só a forma de expressar essa isenção em termos de CDB, não é uma taxa extra. Carência mínima legal: 180 dias (6 meses, Resolução CMN 5.215/2025), depois disso vira liquidez diária. Valor mínimo costuma ficar em torno de R$500. Títulos assim costumam esgotar rápido — confira se ainda está disponível no app.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'C6 Bank': [
       { name: 'Cofrinho / CDB C6 102% do CDI', mode: 'cdi', rate: 102, exempt: false },
       { name: 'Poupança C6', mode: 'fixed', rate: 0.50, exempt: true },
       { name: 'LCI/LCA C6 ~91% do CDI', mode: 'cdi', rate: 91, exempt: true,
-        note: 'Carência mínima legal: 270 dias. Valor mínimo a partir de R$1.000. A taxa exata varia por título disponível no momento no app.' },
+        note: 'Carência mínima legal: 180 dias (6 meses, Resolução CMN 5.215/2025). Valor mínimo a partir de R$1.000. A taxa exata varia por título disponível no momento no app.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'PicPay': [
@@ -1552,14 +1554,16 @@
       { name: 'Saldo da conta 102% do CDI', mode: 'cdi', rate: 102, exempt: false },
       { name: 'CDB PicPay 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
       { name: 'LCA PicPay (via Eqi Investimentos) ~91% do CDI', mode: 'cdi', rate: 91, exempt: true,
-        note: 'Oferecida via corretora parceira (Eqi Investimentos), que revende títulos de vários bancos emissores — por isso não existe uma taxa única fixa. Carência mínima legal: 270 dias. Veja qual título está disponível no momento.' },
+        note: 'Oferecida via corretora parceira (Eqi Investimentos), que revende títulos de vários bancos emissores — por isso não existe uma taxa única fixa. Carência mínima legal: 180 dias (6 meses, Resolução CMN 5.215/2025). Veja qual título está disponível no momento.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'Mercado Pago': [
-      { name: 'Saldo da conta 105% do CDI', mode: 'cdi', rate: 105, exempt: false },
-      { name: 'Cofrinho 120% do CDI (com depósito de R$1.000+/mês, até R$5 mil bonificados)', mode: 'cdi', rate: 120, exempt: false,
-        cap: 5000, excessMode: 'cdi', excessRate: 105,
-        note: 'Precisa manter aportes de pelo menos R$1.000/mês no Cofrinho pra continuar valendo a taxa bonificada.' },
+      { name: 'Saldo da conta 105% do CDI (até R$20 mil)', mode: 'cdi', rate: 105, exempt: false,
+        cap: 20000, excessMode: 'cdi', excessRate: 100,
+        note: 'Acima de R$20 mil de saldo, o excedente rende só 100% do CDI.' },
+      { name: 'Cofrinho 120% do CDI (Meli+ ou depósito de R$1.000+/mês, até R$10 mil bonificados)', mode: 'cdi', rate: 120, exempt: false,
+        cap: 10000, excessMode: 'cdi', excessRate: 100,
+        note: 'Precisa ser assinante Meli+ ou manter aportes de pelo menos R$1.000/mês no Cofrinho pra continuar valendo a taxa bonificada; acima de R$10 mil, o excedente rende 100% do CDI.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'Banco do Brasil': [
@@ -1567,56 +1571,58 @@
         note: 'É um fundo, não CDB — não tem cobertura do FGC.' },
       { name: 'Poupança BB', mode: 'fixed', rate: 0.50, exempt: true },
       { name: 'LCI/LCA BB ~88% do CDI', mode: 'cdi', rate: 88, exempt: true,
-        note: 'Bancões costumam ter valor mínimo mais alto que fintechs (geralmente a partir de R$5.000) e taxas de LCI/LCA um pouco menores. Carência mínima legal: 270 dias. Confira o título específico disponível no app.' },
+        note: 'Bancões costumam ter valor mínimo mais alto que fintechs (geralmente a partir de R$5.000) e taxas de LCI/LCA um pouco menores. Carência mínima legal: 180 dias (6 meses, Resolução CMN 5.215/2025). Há relatos recentes de LCI do BB pagando bem menos que isso (perto de 65% do CDI) — a taxa varia bastante por título, então confira com atenção o título específico disponível no app antes de aplicar.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'Itaú': [
       { name: 'Cofrinhos Itaú 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
       { name: 'Poupança Itaú', mode: 'fixed', rate: 0.50, exempt: true },
-      { name: 'LCI/LCA Itaú ~88% do CDI', mode: 'cdi', rate: 88, exempt: true,
-        note: 'Bancões costumam ter valor mínimo mais alto que fintechs (geralmente a partir de R$5.000) e taxas de LCI/LCA um pouco menores. Carência mínima legal: 270 dias. Confira o título específico disponível no app.' },
+      { name: 'LCI/LCA Itaú ~91% do CDI', mode: 'cdi', rate: 91, exempt: true,
+        note: 'Bancões costumam ter valor mínimo mais alto que fintechs (geralmente a partir de R$5.000). Taxa varia por prazo: títulos mais curtos giram perto de 90% do CDI, os mais longos (trava de 6 meses) perto de 91%. Carência mínima legal: 180 dias (6 meses, Resolução CMN 5.215/2025). Confira o título específico disponível no app.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'Bradesco': [
       { name: 'Cofrinho / CDB Bradesco 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
       { name: 'Poupança Bradesco', mode: 'fixed', rate: 0.50, exempt: true },
       { name: 'LCI/LCA Bradesco ~88% do CDI', mode: 'cdi', rate: 88, exempt: true,
-        note: 'Bancões costumam ter valor mínimo mais alto que fintechs (geralmente a partir de R$5.000) e taxas de LCI/LCA um pouco menores. Carência mínima legal: 270 dias. Confira o título específico disponível no app.' },
+        note: 'Bancões costumam ter valor mínimo mais alto que fintechs (geralmente a partir de R$5.000) e taxas de LCI/LCA um pouco menores. Carência mínima legal: 180 dias (6 meses, Resolução CMN 5.215/2025). Confira o título específico disponível no app.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'Santander': [
-      { name: 'CDB Santander 100% do CDI', mode: 'cdi', rate: 100, exempt: false },
+      { name: 'CDB Santander 100% do CDI', mode: 'cdi', rate: 100, exempt: false,
+        note: 'Produto oficial "Minhas Reservas": valor mínimo de R$1, resgate liberado a partir do próximo dia útil (sem carência real).' },
       { name: 'Poupança Santander', mode: 'fixed', rate: 0.50, exempt: true },
       { name: 'LCI/LCA Santander ~88% do CDI', mode: 'cdi', rate: 88, exempt: true,
-        note: 'Bancões costumam ter valor mínimo mais alto que fintechs (geralmente a partir de R$5.000) e taxas de LCI/LCA um pouco menores. Carência mínima legal: 270 dias. Confira o título específico disponível no app.' },
+        note: 'Bancões costumam ter valor mínimo mais alto que fintechs (geralmente a partir de R$5.000) e taxas de LCI/LCA um pouco menores. Carência mínima legal: 180 dias (6 meses, Resolução CMN 5.215/2025). Confira o título específico disponível no app.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'Caixa Econômica Federal': [
-      { name: 'CDB Caixa 95% do CDI', mode: 'cdi', rate: 95, exempt: false },
+      { name: 'CDB Caixa 95% do CDI', mode: 'cdi', rate: 95, exempt: false,
+        note: 'CDB Caixa Flex/Progressivo: liquidez diária a partir do 2º dia útil (D+2). Valor mínimo a partir de R$1.000.' },
       { name: 'Poupança Caixa', mode: 'fixed', rate: 0.50, exempt: true },
       { name: 'LCI Caixa ~88% do CDI', mode: 'cdi', rate: 88, exempt: true,
-        note: 'Bancões costumam ter valor mínimo mais alto que fintechs (geralmente a partir de R$5.000) e taxas de LCI/LCA um pouco menores. Carência mínima legal: 270 dias. Confira o título específico disponível no app.' },
+        note: 'Bancões costumam ter valor mínimo mais alto que fintechs (geralmente a partir de R$5.000) e taxas de LCI/LCA um pouco menores. Carência mínima legal: 180 dias (6 meses, Resolução CMN 5.215/2025). Confira o título específico disponível no app.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'XP Investimentos': [
       { name: 'CDB XP ~106% do CDI', mode: 'cdi', rate: 106, exempt: false,
         note: 'XP é uma plataforma que revende títulos de vários bancos emissores — a taxa exata varia por prazo e emissor disponível no momento; confira a ficha do título antes de aplicar.' },
-      { name: 'LCI/LCA (prateleira XP) ~95% do CDI', mode: 'cdi', rate: 95, exempt: true,
-        note: 'É uma prateleira com dezenas de títulos de bancos emissores diferentes, cada um com sua própria taxa — por isso não existe "a" taxa da corretora, só uma faixa observada no mercado. Carência mínima legal: 270 dias, mas títulos específicos costumam ser mais longos.' },
+      { name: 'LCI/LCA (prateleira XP) ~88% do CDI', mode: 'cdi', rate: 88, exempt: true,
+        note: 'É uma prateleira com dezenas de títulos de bancos emissores diferentes, cada um com sua própria taxa — por isso não existe "a" taxa da corretora, só uma faixa observada no mercado (as taxas de LCI/LCA caíram ao longo de 2026, de uma média de ~94% do CDI em 2025 pra perto de 88% agora). Carência mínima legal: 180 dias (6 meses, Resolução CMN 5.215/2025), mas títulos específicos costumam ser mais longos.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'Rico': [
       { name: 'CDB (prateleira Rico) ~100% do CDI', mode: 'cdi', rate: 100, exempt: false,
         note: 'Rico é uma plataforma que revende títulos de vários bancos emissores — a taxa exata varia por prazo e emissor disponível no momento; confira a ficha do título antes de aplicar.' },
       { name: 'LCI/LCA (prateleira Rico) ~93% do CDI', mode: 'cdi', rate: 93, exempt: true,
-        note: 'É uma prateleira com dezenas de títulos de bancos emissores diferentes, cada um com sua própria taxa — por isso não existe "a" taxa da corretora, só uma faixa observada no mercado. Carência mínima legal: 270 dias, mas títulos específicos costumam ser mais longos.' },
+        note: 'É uma prateleira com dezenas de títulos de bancos emissores diferentes, cada um com sua própria taxa — por isso não existe "a" taxa da corretora, só uma faixa observada no mercado (a média do mercado caiu ao longo de 2026, então vale conferir se 93% ainda reflete o que está disponível). Carência mínima legal: 180 dias (6 meses, Resolução CMN 5.215/2025), mas títulos específicos costumam ser mais longos.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'BTG Pactual': [
       { name: 'CDB BTG ~100% do CDI', mode: 'cdi', rate: 100, exempt: false,
         note: 'BTG também revende títulos de outros bancos emissores — a taxa exata varia por prazo e emissor disponível no momento; confira a ficha do título antes de aplicar.' },
-      { name: 'LCI/LCA (prateleira BTG) ~93% do CDI', mode: 'cdi', rate: 93, exempt: true,
-        note: 'É uma prateleira com dezenas de títulos de bancos emissores diferentes, cada um com sua própria taxa — por isso não existe "a" taxa da corretora, só uma faixa observada no mercado. Carência mínima legal: 270 dias, mas títulos específicos costumam ser mais longos.' },
+      { name: 'LCI/LCA (prateleira BTG) ~88% do CDI', mode: 'cdi', rate: 88, exempt: true,
+        note: 'É uma prateleira com dezenas de títulos de bancos emissores diferentes, cada um com sua própria taxa — por isso não existe "a" taxa da corretora, só uma faixa observada no mercado (as taxas de LCI/LCA caíram ao longo de 2026). Carência mínima legal: 180 dias (6 meses, Resolução CMN 5.215/2025), mas títulos específicos costumam ser mais longos.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ]
   };
