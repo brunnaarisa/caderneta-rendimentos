@@ -124,6 +124,17 @@ input,select{font-family:inherit;font-size:inherit}
 .card-stat{font-size:.75rem;color:var(--text-muted)}
 .card-stat b{color:var(--text-secondary)}
 .card-sparkline{position:absolute;bottom:0;left:0;right:0;height:40px;opacity:.15;pointer-events:none}
+/* Position P&L row */
+.card-pnl{display:flex;align-items:center;gap:8px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);font-size:.8rem}
+.card-pnl-label{color:var(--text-muted);font-size:.7rem}
+.card-pnl-value{font-weight:700;font-family:var(--mono)}
+.card-pnl-pct{font-weight:700;padding:2px 6px;border-radius:4px;font-size:.75rem}
+.card-pnl .up .card-pnl-value,.card-pnl .up .card-pnl-pct{color:var(--green)}
+.card-pnl .up .card-pnl-pct{background:var(--green-bg)}
+.card-pnl .down .card-pnl-value,.card-pnl .down .card-pnl-pct{color:var(--red)}
+.card-pnl .down .card-pnl-pct{background:var(--red-bg)}
+.card-buy-btn{font-size:.7rem;padding:3px 8px;border-radius:4px;background:var(--bg-input);border:1px solid var(--border);color:var(--text-muted);cursor:pointer;margin-left:auto;transition:var(--transition)}
+.card-buy-btn:hover{border-color:var(--accent);color:var(--accent-light)}
 .card.flash-green{animation:flashGreen .6s}
 .card.flash-red{animation:flashRed .6s}
 @keyframes flashGreen{0%,100%{box-shadow:none}50%{box-shadow:inset 0 0 20px var(--green-bg),0 0 10px var(--green-bg)}}
@@ -572,6 +583,40 @@ select.form-input{-webkit-appearance:none;appearance:none;background-image:url("
   </div>
 </div>
 
+<!-- POSITION MODAL (register buy price) -->
+<div class="modal-overlay" id="position-modal">
+  <div class="modal">
+    <h3>
+      💰 Registrar compra: <span id="pos-asset-name">---</span>
+      <button class="modal-close" onclick="closePositionModal()">✕</button>
+    </h3>
+    <p style="font-size:.8rem;color:var(--text-secondary);margin-bottom:16px">
+      Informe por quanto você comprou para acompanhar seu lucro/prejuízo em tempo real.
+    </p>
+    <input type="hidden" id="pos-asset-id">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Preço de compra (R$)</label>
+        <input type="number" class="form-input" id="pos-buy-price" placeholder="Ex: 350000" step="any">
+      </div>
+      <div class="form-group">
+        <label>Quantidade (opcional)</label>
+        <input type="number" class="form-input" id="pos-quantity" placeholder="Ex: 0.005" step="any">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Data da compra (opcional)</label>
+        <input type="date" class="form-input" id="pos-date">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn btn-primary" onclick="savePosition()">💾 Salvar</button>
+      <button class="btn btn-ghost" id="pos-remove-btn" onclick="removePosition()" hidden>🗑️ Remover</button>
+    </div>
+  </div>
+</div>
+
 <!-- TOASTS -->
 <div class="toasts" id="toasts"></div>
 
@@ -608,6 +653,7 @@ const POPULAR_STOCKS = [
 // ===== STATE =====
 let state = {
   watchlist: { crypto: [], stocks: [] }, // crypto: [{id,symbol,name}], stocks: ['PETR4',...]
+  positions: {},  // keyed by assetId: { buyPrice, quantity, date }
   alerts: [],    // {id, asset, type:'crypto'|'stock', condition, value, triggered, createdAt}
   prices: { crypto: {}, stocks: {} },    // keyed by id/ticker
   opportunities: [],
@@ -637,6 +683,7 @@ function loadState() {
     if (raw) {
       const saved = JSON.parse(raw);
       state.watchlist = saved.watchlist || state.watchlist;
+      state.positions = saved.positions || {};
       state.alerts = saved.alerts || [];
       state.settings = { ...state.settings, ...saved.settings };
     }
@@ -647,6 +694,7 @@ function saveState() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       watchlist: state.watchlist,
+      positions: state.positions,
       alerts: state.alerts,
       settings: state.settings
     }));
@@ -810,8 +858,34 @@ const UI = {
     let html = '';
     for (const coin of state.watchlist.crypto) {
       const p = state.prices.crypto[coin.id];
+      const pos = state.positions[coin.id];
       const changeClass = p ? (p.change24h >= 0 ? 'up' : 'down') : '';
       const changeBg = p ? (p.change24h >= 0 ? 'change-up' : 'change-down') : '';
+
+      // Calculate P&L from buy price
+      let pnlHtml = '';
+      if (pos && pos.buyPrice && p) {
+        const pnlPct = ((p.price - pos.buyPrice) / pos.buyPrice) * 100;
+        const pnlAbs = p.price - pos.buyPrice;
+        const pnlClass = pnlPct >= 0 ? 'up' : 'down';
+        const pnlTotal = pos.quantity ? (pnlAbs * pos.quantity) : null;
+        pnlHtml = `
+          <div class="card-pnl">
+            <div class="${pnlClass}">
+              <div class="card-pnl-label">Compra: ${fmtBRL(pos.buyPrice)}</div>
+              <span class="card-pnl-value">${pnlPct >= 0 ? '▲' : '▼'} ${fmtBRL(Math.abs(pnlAbs))}</span>
+              <span class="card-pnl-pct">${fmtPct(pnlPct)}</span>
+              ${pnlTotal != null ? `<span class="card-pnl-value">${pnlPct >= 0 ? '+' : ''}${fmtBRL(pnlTotal)}</span>` : ''}
+            </div>
+            <button class="card-buy-btn" onclick="openPositionModal('${coin.id}','${coin.name.replace(/'/g,"\\'")}')">✏️</button>
+          </div>`;
+      } else {
+        pnlHtml = `
+          <div class="card-pnl">
+            <button class="card-buy-btn" onclick="openPositionModal('${coin.id}','${coin.name.replace(/'/g,"\\'")}')">💰 Registrar compra</button>
+          </div>`;
+      }
+
       html += `
         <div class="card" id="card-${coin.id}" data-asset="${coin.id}" data-type="crypto">
           <div class="card-top">
@@ -836,6 +910,7 @@ const UI = {
               ${p.ath ? `<span class="card-stat">ATH: <b>${fmtPct(p.athChange)}</b></span>` : ''}
             ` : '<span class=skeleton style=width:80px;height:16px;display:inline-block></span>'}
           </div>
+          ${pnlHtml}
         </div>`;
     }
     grid.innerHTML = html;
@@ -855,8 +930,33 @@ const UI = {
     let html = '';
     for (const ticker of state.watchlist.stocks) {
       const p = state.prices.stocks[ticker];
+      const pos = state.positions[ticker];
       const changeClass = p ? (p.changePct >= 0 ? 'up' : 'down') : '';
       const changeBg = p ? (p.changePct >= 0 ? 'change-up' : 'change-down') : '';
+
+      let pnlHtml = '';
+      if (pos && pos.buyPrice && p) {
+        const pnlPct = ((p.price - pos.buyPrice) / pos.buyPrice) * 100;
+        const pnlAbs = p.price - pos.buyPrice;
+        const pnlClass = pnlPct >= 0 ? 'up' : 'down';
+        const pnlTotal = pos.quantity ? (pnlAbs * pos.quantity) : null;
+        pnlHtml = `
+          <div class="card-pnl">
+            <div class="${pnlClass}">
+              <div class="card-pnl-label">Compra: ${fmtBRL(pos.buyPrice)}</div>
+              <span class="card-pnl-value">${pnlPct >= 0 ? '▲' : '▼'} ${fmtBRL(Math.abs(pnlAbs))}</span>
+              <span class="card-pnl-pct">${fmtPct(pnlPct)}</span>
+              ${pnlTotal != null ? `<span class="card-pnl-value">${pnlPct >= 0 ? '+' : ''}${fmtBRL(pnlTotal)}</span>` : ''}
+            </div>
+            <button class="card-buy-btn" onclick="openPositionModal('${ticker}','${ticker}')">✏️</button>
+          </div>`;
+      } else {
+        pnlHtml = `
+          <div class="card-pnl">
+            <button class="card-buy-btn" onclick="openPositionModal('${ticker}','${ticker}')">💰 Registrar compra</button>
+          </div>`;
+      }
+
       html += `
         <div class="card" id="card-${ticker}" data-asset="${ticker}" data-type="stock">
           <div class="card-top">
@@ -881,6 +981,7 @@ const UI = {
               <span class="card-stat">Máx: <b>${fmtBRL(p.high)}</b></span>
             ` : (!state.settings.brapiToken ? '' : '<span class=skeleton style=width:80px;height:16px;display:inline-block></span>')}
           </div>
+          ${pnlHtml}
         </div>`;
     }
     grid.innerHTML = html;
@@ -1016,12 +1117,12 @@ function detectOpportunities() {
     const p = state.prices.crypto[coin.id];
     if (!p) continue;
     const sym = p.symbol.toUpperCase();
+    const pos = state.positions[coin.id];
 
     // === CALCULATE BUY SCORE ===
-    const buyScore = calcBuyScore(p, dropThresh);
+    const buyScore = calcBuyScore(p, dropThresh, pos);
     if (buyScore.total > 0) {
       const prob = buyScore.total;
-      const probLabel = prob >= 75 ? 'EXCELENTE' : prob >= 60 ? 'BOM' : prob >= 45 ? 'RAZOÁVEL' : 'FRACO';
       const urgency = prob >= 70 ? '🚨 URGENTE!' : prob >= 55 ? '🟢' : '🔵';
       const key = oppKey('buy', coin.id, 'score');
       const opp = {
@@ -1039,10 +1140,9 @@ function detectOpportunities() {
     }
 
     // === CALCULATE SELL SCORE ===
-    const sellScore = calcSellScore(p, riseThresh);
+    const sellScore = calcSellScore(p, riseThresh, pos);
     if (sellScore.total > 0) {
       const prob = sellScore.total;
-      const probLabel = prob >= 75 ? 'EXCELENTE' : prob >= 60 ? 'BOM' : prob >= 45 ? 'RAZOÁVEL' : 'FRACO';
       const urgency = prob >= 70 ? '🚨 URGENTE!' : prob >= 55 ? '🔴' : '🟡';
       const key = oppKey('sell', coin.id, 'score');
       const opp = {
@@ -1058,14 +1158,64 @@ function detectOpportunities() {
       opps.push(opp);
       if (!notifiedOpps.has(key)) newSignals.push(opp);
     }
+
+    // === POSITION-BASED ALERTS (only if user registered a buy price) ===
+    if (pos && pos.buyPrice && p.price) {
+      const pnlPct = ((p.price - pos.buyPrice) / pos.buyPrice) * 100;
+
+      // STOP LOSS — price dropped significantly from buy price
+      if (pnlPct <= -10) {
+        const severity = pnlPct <= -25 ? 95 : pnlPct <= -20 ? 85 : pnlPct <= -15 ? 70 : 55;
+        const key = oppKey('loss', coin.id, Math.floor(pnlPct / 5) * 5 + 'pct');
+        const opp = {
+          key, type: 'sell', probability: severity,
+          title: `🚨 PREJUÍZO: ${sym} caiu ${Math.abs(pnlPct).toFixed(1)}% desde sua compra!`,
+          desc: `Você comprou a ${fmtBRL(pos.buyPrice)} → agora ${fmtBRL(p.price)}. Perda de ${fmtBRL(Math.abs(p.price - pos.buyPrice))} por unidade.${pos.quantity ? ' Total: ' + fmtBRL(Math.abs((p.price - pos.buyPrice) * pos.quantity)) : ''}`,
+          notification: `🚨 ${sym} caiu ${Math.abs(pnlPct).toFixed(1)}% desde sua compra! Era ${fmtBRL(pos.buyPrice)}, agora ${fmtBRL(p.price)}. Considere stop loss.`,
+          time: 'agora', priority: severity + 5
+        };
+        opps.push(opp);
+        if (!notifiedOpps.has(key)) newSignals.push(opp);
+      }
+
+      // TAKE PROFIT — price rose significantly from buy price
+      if (pnlPct >= 15) {
+        const quality = pnlPct >= 100 ? 92 : pnlPct >= 50 ? 82 : pnlPct >= 30 ? 70 : 55;
+        const key = oppKey('profit', coin.id, Math.floor(pnlPct / 10) * 10 + 'pct');
+        const opp = {
+          key, type: 'sell', probability: quality,
+          title: `💰 LUCRO: ${sym} subiu ${pnlPct.toFixed(1)}% desde sua compra!`,
+          desc: `Você comprou a ${fmtBRL(pos.buyPrice)} → agora ${fmtBRL(p.price)}. Ganho de ${fmtBRL(p.price - pos.buyPrice)} por unidade.${pos.quantity ? ' Total: +' + fmtBRL((p.price - pos.buyPrice) * pos.quantity) : ''} Hora de realizar?`,
+          notification: `💰 ${sym} subiu ${pnlPct.toFixed(1)}% desde sua compra! De ${fmtBRL(pos.buyPrice)} para ${fmtBRL(p.price)}. Realizar lucro?`,
+          time: 'agora', priority: quality + 5
+        };
+        opps.push(opp);
+        if (!notifiedOpps.has(key)) newSignals.push(opp);
+      }
+
+      // PRICE RECOVERED — was in the red, now back near buy price (within 2%)
+      if (pnlPct > -2 && pnlPct < 2 && pnlPct !== 0) {
+        const key = oppKey('recover', coin.id, 'breakeven');
+        const opp = {
+          key, type: 'info', probability: 40,
+          title: `↩️ ${sym} voltou ao seu preço de compra!`,
+          desc: `Compra: ${fmtBRL(pos.buyPrice)} • Agora: ${fmtBRL(p.price)} (${fmtPct(pnlPct)}). Empate técnico — sair no zero a zero ou segurar?`,
+          notification: `↩️ ${sym} voltou ao preço que você comprou (${fmtBRL(pos.buyPrice)}). Sair no zero ou segurar?`,
+          time: 'agora', priority: 45
+        };
+        opps.push(opp);
+        if (!notifiedOpps.has(key)) newSignals.push(opp);
+      }
+    }
   }
 
   // Stock opportunities — with probability scoring
   for (const ticker of state.watchlist.stocks) {
     const p = state.prices.stocks[ticker];
     if (!p) continue;
+    const pos = state.positions[ticker];
 
-    const buyScore = calcStockBuyScore(p, dropThresh);
+    const buyScore = calcStockBuyScore(p, dropThresh, pos);
     if (buyScore.total > 0) {
       const prob = buyScore.total;
       const urgency = prob >= 70 ? '🚨 URGENTE!' : prob >= 55 ? '🟢' : '🔵';
@@ -1084,7 +1234,7 @@ function detectOpportunities() {
       if (!notifiedOpps.has(key)) newSignals.push(opp);
     }
 
-    const sellScore = calcStockSellScore(p, riseThresh);
+    const sellScore = calcStockSellScore(p, riseThresh, pos);
     if (sellScore.total > 0) {
       const prob = sellScore.total;
       const urgency = prob >= 70 ? '🚨 URGENTE!' : prob >= 55 ? '🔴' : '🟡';
@@ -1101,6 +1251,39 @@ function detectOpportunities() {
       };
       opps.push(opp);
       if (!notifiedOpps.has(key)) newSignals.push(opp);
+    }
+
+    // === POSITION-BASED ALERTS for stocks ===
+    if (pos && pos.buyPrice && p.price) {
+      const pnlPct = ((p.price - pos.buyPrice) / pos.buyPrice) * 100;
+
+      if (pnlPct <= -10) {
+        const severity = pnlPct <= -25 ? 95 : pnlPct <= -20 ? 85 : pnlPct <= -15 ? 70 : 55;
+        const key = oppKey('loss', ticker, Math.floor(pnlPct / 5) * 5 + 'pct');
+        const opp = {
+          key, type: 'sell', probability: severity,
+          title: `🚨 PREJUÍZO: ${ticker} caiu ${Math.abs(pnlPct).toFixed(1)}% desde sua compra!`,
+          desc: `Compra: ${fmtBRL(pos.buyPrice)} → Agora: ${fmtBRL(p.price)}.${pos.quantity ? ' Perda total: ' + fmtBRL(Math.abs((p.price - pos.buyPrice) * pos.quantity)) : ''}`,
+          notification: `🚨 ${ticker} caiu ${Math.abs(pnlPct).toFixed(1)}% desde sua compra! Stop loss?`,
+          time: 'agora', priority: severity + 5
+        };
+        opps.push(opp);
+        if (!notifiedOpps.has(key)) newSignals.push(opp);
+      }
+
+      if (pnlPct >= 15) {
+        const quality = pnlPct >= 100 ? 92 : pnlPct >= 50 ? 82 : pnlPct >= 30 ? 70 : 55;
+        const key = oppKey('profit', ticker, Math.floor(pnlPct / 10) * 10 + 'pct');
+        const opp = {
+          key, type: 'sell', probability: quality,
+          title: `💰 LUCRO: ${ticker} subiu ${pnlPct.toFixed(1)}% desde sua compra!`,
+          desc: `Compra: ${fmtBRL(pos.buyPrice)} → Agora: ${fmtBRL(p.price)}.${pos.quantity ? ' Lucro total: +' + fmtBRL((p.price - pos.buyPrice) * pos.quantity) : ''} Realizar?`,
+          notification: `💰 ${ticker} +${pnlPct.toFixed(1)}% desde compra! Realizar lucro?`,
+          time: 'agora', priority: quality + 5
+        };
+        opps.push(opp);
+        if (!notifiedOpps.has(key)) newSignals.push(opp);
+      }
     }
   }
 
@@ -1150,7 +1333,7 @@ function detectOpportunities() {
 // Combines multiple indicators into a 0-95% confidence score.
 // NOT a real statistical probability — it's a composite signal strength.
 
-function calcBuyScore(p, dropThresh) {
+function calcBuyScore(p, dropThresh, pos) {
   let score = 0;
   const reasons = [];
 
@@ -1235,6 +1418,22 @@ function calcBuyScore(p, dropThresh) {
     }
   }
 
+  // 7. Position context — price below your buy = "averaging down" opportunity
+  if (pos && pos.buyPrice && p.price) {
+    const pnlPct = ((p.price - pos.buyPrice) / pos.buyPrice) * 100;
+    if (pnlPct < -20) {
+      score += 12;
+      reasons.push(`${Math.abs(pnlPct).toFixed(0)}% abaixo da sua compra — média pra baixo?`);
+    } else if (pnlPct < -10) {
+      score += 8;
+      reasons.push(`${Math.abs(pnlPct).toFixed(0)}% abaixo da sua compra`);
+    } else if (pnlPct > 10) {
+      // Already in profit — buying more is riskier
+      score -= 5;
+      reasons.push(`⚠️ Já com ${pnlPct.toFixed(0)}% de lucro — comprar mais aumenta exposição`);
+    }
+  }
+
   // Cap at 95% (never 100%)
   score = Math.max(0, Math.min(95, Math.round(score)));
 
@@ -1243,7 +1442,7 @@ function calcBuyScore(p, dropThresh) {
   return { total: score, reasons };
 }
 
-function calcSellScore(p, riseThresh) {
+function calcSellScore(p, riseThresh, pos) {
   let score = 0;
   const reasons = [];
 
@@ -1306,13 +1505,32 @@ function calcSellScore(p, riseThresh) {
     }
   }
 
+  // 6. Position context — sell is stronger when you're already in profit
+  if (pos && pos.buyPrice && p.price) {
+    const pnlPct = ((p.price - pos.buyPrice) / pos.buyPrice) * 100;
+    if (pnlPct >= 50) {
+      score += 15;
+      reasons.push(`Lucro de ${pnlPct.toFixed(0)}% desde sua compra! Excelente momento`);
+    } else if (pnlPct >= 20) {
+      score += 10;
+      reasons.push(`+${pnlPct.toFixed(0)}% desde sua compra — bom lucro`);
+    } else if (pnlPct >= 5) {
+      score += 5;
+      reasons.push(`+${pnlPct.toFixed(0)}% desde compra`);
+    } else if (pnlPct < -5) {
+      // In the red — selling is usually bad (loss realization)
+      score -= 10;
+      reasons.push(`⚠️ Ainda com ${pnlPct.toFixed(0)}% de prejuízo — vender agora realiza perda`);
+    }
+  }
+
   // Cap at 95%
   score = Math.max(0, Math.min(95, Math.round(score)));
   if (score < 25) return { total: 0, reasons: [] };
   return { total: score, reasons };
 }
 
-function calcStockBuyScore(p, dropThresh) {
+function calcStockBuyScore(p, dropThresh, pos) {
   let score = 0;
   const reasons = [];
 
@@ -1341,7 +1559,7 @@ function calcStockBuyScore(p, dropThresh) {
   return { total: score, reasons };
 }
 
-function calcStockSellScore(p, riseThresh) {
+function calcStockSellScore(p, riseThresh, pos) {
   let score = 0;
   const reasons = [];
 
@@ -1698,6 +1916,67 @@ function removeAsset(id, type) {
   UI.renderAlerts();
 }
 
+// ===== POSITION MODAL (BUY PRICE) =====
+function openPositionModal(assetId, assetName) {
+  document.getElementById('pos-asset-id').value = assetId;
+  document.getElementById('pos-asset-name').textContent = assetName;
+
+  const pos = state.positions[assetId];
+  if (pos) {
+    document.getElementById('pos-buy-price').value = pos.buyPrice || '';
+    document.getElementById('pos-quantity').value = pos.quantity || '';
+    document.getElementById('pos-date').value = pos.date || '';
+    document.getElementById('pos-remove-btn').hidden = false;
+  } else {
+    document.getElementById('pos-buy-price').value = '';
+    document.getElementById('pos-quantity').value = '';
+    document.getElementById('pos-date').value = '';
+    document.getElementById('pos-remove-btn').hidden = true;
+  }
+
+  document.getElementById('position-modal').classList.add('active');
+  document.getElementById('pos-buy-price').focus();
+}
+
+function closePositionModal() {
+  document.getElementById('position-modal').classList.remove('active');
+}
+
+function savePosition() {
+  const assetId = document.getElementById('pos-asset-id').value;
+  const buyPrice = parseFloat(document.getElementById('pos-buy-price').value);
+  const quantity = parseFloat(document.getElementById('pos-quantity').value) || null;
+  const date = document.getElementById('pos-date').value || null;
+
+  if (!assetId || isNaN(buyPrice) || buyPrice <= 0) {
+    showToast({ type: 'info', title: 'Preencha o preço de compra', msg: 'Informe por quanto você comprou o ativo.' });
+    return;
+  }
+
+  state.positions[assetId] = { buyPrice, quantity, date };
+  saveState();
+  closePositionModal();
+  UI.renderCryptoCards();
+  UI.renderStockCards();
+  showToast({ type: 'buy', title: '💰 Compra registrada!', msg: `${assetId.toUpperCase()} a ${fmtBRL(buyPrice)}${quantity ? ' × ' + quantity : ''}` });
+}
+
+function removePosition() {
+  const assetId = document.getElementById('pos-asset-id').value;
+  if (!assetId) return;
+  delete state.positions[assetId];
+  saveState();
+  closePositionModal();
+  UI.renderCryptoCards();
+  UI.renderStockCards();
+  showToast({ type: 'info', title: 'Compra removida', msg: `Preço de compra de ${assetId.toUpperCase()} foi removido.` });
+}
+
+// Close position modal on Escape / overlay click
+document.getElementById('position-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('position-modal')) closePositionModal();
+});
+
 // ===== POPULAR BUTTONS =====
 function renderPopular() {
   const cryptoDiv = document.getElementById('crypto-popular');
@@ -1821,7 +2100,7 @@ function dismissDisclaimer() {
 
 // ===== EXPORT / IMPORT =====
 function exportData() {
-  const data = JSON.stringify({ watchlist: state.watchlist, alerts: state.alerts, settings: state.settings }, null, 2);
+  const data = JSON.stringify({ watchlist: state.watchlist, positions: state.positions, alerts: state.alerts, settings: state.settings }, null, 2);
   const blob = new Blob([data], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -1841,6 +2120,7 @@ function importData() {
       try {
         const data = JSON.parse(reader.result);
         if (data.watchlist) state.watchlist = data.watchlist;
+        if (data.positions) state.positions = data.positions;
         if (data.alerts) state.alerts = data.alerts;
         if (data.settings) state.settings = { ...state.settings, ...data.settings };
         saveState();
@@ -1861,6 +2141,7 @@ function clearAllData() {
   if (!confirm('Tem certeza? Isso vai apagar todos os ativos, alertas e configurações.')) return;
   try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* ok */ }
   state.watchlist = { crypto: [], stocks: [] };
+  state.positions = {};
   state.alerts = [];
   state.prices = { crypto: {}, stocks: {} };
   state.opportunities = [];
@@ -1879,7 +2160,7 @@ function clearAllData() {
 
 // ===== KEYBOARD SHORTCUTS =====
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeAddModal();
+  if (e.key === 'Escape') { closeAddModal(); closePositionModal(); }
 });
 
 document.getElementById('add-modal').addEventListener('click', e => {
