@@ -1,0 +1,1142 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Seu Produto Digital — Página de Vendas</title>
+<meta name="description" content="Transforme [seu problema] em [resultado desejado] com o método comprovado. Acesso imediato.">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="Seu Produto Digital — Página de Vendas">
+<meta property="og:description" content="Transforme [seu problema] em [resultado desejado] com o método comprovado.">
+<meta property="og:image" content="og-image.png">
+<meta property="og:locale" content="pt_BR">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🚀%3C/text%3E%3C/svg%3E">
+
+<style>
+/* ============================================
+   LANDING PAGE DE VENDAS — TEMPLATE EDITÁVEL
+
+   🎨 COMO PERSONALIZAR:
+   1. Troque as cores abaixo (--accent, --accent-dark)
+   2. Edite os textos no HTML (procure por 🔧)
+   3. Coloque seu link de checkout da Hotmart/Kiwify
+      nos botões (procure por href="#checkout")
+   4. Troque as imagens placeholder
+   ============================================ */
+
+*, *::before, *::after {
+  margin: 0; padding: 0; box-sizing: border-box;
+}
+
+:root {
+  /* 🔧 CORES PRINCIPAIS — troque aqui */
+  --accent: #6C3CE0;
+  --accent-dark: #5228B8;
+  --accent-light: #EDE5FF;
+  --accent-glow: rgba(108, 60, 224, 0.15);
+
+  /* Neutros */
+  --bg: #FAFAFA;
+  --bg-card: #FFFFFF;
+  --text: #1A1A2E;
+  --text-muted: #6B7280;
+  --text-light: #9CA3AF;
+  --border: #E5E7EB;
+  --success: #10B981;
+  --warning: #F59E0B;
+
+  /* Tipografia */
+  --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-display: Georgia, 'Times New Roman', serif;
+
+  /* Espaçamento */
+  --section-pad: clamp(3rem, 8vw, 6rem);
+  --container: min(90%, 1100px);
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font);
+  color: var(--text);
+  background: var(--bg);
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+img { max-width: 100%; display: block; }
+
+/* ─── HEADER / TOPO ─── */
+
+.top-bar {
+  background: var(--accent);
+  color: white;
+  text-align: center;
+  padding: 0.6rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.top-bar span {
+  animation: pulse-text 2s ease-in-out infinite;
+}
+
+@keyframes pulse-text {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* ─── HERO ─── */
+
+.hero {
+  background: linear-gradient(135deg, #0F0C29 0%, #1A1A3E 40%, #24243E 100%);
+  color: white;
+  padding: var(--section-pad) 1.5rem;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.hero::before {
+  content: '';
+  position: absolute;
+  top: -50%; left: -50%;
+  width: 200%; height: 200%;
+  background: radial-gradient(ellipse at 30% 50%, var(--accent-glow) 0%, transparent 60%),
+              radial-gradient(ellipse at 70% 50%, rgba(16, 185, 129, 0.08) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+.hero-inner {
+  max-width: 800px;
+  margin: 0 auto;
+  position: relative;
+  z-index: 1;
+}
+
+.hero-badge {
+  display: inline-block;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 50px;
+  padding: 0.4rem 1.2rem;
+  font-size: 0.85rem;
+  margin-bottom: 1.5rem;
+  backdrop-filter: blur(10px);
+}
+
+.hero h1 {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 5.5vw, 3.4rem);
+  line-height: 1.2;
+  margin-bottom: 1.2rem;
+  font-weight: 700;
+}
+
+.hero h1 em {
+  font-style: normal;
+  color: #A78BFA;
+}
+
+.hero p {
+  font-size: clamp(1.05rem, 2.5vw, 1.25rem);
+  color: rgba(255,255,255,0.75);
+  max-width: 600px;
+  margin: 0 auto 2rem;
+  line-height: 1.6;
+}
+
+/* ─── BOTÕES ─── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 2.2rem;
+  border-radius: 12px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+  color: white;
+  box-shadow: 0 4px 20px var(--accent-glow), 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 30px var(--accent-glow), 0 4px 12px rgba(0,0,0,0.2);
+}
+
+.btn-secondary {
+  background: rgba(255,255,255,0.1);
+  color: white;
+  border: 1px solid rgba(255,255,255,0.25);
+}
+
+.btn-secondary:hover {
+  background: rgba(255,255,255,0.15);
+}
+
+.btn-large {
+  padding: 1.2rem 2.8rem;
+  font-size: 1.2rem;
+  border-radius: 14px;
+}
+
+.hero-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: center;
+  margin-bottom: 1.5rem;
+}
+
+.hero-proof {
+  font-size: 0.85rem;
+  color: rgba(255,255,255,0.5);
+}
+
+.hero-proof span {
+  color: var(--success);
+  font-weight: 600;
+}
+
+/* ─── SEÇÕES ─── */
+
+section {
+  padding: var(--section-pad) 1.5rem;
+}
+
+.container {
+  max-width: var(--container);
+  margin: 0 auto;
+}
+
+.section-label {
+  display: inline-block;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  background: var(--accent-light);
+  padding: 0.3rem 0.9rem;
+  border-radius: 50px;
+  margin-bottom: 1rem;
+}
+
+.section-title {
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 4vw, 2.4rem);
+  line-height: 1.25;
+  margin-bottom: 1rem;
+}
+
+.section-subtitle {
+  font-size: 1.1rem;
+  color: var(--text-muted);
+  max-width: 600px;
+}
+
+.text-center { text-align: center; }
+.text-center .section-subtitle { margin: 0 auto; }
+
+/* ─── PROBLEMA ─── */
+
+.problems {
+  background: #FFF7ED;
+}
+
+.problem-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  margin-top: 2.5rem;
+}
+
+.problem-card {
+  background: white;
+  border: 1px solid #FED7AA;
+  border-radius: 16px;
+  padding: 1.8rem;
+}
+
+.problem-card .icon {
+  font-size: 2rem;
+  margin-bottom: 0.8rem;
+}
+
+.problem-card h3 {
+  font-size: 1.1rem;
+  margin-bottom: 0.5rem;
+}
+
+.problem-card p {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+/* ─── SOLUÇÃO / BENEFÍCIOS ─── */
+
+.benefits-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+  margin-top: 2.5rem;
+}
+
+.benefit-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 2rem;
+  transition: box-shadow 0.2s;
+}
+
+.benefit-card:hover {
+  box-shadow: 0 8px 30px rgba(0,0,0,0.06);
+}
+
+.benefit-card .icon {
+  width: 48px;
+  height: 48px;
+  background: var(--accent-light);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  margin-bottom: 1rem;
+}
+
+.benefit-card h3 {
+  font-size: 1.15rem;
+  margin-bottom: 0.5rem;
+}
+
+.benefit-card p {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+/* ─── O QUE ESTÁ INCLUÍDO ─── */
+
+.includes {
+  background: linear-gradient(135deg, #0F0C29 0%, #1A1A3E 40%, #24243E 100%);
+  color: white;
+}
+
+.includes .section-label {
+  background: rgba(167,139,250,0.2);
+  color: #A78BFA;
+}
+
+.includes .section-subtitle {
+  color: rgba(255,255,255,0.6);
+}
+
+.modules-list {
+  margin-top: 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.module-item {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 16px;
+  padding: 1.5rem 2rem;
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  transition: background 0.2s;
+}
+
+.module-item:hover {
+  background: rgba(255,255,255,0.08);
+}
+
+.module-number {
+  background: var(--accent);
+  color: white;
+  min-width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.module-content h3 {
+  font-size: 1.1rem;
+  margin-bottom: 0.3rem;
+}
+
+.module-content p {
+  color: rgba(255,255,255,0.55);
+  font-size: 0.9rem;
+}
+
+/* ─── BÔNUS ─── */
+
+.bonus-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.2rem;
+  margin-top: 2rem;
+}
+
+.bonus-card {
+  background: var(--bg-card);
+  border: 2px dashed var(--accent);
+  border-radius: 16px;
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.bonus-card .tag {
+  display: inline-block;
+  background: var(--accent);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.2rem 0.7rem;
+  border-radius: 50px;
+  margin-bottom: 0.8rem;
+}
+
+.bonus-card h3 { font-size: 1.05rem; margin-bottom: 0.4rem; }
+.bonus-card .value {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+/* ─── DEPOIMENTOS ─── */
+
+.testimonials-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+  margin-top: 2.5rem;
+}
+
+.testimonial-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1.8rem;
+}
+
+.testimonial-card .stars {
+  color: #FBBF24;
+  font-size: 1.1rem;
+  margin-bottom: 0.8rem;
+}
+
+.testimonial-card blockquote {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+  font-style: italic;
+  line-height: 1.6;
+}
+
+.testimonial-card .author {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.testimonial-card .avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--accent-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: var(--accent);
+  font-size: 1rem;
+}
+
+.testimonial-card .author-info .name {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.testimonial-card .author-info .role {
+  font-size: 0.8rem;
+  color: var(--text-light);
+}
+
+/* ─── GARANTIA ─── */
+
+.guarantee {
+  background: #ECFDF5;
+}
+
+.guarantee-box {
+  max-width: 700px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.guarantee-icon {
+  font-size: 3.5rem;
+  margin-bottom: 1rem;
+}
+
+.guarantee-box h2 {
+  font-family: var(--font-display);
+  font-size: 1.8rem;
+  margin-bottom: 0.8rem;
+}
+
+.guarantee-box p {
+  color: var(--text-muted);
+  font-size: 1.05rem;
+  line-height: 1.7;
+}
+
+/* ─── PREÇO / CTA FINAL ─── */
+
+.pricing {
+  text-align: center;
+}
+
+.price-card {
+  max-width: 500px;
+  margin: 2.5rem auto 0;
+  background: var(--bg-card);
+  border: 2px solid var(--accent);
+  border-radius: 24px;
+  padding: 2.5rem;
+  position: relative;
+  box-shadow: 0 12px 40px var(--accent-glow);
+}
+
+.price-card .popular {
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--accent);
+  color: white;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.4rem 1.5rem;
+  border-radius: 50px;
+  white-space: nowrap;
+}
+
+.price-old {
+  font-size: 1.1rem;
+  color: var(--text-light);
+  text-decoration: line-through;
+  margin-bottom: 0.3rem;
+}
+
+.price-current {
+  font-size: 3rem;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 0.3rem;
+}
+
+.price-current small {
+  font-size: 1.2rem;
+  font-weight: 400;
+}
+
+.price-installments {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  margin-bottom: 1.5rem;
+}
+
+.price-features {
+  list-style: none;
+  text-align: left;
+  margin-bottom: 2rem;
+}
+
+.price-features li {
+  padding: 0.5rem 0;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.price-features li::before {
+  content: '✓';
+  color: var(--success);
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.price-card .btn {
+  width: 100%;
+  justify-content: center;
+}
+
+/* ─── FAQ ─── */
+
+.faq-list {
+  max-width: 700px;
+  margin: 2.5rem auto 0;
+}
+
+.faq-item {
+  border-bottom: 1px solid var(--border);
+}
+
+.faq-question {
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 1.2rem 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--text);
+  font-family: var(--font);
+}
+
+.faq-question::after {
+  content: '+';
+  font-size: 1.4rem;
+  font-weight: 300;
+  color: var(--accent);
+  transition: transform 0.3s;
+}
+
+.faq-item.active .faq-question::after {
+  content: '−';
+}
+
+.faq-answer {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease, padding 0.3s ease;
+}
+
+.faq-item.active .faq-answer {
+  max-height: 300px;
+  padding-bottom: 1.2rem;
+}
+
+.faq-answer p {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+/* ─── FOOTER ─── */
+
+.footer {
+  background: #0F0C29;
+  color: rgba(255,255,255,0.4);
+  text-align: center;
+  padding: 2rem 1.5rem;
+  font-size: 0.85rem;
+}
+
+.footer a {
+  color: rgba(255,255,255,0.6);
+  text-decoration: none;
+}
+
+.footer a:hover {
+  color: white;
+}
+
+/* ─── RESPONSIVO ─── */
+
+@media (max-width: 640px) {
+  .hero-cta { flex-direction: column; align-items: center; }
+  .btn-large { width: 100%; justify-content: center; }
+  .module-item { flex-direction: column; text-align: center; }
+  .price-card { padding: 1.8rem; }
+  .price-current { font-size: 2.4rem; }
+}
+
+/* ─── ANIMAÇÃO SUAVE AO SCROLL ─── */
+
+.fade-in {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.fade-in.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ─── WHATSAPP FLOAT ─── */
+.whatsapp-float {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 56px;
+  height: 56px;
+  background: #25D366;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(37, 211, 102, 0.4);
+  z-index: 1000;
+  text-decoration: none;
+  transition: transform 0.2s;
+}
+
+.whatsapp-float:hover { transform: scale(1.1); }
+
+.whatsapp-float svg {
+  width: 28px;
+  height: 28px;
+  fill: white;
+}
+</style>
+</head>
+
+<body>
+
+<!-- ╔══════════════════════════════════════════╗
+     ║  🔧 BARRA DE URGÊNCIA (TOPO)            ║
+     ║  Troque o texto da promoção              ║
+     ╚══════════════════════════════════════════╝ -->
+<div class="top-bar">
+  <span>🔥 Oferta de lançamento — <strong>50% OFF</strong> só até sexta-feira!</span>
+</div>
+
+<!-- ╔══════════════════════════════════════════╗
+     ║  🔧 HERO — Primeira coisa que o          ║
+     ║  visitante vê. Troque a headline,        ║
+     ║  sub-headline e link do botão.            ║
+     ╚══════════════════════════════════════════╝ -->
+<section class="hero">
+  <div class="hero-inner">
+    <div class="hero-badge">✨ Método passo a passo</div>
+
+    <h1>Domine <em>[Sua Habilidade]</em> e conquiste resultados <em>reais</em> em semanas</h1>
+
+    <p>O guia definitivo que já ajudou +500 pessoas a sair do zero e alcançar [resultado principal]. Sem enrolação, sem teoria desnecessária.</p>
+
+    <div class="hero-cta">
+      <!-- 🔧 LINK DE CHECKOUT: troque o # pelo link da Hotmart/Kiwify -->
+      <a href="#checkout" class="btn btn-primary btn-large">
+        Quero começar agora →
+      </a>
+      <a href="#conteudo" class="btn btn-secondary btn-large">
+        Ver o que inclui
+      </a>
+    </div>
+
+    <p class="hero-proof">
+      <span>⭐ 4.9/5</span> de avaliação • 500+ alunos • Acesso imediato
+    </p>
+  </div>
+</section>
+
+<!-- ╔══════════════════════════════════════════╗
+     ║  🔧 PROBLEMA — Mostre que você           ║
+     ║  entende a dor do seu público             ║
+     ╚══════════════════════════════════════════╝ -->
+<section class="problems fade-in">
+  <div class="container text-center">
+    <span class="section-label">O problema</span>
+    <h2 class="section-title">Você se identifica com alguma dessas situações?</h2>
+    <p class="section-subtitle">Se a resposta for sim pra pelo menos uma, esse produto foi feito pra você.</p>
+
+    <div class="problem-grid">
+      <div class="problem-card">
+        <div class="icon">😩</div>
+        <h3>Frustração com falta de resultado</h3>
+        <p>Já tentou várias vezes aprender sozinho(a), seguiu tutoriais, mas nunca saiu do lugar de verdade.</p>
+      </div>
+      <div class="problem-card">
+        <div class="icon">😵‍💫</div>
+        <h3>Excesso de informação</h3>
+        <p>Tem tanto conteúdo grátis na internet que você fica paralisado(a) sem saber por onde começar.</p>
+      </div>
+      <div class="problem-card">
+        <div class="icon">⏰</div>
+        <h3>Falta de tempo</h3>
+        <p>Trabalha o dia inteiro e precisa de algo direto ao ponto, sem enrolação, que caiba na sua rotina.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ╔══════════════════════════════════════════╗
+     ║  🔧 BENEFÍCIOS — O que o produto         ║
+     ║  entrega de valor                         ║
+     ╚══════════════════════════════════════════╝ -->
+<section class="benefits fade-in">
+  <div class="container text-center">
+    <span class="section-label">A solução</span>
+    <h2 class="section-title">O que você vai conquistar</h2>
+    <p class="section-subtitle">Cada módulo foi pensado pra você aplicar imediatamente e ver resultado.</p>
+
+    <div class="benefits-grid">
+      <div class="benefit-card">
+        <div class="icon">🎯</div>
+        <h3>Clareza total do caminho</h3>
+        <p>Chega de ficar perdido(a). Um roteiro passo a passo do zero ao resultado, sem pular etapa.</p>
+      </div>
+      <div class="benefit-card">
+        <div class="icon">⚡</div>
+        <h3>Resultados em semanas, não meses</h3>
+        <p>Método focado na prática. Você aplica hoje e começa a ver diferença já nos primeiros dias.</p>
+      </div>
+      <div class="benefit-card">
+        <div class="icon">🧠</div>
+        <h3>Aprenda de verdade</h3>
+        <p>Não é curso pra assistir e esquecer. É um método que muda a forma como você pensa e age.</p>
+      </div>
+      <div class="benefit-card">
+        <div class="icon">💬</div>
+        <h3>Comunidade exclusiva</h3>
+        <p>Grupo privado com outros alunos e suporte direto. Você nunca vai se sentir sozinho(a).</p>
+      </div>
+      <div class="benefit-card">
+        <div class="icon">📱</div>
+        <h3>Acesse de qualquer lugar</h3>
+        <p>Celular, tablet ou computador. Assista quando e onde quiser, no seu ritmo.</p>
+      </div>
+      <div class="benefit-card">
+        <div class="icon">🔄</div>
+        <h3>Atualizações gratuitas</h3>
+        <p>O conteúdo é atualizado constantemente. Comprou uma vez, tem acesso pra sempre.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ╔══════════════════════════════════════════╗
+     ║  🔧 CONTEÚDO — O que está incluído        ║
+     ║  (módulos, aulas, materiais)               ║
+     ╚══════════════════════════════════════════╝ -->
+<section class="includes fade-in" id="conteudo">
+  <div class="container text-center">
+    <span class="section-label">Conteúdo completo</span>
+    <h2 class="section-title" style="color:white">Tudo o que está incluído</h2>
+    <p class="section-subtitle">Um programa completo e organizado pra você ir do zero ao avançado.</p>
+
+    <div class="modules-list">
+      <div class="module-item">
+        <div class="module-number">1</div>
+        <div class="module-content">
+          <h3>Fundamentos Essenciais</h3>
+          <p>A base sólida que 90% das pessoas pula — e por isso não consegue avançar.</p>
+        </div>
+      </div>
+      <div class="module-item">
+        <div class="module-number">2</div>
+        <div class="module-content">
+          <h3>Estratégia na Prática</h3>
+          <p>Mão na massa com exemplos reais. Você sai deste módulo já aplicando.</p>
+        </div>
+      </div>
+      <div class="module-item">
+        <div class="module-number">3</div>
+        <div class="module-content">
+          <h3>Técnicas Avançadas</h3>
+          <p>O diferencial que separa quem tem resultado médio de quem tem resultado excepcional.</p>
+        </div>
+      </div>
+      <div class="module-item">
+        <div class="module-number">4</div>
+        <div class="module-content">
+          <h3>Projeto Final + Certificado</h3>
+          <p>Aplique tudo numa entrega real e receba um certificado de conclusão.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ╔══════════════════════════════════════════╗
+     ║  🔧 BÔNUS                                 ║
+     ╚══════════════════════════════════════════╝ -->
+<section class="bonus fade-in">
+  <div class="container text-center">
+    <span class="section-label">Bônus exclusivos</span>
+    <h2 class="section-title">E ainda tem mais...</h2>
+    <p class="section-subtitle">Quem garante hoje leva esses bônus sem pagar nada a mais.</p>
+
+    <div class="bonus-grid">
+      <div class="bonus-card">
+        <div class="tag">BÔNUS 1</div>
+        <div class="icon" style="font-size:2rem; margin-bottom:0.5rem">📋</div>
+        <h3>Checklist de Implementação</h3>
+        <p style="color:var(--text-muted); font-size:0.9rem; margin:0.5rem 0">Passo a passo pra não esquecer nada</p>
+        <div class="value">Valor: R$ 97</div>
+      </div>
+      <div class="bonus-card">
+        <div class="tag">BÔNUS 2</div>
+        <div class="icon" style="font-size:2rem; margin-bottom:0.5rem">🎙️</div>
+        <h3>Aula ao Vivo por Mês</h3>
+        <p style="color:var(--text-muted); font-size:0.9rem; margin:0.5rem 0">Tire dúvidas direto comigo</p>
+        <div class="value">Valor: R$ 197</div>
+      </div>
+      <div class="bonus-card">
+        <div class="tag">BÔNUS 3</div>
+        <div class="icon" style="font-size:2rem; margin-bottom:0.5rem">📦</div>
+        <h3>Templates Prontos</h3>
+        <p style="color:var(--text-muted); font-size:0.9rem; margin:0.5rem 0">Modelos editáveis pra usar agora</p>
+        <div class="value">Valor: R$ 147</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ╔══════════════════════════════════════════╗
+     ║  🔧 DEPOIMENTOS — Prova social            ║
+     ║  Troque por depoimentos reais!             ║
+     ╚══════════════════════════════════════════╝ -->
+<section class="testimonials fade-in">
+  <div class="container text-center">
+    <span class="section-label">Depoimentos</span>
+    <h2 class="section-title">O que dizem quem já fez</h2>
+    <p class="section-subtitle">Resultados reais de pessoas reais.</p>
+
+    <div class="testimonials-grid">
+      <div class="testimonial-card">
+        <div class="stars">★★★★★</div>
+        <blockquote>"Eu já tinha tentado vários cursos antes, mas esse foi o primeiro que realmente me fez aplicar e ter resultado. Em 3 semanas já vi diferença."</blockquote>
+        <div class="author">
+          <div class="avatar">M</div>
+          <div class="author-info">
+            <!-- 🔧 Troque por depoimentos reais dos seus clientes -->
+            <div class="name">Mariana S.</div>
+            <div class="role">Designer Freelancer</div>
+          </div>
+        </div>
+      </div>
+      <div class="testimonial-card">
+        <div class="stars">★★★★★</div>
+        <blockquote>"Direto ao ponto, sem enrolação. Exatamente o que eu precisava. O suporte no grupo é sensacional."</blockquote>
+        <div class="author">
+          <div class="avatar">R</div>
+          <div class="author-info">
+            <div class="name">Rafael T.</div>
+            <div class="role">Empreendedor</div>
+          </div>
+        </div>
+      </div>
+      <div class="testimonial-card">
+        <div class="stars">★★★★★</div>
+        <blockquote>"Vale cada centavo. Consegui aplicar mesmo trabalhando 8h por dia. O método é feito pra quem tem pouco tempo."</blockquote>
+        <div class="author">
+          <div class="avatar">C</div>
+          <div class="author-info">
+            <div class="name">Camila L.</div>
+            <div class="role">Analista de Marketing</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ╔══════════════════════════════════════════╗
+     ║  🔧 GARANTIA                              ║
+     ╚══════════════════════════════════════════╝ -->
+<section class="guarantee fade-in">
+  <div class="container">
+    <div class="guarantee-box">
+      <div class="guarantee-icon">🛡️</div>
+      <h2>Garantia incondicional de 7 dias</h2>
+      <p>Se por qualquer motivo você sentir que o produto não é pra você, basta pedir o reembolso em até 7 dias e devolvemos 100% do seu investimento. Sem perguntas, sem burocracia. O risco é todo nosso.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ╔══════════════════════════════════════════╗
+     ║  🔧 PREÇO — Troque valores e link          ║
+     ╚══════════════════════════════════════════╝ -->
+<section class="pricing fade-in" id="checkout">
+  <div class="container">
+    <span class="section-label">Oferta especial</span>
+    <h2 class="section-title">Invista no seu futuro hoje</h2>
+    <p class="section-subtitle" style="margin: 0 auto">
+      Tudo o que está incluído pelo menor preço que esse produto já teve.
+    </p>
+
+    <div class="price-card">
+      <div class="popular">🔥 MAIS ESCOLHIDO</div>
+
+      <div class="price-old">De R$ 297,00</div>
+      <!-- 🔧 PREÇO: troque pelo seu preço real -->
+      <div class="price-current">R$ 97<small>,00</small></div>
+      <div class="price-installments">ou 12x de R$ 9,42 sem juros</div>
+
+      <ul class="price-features">
+        <li>Acesso vitalício a todos os módulos</li>
+        <li>Comunidade exclusiva no Telegram</li>
+        <li>Bônus 1 — Checklist de Implementação</li>
+        <li>Bônus 2 — Aula ao vivo mensal</li>
+        <li>Bônus 3 — Templates prontos pra usar</li>
+        <li>Certificado de conclusão</li>
+        <li>Garantia de 7 dias</li>
+      </ul>
+
+      <!-- 🔧 LINK DE CHECKOUT: troque pelo seu link de pagamento -->
+      <a href="#checkout" class="btn btn-primary btn-large" id="btn-comprar">
+        Garantir minha vaga agora →
+      </a>
+
+      <p style="margin-top:1rem; font-size:0.85rem; color:var(--text-light)">
+        🔒 Pagamento 100% seguro · Acesso imediato após confirmação
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ╔══════════════════════════════════════════╗
+     ║  🔧 FAQ — Perguntas frequentes             ║
+     ╚══════════════════════════════════════════╝ -->
+<section class="faq fade-in">
+  <div class="container text-center">
+    <span class="section-label">Dúvidas</span>
+    <h2 class="section-title">Perguntas frequentes</h2>
+
+    <div class="faq-list">
+      <div class="faq-item">
+        <button class="faq-question">Funciona mesmo pra quem é iniciante?</button>
+        <div class="faq-answer">
+          <p>Sim! O método foi criado exatamente pra quem está começando do zero. Você não precisa de nenhum conhecimento prévio — basta seguir o passo a passo.</p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-question">Por quanto tempo tenho acesso?</button>
+        <div class="faq-answer">
+          <p>Acesso vitalício. Comprou uma vez, é seu pra sempre, incluindo todas as atualizações futuras.</p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-question">Quanto tempo preciso dedicar por dia?</button>
+        <div class="faq-answer">
+          <p>De 30 minutos a 1 hora por dia já é suficiente. O conteúdo é dividido em aulas curtas e práticas que cabem em qualquer rotina.</p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-question">E se eu não gostar?</button>
+        <div class="faq-answer">
+          <p>Você tem 7 dias de garantia incondicional. Se não gostar, basta pedir o reembolso por e-mail e devolvemos 100% — sem perguntas.</p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-question">Como recebo o acesso?</button>
+        <div class="faq-answer">
+          <p>Imediatamente após a confirmação do pagamento, você recebe um e-mail com login e senha pra acessar a área de membros. É instantâneo.</p>
+        </div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-question">Posso pagar no cartão ou boleto?</button>
+        <div class="faq-answer">
+          <p>Sim! Aceitamos cartão de crédito (até 12x sem juros), boleto bancário, PIX e PayPal. Tudo processado com segurança pela plataforma.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ╔══════════════════════════════════════════╗
+     ║  CTA FINAL                                 ║
+     ╚══════════════════════════════════════════╝ -->
+<section class="hero" style="padding: clamp(2.5rem, 6vw, 4rem) 1.5rem;">
+  <div class="hero-inner">
+    <h2 style="font-family: var(--font-display); font-size: clamp(1.6rem, 4vw, 2.4rem); margin-bottom: 1rem;">
+      Pronto(a) pra transformar sua vida?
+    </h2>
+    <p style="color: rgba(255,255,255,0.7); margin-bottom: 2rem;">
+      Não deixe pra depois o que pode mudar seu futuro hoje. A oferta de lançamento é por tempo limitado.
+    </p>
+    <a href="#checkout" class="btn btn-primary btn-large">
+      Quero começar agora — 50% OFF →
+    </a>
+  </div>
+</section>
+
+<!-- ╔══════════════════════════════════════════╗
+     ║  FOOTER                                    ║
+     ╚══════════════════════════════════════════╝ -->
+<footer class="footer">
+  <p>
+    © 2025 Seu Nome ·
+    <a href="privacidade.html">Política de Privacidade</a> ·
+    <a href="#">Termos de Uso</a>
+  </p>
+  <p style="margin-top:0.5rem">
+    Este produto é vendido através da plataforma Hotmart/Kiwify. A plataforma garante sua compra.
+  </p>
+</footer>
+
+<!-- ╔══════════════════════════════════════════╗
+     ║  🔧 WHATSAPP — Troque o número            ║
+     ╚══════════════════════════════════════════╝ -->
+<a href="https://wa.me/5511999999999?text=Olá! Tenho interesse no produto." class="whatsapp-float" target="_blank" rel="noopener" aria-label="WhatsApp">
+  <svg viewBox="0 0 32 32"><path d="M16.004 0C7.165 0 .003 7.16.003 15.997c0 2.825.74 5.584 2.146 8.017L.021 32l8.207-2.09a16.05 16.05 0 007.775 1.986C24.84 31.896 32 24.735 32 15.997 32 7.16 24.84 0 16.004 0zm0 29.29a13.38 13.38 0 01-7.12-2.038l-.51-.303-4.872 1.24 1.303-4.727-.338-.535A13.3 13.3 0 012.61 15.997c0-7.39 6.004-13.39 13.395-13.39 7.39 0 13.39 6 13.39 13.39 0 7.39-6 13.393-13.39 13.393zm7.338-10.023c-.4-.2-2.373-1.17-2.742-1.303-.37-.134-.638-.2-.907.2-.268.4-1.04 1.303-1.274 1.57-.235.27-.47.3-.87.1-.4-.2-1.69-.622-3.22-1.984-1.19-1.06-1.993-2.37-2.228-2.77-.234-.4-.025-.616.176-.815.18-.18.4-.468.6-.703.2-.234.267-.4.4-.668.134-.268.067-.502-.033-.703-.1-.2-.907-2.186-1.242-2.993-.327-.786-.66-.68-.907-.692l-.772-.013c-.268 0-.703.1-1.072.502-.37.4-1.41 1.375-1.41 3.356 0 1.98 1.444 3.893 1.645 4.16.2.268 2.84 4.338 6.882 6.08.962.415 1.713.663 2.298.85.966.306 1.845.263 2.54.16.774-.116 2.373-.97 2.71-1.907.334-.937.334-1.74.234-1.907-.1-.168-.37-.268-.772-.468z"/></svg>
+</a>
+
+<!-- ─── SCRIPTS ─── -->
+<script>
+// FAQ accordion
+document.querySelectorAll('.faq-question').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const item = btn.parentElement;
+    const wasActive = item.classList.contains('active');
+    document.querySelectorAll('.faq-item.active').forEach(i => i.classList.remove('active'));
+    if (!wasActive) item.classList.add('active');
+  });
+});
+
+// Fade-in on scroll
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0.1 });
+
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+// Smooth scroll for anchor links
+document.querySelectorAll('a[href^="#"]').forEach(link => {
+  link.addEventListener('click', e => {
+    const target = document.querySelector(link.getAttribute('href'));
+    if (target) {
+      e.preventDefault();
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+});
+</script>
+
+</body>
+</html>
