@@ -272,8 +272,8 @@ select.form-input{-webkit-appearance:none;appearance:none;background-image:url("
     <span class="disclaimer-icon">⚠️</span>
     <div>
       <strong>Isso não é recomendação de investimento.</strong>
-      O Radar mostra dados públicos e alertas que <em>você</em> configura. Toda decisão de compra/venda é sua.
-      Dados de cripto via CoinGecko; ações via brapi.dev (token gratuito necessário).
+      O Radar te avisa com sinais de COMPRA e VENDA baseados em variações de preço — mas são <em>sinais automáticos</em>, não conselho financeiro. Toda decisão é sua.
+      Ative as notificações para receber alertas mesmo com a aba minimizada. Dados: CoinGecko (cripto) + brapi.dev (ações).
     </div>
     <button class="disclaimer-close" onclick="dismissDisclaimer()">✕</button>
   </div>
@@ -614,6 +614,7 @@ let state = {
 let refreshTimer = null;
 let searchTimeout = null;
 let cryptoListCache = null;
+let notifiedOpps = new Set(); // track which opportunities we already notified about
 
 // ===== PERSISTENCE =====
 const STORAGE_KEY = 'radar_oportunidades';
@@ -977,65 +978,137 @@ const UI = {
 };
 
 // ===== OPPORTUNITY DETECTION =====
+// Generates a stable key for each opportunity so we only notify once per signal
+function oppKey(type, asset, signal) {
+  // Reset daily so the same signal can re-fire the next day
+  const day = new Date().toISOString().slice(0, 10);
+  return `${day}:${type}:${asset}:${signal}`;
+}
+
 function detectOpportunities() {
   const opps = [];
   const dropThresh = state.settings.dropThreshold;
   const riseThresh = state.settings.riseThreshold;
+  const newSignals = []; // opportunities we haven't notified yet
 
   // Crypto opportunities
   for (const coin of state.watchlist.crypto) {
     const p = state.prices.crypto[coin.id];
     if (!p) continue;
+    const sym = p.symbol.toUpperCase();
 
-    // Big 24h drop → possible buy
+    // Big 24h drop → BUY signal
     if (p.change24h != null && p.change24h <= -dropThresh) {
-      opps.push({
+      const key = oppKey('buy', coin.id, 'drop24h');
+      const opp = {
+        key,
         type: 'buy',
-        title: `${p.name} (${p.symbol.toUpperCase()}) caiu ${Math.abs(p.change24h).toFixed(1)}% em 24h`,
-        desc: `Preço atual: ${fmtBRL(p.price)}. Pode ser oportunidade de compra — analise antes de decidir.`,
-        time: 'agora', priority: Math.abs(p.change24h)
-      });
+        title: `🟢 COMPRAR? ${sym} caiu ${Math.abs(p.change24h).toFixed(1)}%`,
+        desc: `Preço: ${fmtBRL(p.price)}. Queda forte em 24h — pode ser hora de comprar.`,
+        notification: `📉 ${sym} caiu ${Math.abs(p.change24h).toFixed(1)}% → ${fmtBRL(p.price)}. Possível hora de COMPRAR!`,
+        time: 'agora', priority: 10 + Math.abs(p.change24h)
+      };
+      opps.push(opp);
+      if (!notifiedOpps.has(key)) newSignals.push(opp);
     }
 
-    // Big 24h rise → possible take profit
+    // Big 24h rise → SELL signal
     if (p.change24h != null && p.change24h >= riseThresh) {
-      opps.push({
+      const key = oppKey('sell', coin.id, 'rise24h');
+      const opp = {
+        key,
         type: 'sell',
-        title: `${p.name} (${p.symbol.toUpperCase()}) subiu ${p.change24h.toFixed(1)}% em 24h`,
-        desc: `Preço atual: ${fmtBRL(p.price)}. Alta forte — considere realizar lucros parciais.`,
-        time: 'agora', priority: p.change24h
-      });
+        title: `🔴 VENDER? ${sym} subiu ${p.change24h.toFixed(1)}%`,
+        desc: `Preço: ${fmtBRL(p.price)}. Alta forte em 24h — considere realizar lucro.`,
+        notification: `📈 ${sym} subiu ${p.change24h.toFixed(1)}% → ${fmtBRL(p.price)}. Possível hora de VENDER!`,
+        time: 'agora', priority: 10 + p.change24h
+      };
+      opps.push(opp);
+      if (!notifiedOpps.has(key)) newSignals.push(opp);
     }
 
-    // Near ATH (within 5%)
+    // Near ATH (within 5%) → caution / sell zone
     if (p.athChange != null && p.athChange > -5 && p.athChange < 0) {
-      opps.push({
-        type: 'info',
-        title: `${p.name} está a ${Math.abs(p.athChange).toFixed(1)}% do recorde histórico`,
-        desc: `ATH: ${fmtBRL(p.ath)}. Atual: ${fmtBRL(p.price)}. Zona de atenção.`,
-        time: 'agora', priority: 5
-      });
+      const key = oppKey('sell', coin.id, 'nearATH');
+      const opp = {
+        key,
+        type: 'sell',
+        title: `⚡ ${sym} quase no RECORDE! A ${Math.abs(p.athChange).toFixed(1)}% do ATH`,
+        desc: `ATH: ${fmtBRL(p.ath)}. Atual: ${fmtBRL(p.price)}. Zona de euforia — cuidado ao comprar, bom pra vender.`,
+        notification: `⚡ ${sym} está a apenas ${Math.abs(p.athChange).toFixed(1)}% do recorde histórico! Zona de atenção.`,
+        time: 'agora', priority: 8
+      };
+      opps.push(opp);
+      if (!notifiedOpps.has(key)) newSignals.push(opp);
     }
 
-    // Very far from ATH (>80% below) → deep value?
+    // Very far from ATH (>80% below) → deep value
     if (p.athChange != null && p.athChange < -80) {
-      opps.push({
+      const key = oppKey('buy', coin.id, 'deepValue');
+      const opp = {
+        key,
         type: 'buy',
-        title: `${p.name} está ${Math.abs(p.athChange).toFixed(0)}% abaixo do ATH`,
-        desc: `ATH: ${fmtBRL(p.ath)}. Atual: ${fmtBRL(p.price)}. Pode ser valor ou pode ser queda permanente — pesquise.`,
-        time: 'agora', priority: 3
-      });
+        title: `💎 ${sym} está ${Math.abs(p.athChange).toFixed(0)}% abaixo do ATH`,
+        desc: `ATH: ${fmtBRL(p.ath)}. Atual: ${fmtBRL(p.price)}. Preço de "pechincha" — mas pesquise se o projeto sobrevive.`,
+        notification: `💎 ${sym} está ${Math.abs(p.athChange).toFixed(0)}% abaixo do recorde. Pechincha ou armadilha?`,
+        time: 'agora', priority: 4
+      };
+      opps.push(opp);
+      if (!notifiedOpps.has(key)) newSignals.push(opp);
     }
 
-    // 1h spike
+    // 1h spike (>5% in 1 hour) → urgent signal
     if (p.change1h != null && Math.abs(p.change1h) > 5) {
+      const isBuy = p.change1h < 0;
+      const key = oppKey(isBuy ? 'buy' : 'sell', coin.id, 'spike1h');
       const dir = p.change1h > 0 ? 'subiu' : 'caiu';
-      opps.push({
-        type: p.change1h > 0 ? 'info' : 'buy',
-        title: `${p.name} ${dir} ${Math.abs(p.change1h).toFixed(1)}% na última hora`,
-        desc: `Movimentação rápida — fique atento. Preço: ${fmtBRL(p.price)}.`,
-        time: 'agora', priority: 4
-      });
+      const action = isBuy ? 'COMPRAR' : 'realizar lucro';
+      const opp = {
+        key,
+        type: isBuy ? 'buy' : 'sell',
+        title: `🚨 URGENTE: ${sym} ${dir} ${Math.abs(p.change1h).toFixed(1)}% em 1 HORA!`,
+        desc: `Movimentação brusca agora! Preço: ${fmtBRL(p.price)}. Pode ser hora de ${action}.`,
+        notification: `🚨 ${sym} ${dir} ${Math.abs(p.change1h).toFixed(1)}% na ÚLTIMA HORA! Preço: ${fmtBRL(p.price)}`,
+        time: 'agora', priority: 15
+      };
+      opps.push(opp);
+      if (!notifiedOpps.has(key)) newSignals.push(opp);
+    }
+
+    // Near 24h low (within 2%) → buy dip signal
+    if (p.low24h && p.price && p.low24h > 0) {
+      const distFromLow = ((p.price - p.low24h) / p.low24h) * 100;
+      if (distFromLow < 2 && distFromLow >= 0) {
+        const key = oppKey('buy', coin.id, 'nearLow');
+        const opp = {
+          key,
+          type: 'buy',
+          title: `📉 ${sym} perto da MÍNIMA do dia`,
+          desc: `Preço: ${fmtBRL(p.price)}. Mínima 24h: ${fmtBRL(p.low24h)}. Pode ser fundo — boa entrada?`,
+          notification: `📉 ${sym} perto da mínima de 24h: ${fmtBRL(p.price)}. Possível fundo!`,
+          time: 'agora', priority: 7
+        };
+        opps.push(opp);
+        if (!notifiedOpps.has(key)) newSignals.push(opp);
+      }
+    }
+
+    // Near 24h high (within 2%) → sell/caution signal
+    if (p.high24h && p.price && p.high24h > 0) {
+      const distFromHigh = ((p.high24h - p.price) / p.high24h) * 100;
+      if (distFromHigh < 2 && distFromHigh >= 0) {
+        const key = oppKey('sell', coin.id, 'nearHigh');
+        const opp = {
+          key,
+          type: 'sell',
+          title: `📈 ${sym} perto da MÁXIMA do dia`,
+          desc: `Preço: ${fmtBRL(p.price)}. Máxima 24h: ${fmtBRL(p.high24h)}. Topo do dia — realizar lucro?`,
+          notification: `📈 ${sym} perto da máxima de 24h: ${fmtBRL(p.price)}. Possível topo!`,
+          time: 'agora', priority: 6
+        };
+        opps.push(opp);
+        if (!notifiedOpps.has(key)) newSignals.push(opp);
+      }
     }
   }
 
@@ -1045,28 +1118,88 @@ function detectOpportunities() {
     if (!p) continue;
 
     if (p.changePct != null && p.changePct <= -dropThresh) {
-      opps.push({
+      const key = oppKey('buy', ticker, 'drop');
+      const opp = {
+        key,
         type: 'buy',
-        title: `${ticker} caiu ${Math.abs(p.changePct).toFixed(1)}% hoje`,
-        desc: `${p.name} está a ${fmtBRL(p.price)}. Queda significativa — verifique os motivos.`,
-        time: 'agora', priority: Math.abs(p.changePct)
-      });
+        title: `🟢 COMPRAR? ${ticker} caiu ${Math.abs(p.changePct).toFixed(1)}% hoje`,
+        desc: `${p.name} a ${fmtBRL(p.price)}. Queda forte — pode ser oportunidade.`,
+        notification: `📉 ${ticker} caiu ${Math.abs(p.changePct).toFixed(1)}% → ${fmtBRL(p.price)}. COMPRAR?`,
+        time: 'agora', priority: 10 + Math.abs(p.changePct)
+      };
+      opps.push(opp);
+      if (!notifiedOpps.has(key)) newSignals.push(opp);
     }
 
     if (p.changePct != null && p.changePct >= riseThresh) {
-      opps.push({
+      const key = oppKey('sell', ticker, 'rise');
+      const opp = {
+        key,
         type: 'sell',
-        title: `${ticker} subiu ${p.changePct.toFixed(1)}% hoje`,
-        desc: `${p.name} está a ${fmtBRL(p.price)}. Alta forte — considere o cenário.`,
-        time: 'agora', priority: p.changePct
-      });
+        title: `🔴 VENDER? ${ticker} subiu ${p.changePct.toFixed(1)}% hoje`,
+        desc: `${p.name} a ${fmtBRL(p.price)}. Alta forte — hora de realizar?`,
+        notification: `📈 ${ticker} subiu ${p.changePct.toFixed(1)}% → ${fmtBRL(p.price)}. VENDER?`,
+        time: 'agora', priority: 10 + p.changePct
+      };
+      opps.push(opp);
+      if (!notifiedOpps.has(key)) newSignals.push(opp);
     }
   }
 
-  // Sort by priority
+  // Sort by priority (urgent first)
   opps.sort((a, b) => (b.priority || 0) - (a.priority || 0));
   state.opportunities = opps;
   UI.renderOpportunities();
+
+  // === PROACTIVE NOTIFICATIONS for new signals ===
+  for (const opp of newSignals) {
+    notifiedOpps.add(opp.key);
+
+    // In-app toast
+    showToast({
+      type: opp.type,
+      title: opp.title,
+      msg: opp.desc
+    });
+
+    // Browser push notification (works even with tab in background!)
+    if (state.settings.notifications && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        const n = new Notification(opp.title.replace(/[🟢🔴⚡🚨💎📉📈]/g, '').trim(), {
+          body: opp.notification,
+          icon: opp.type === 'buy' ? '🟢' : '🔴',
+          tag: opp.key,
+          requireInteraction: true,  // stays until user clicks
+          silent: false
+        });
+        n.onclick = () => { window.focus(); n.close(); };
+      } catch (e) { /* some browsers limit Notification */ }
+    }
+
+    // Sound alert
+    if (state.settings.sound) {
+      if (opp.priority >= 15) playUrgentBeep();  // spike → more urgent sound
+      else playBeep();
+    }
+  }
+
+  // Save notified set to localStorage (reset daily via oppKey)
+  try { localStorage.setItem('radar_notified', JSON.stringify([...notifiedOpps])); } catch(e) {}
+}
+
+// Load previously notified opportunities on startup
+function loadNotifiedOpps() {
+  try {
+    const raw = localStorage.getItem('radar_notified');
+    if (raw) {
+      const arr = JSON.parse(raw);
+      const today = new Date().toISOString().slice(0, 10);
+      // Only keep today's entries
+      for (const key of arr) {
+        if (key.startsWith(today)) notifiedOpps.add(key);
+      }
+    }
+  } catch(e) {}
 }
 
 // ===== ALERT ENGINE =====
@@ -1144,8 +1277,42 @@ function playBeep() {
   } catch (e) { /* ignore */ }
 }
 
+// More urgent double-beep for spike/urgent signals
+function playUrgentBeep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    // First beep - higher pitch
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.connect(gain1); gain1.connect(ctx.destination);
+    osc1.frequency.value = 1000; osc1.type = 'sine';
+    gain1.gain.value = 0.2;
+    osc1.start(ctx.currentTime);
+    gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+    osc1.stop(ctx.currentTime + 0.2);
+    // Second beep
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.connect(gain2); gain2.connect(ctx.destination);
+    osc2.frequency.value = 1200; osc2.type = 'sine';
+    gain2.gain.value = 0.2;
+    osc2.start(ctx.currentTime + 0.25);
+    gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+    osc2.stop(ctx.currentTime + 0.5);
+    // Third beep - highest
+    const osc3 = ctx.createOscillator();
+    const gain3 = ctx.createGain();
+    osc3.connect(gain3); gain3.connect(ctx.destination);
+    osc3.frequency.value = 1400; osc3.type = 'sine';
+    gain3.gain.value = 0.2;
+    osc3.start(ctx.currentTime + 0.55);
+    gain3.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+    osc3.stop(ctx.currentTime + 0.8);
+  } catch (e) { /* ignore */ }
+}
+
 // ===== TOAST NOTIFICATIONS =====
-function showToast({ type, title, msg }) {
+function showToast({ type, title, msg, duration }) {
   const container = document.getElementById('toasts');
   const toast = document.createElement('div');
   toast.className = `toast toast-${type || 'info'}`;
@@ -1158,7 +1325,9 @@ function showToast({ type, title, msg }) {
     </div>
     <span class="toast-close" onclick="this.parentElement.remove()">✕</span>`;
   container.appendChild(toast);
-  setTimeout(() => { if (toast.parentElement) toast.remove(); }, 8000);
+  // Buy/sell signals stay longer (15s), info disappears faster (8s)
+  const timeout = duration || (type === 'buy' || type === 'sell' ? 15000 : 8000);
+  setTimeout(() => { if (toast.parentElement) toast.remove(); }, timeout);
 }
 
 // ===== DATA FETCHING =====
@@ -1549,6 +1718,7 @@ document.getElementById('stock-input').addEventListener('keydown', e => {
 // ===== INIT =====
 (function init() {
   loadState();
+  loadNotifiedOpps();
   applyTheme();
   loadSettings();
   renderPopular();
@@ -1564,6 +1734,28 @@ document.getElementById('stock-input').addEventListener('keydown', e => {
       { id: 'solana', symbol: 'sol', name: 'Solana' },
     ];
     saveState();
+  }
+
+  // Auto-request notification permission on first visit
+  if ('Notification' in window && Notification.permission === 'default') {
+    // Show a toast explaining why we need it, then request after 3 seconds
+    setTimeout(() => {
+      showToast({
+        type: 'info',
+        title: '🔔 Ative as notificações!',
+        msg: 'Clique em "Permitir" para receber alertas de COMPRA e VENDA mesmo com a aba minimizada.'
+      });
+      setTimeout(() => {
+        Notification.requestPermission().then(perm => {
+          state.settings.notifications = perm === 'granted';
+          document.getElementById('set-notifications').checked = state.settings.notifications;
+          saveState();
+          if (perm === 'granted') {
+            showToast({ type: 'buy', title: '✅ Notificações ativadas!', msg: 'Você receberá alertas de compra/venda mesmo com a aba minimizada.' });
+          }
+        });
+      }, 1500);
+    }, 2000);
   }
 
   refreshData();
