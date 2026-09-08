@@ -144,6 +144,18 @@ input,select{font-family:inherit;font-size:inherit}
 .opp-time{font-size:.7rem;color:var(--text-muted);white-space:nowrap;margin-top:4px}
 .opp-empty{text-align:center;padding:40px 20px;color:var(--text-muted)}
 .opp-empty .emoji{font-size:2.5rem;margin-bottom:8px}
+/* Probability badge */
+.opp-right{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0}
+.opp-prob{font-size:1.1rem;font-weight:800;font-family:var(--mono);line-height:1}
+.opp-prob.high{color:var(--green)}
+.opp-prob.medium{color:var(--yellow)}
+.opp-prob.low{color:var(--text-muted)}
+.opp-prob-bar{width:50px;height:5px;background:var(--border);border-radius:3px;overflow:hidden}
+.opp-prob-fill{height:100%;border-radius:3px;transition:width .4s ease}
+.opp-prob-fill.high{background:var(--green)}
+.opp-prob-fill.medium{background:var(--yellow)}
+.opp-prob-fill.low{background:var(--text-muted)}
+.opp-label{font-size:.65rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted)}
 
 /* ===== ALERTS ===== */
 .alerts-list{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
@@ -272,8 +284,8 @@ select.form-input{-webkit-appearance:none;appearance:none;background-image:url("
     <span class="disclaimer-icon">⚠️</span>
     <div>
       <strong>Isso não é recomendação de investimento.</strong>
-      O Radar te avisa com sinais de COMPRA e VENDA baseados em variações de preço — mas são <em>sinais automáticos</em>, não conselho financeiro. Toda decisão é sua.
-      Ative as notificações para receber alertas mesmo com a aba minimizada. Dados: CoinGecko (cripto) + brapi.dev (ações).
+      A % de probabilidade é um <em>score de confiança</em> baseado em variação de preço, volume, proximidade de mínimas/máximas e distância do ATH — <strong>não é previsão do futuro</strong>. Toda decisão é sua.
+      Ative as notificações para receber alertas mesmo com a aba minimizada.
     </div>
     <button class="disclaimer-close" onclick="dismissDisclaimer()">✕</button>
   </div>
@@ -912,6 +924,9 @@ const UI = {
     let html = '';
     for (const opp of state.opportunities) {
       const dotClass = opp.type === 'buy' ? 'buy' : opp.type === 'sell' ? 'sell' : opp.type === 'info' ? 'info' : 'neutral';
+      const prob = opp.probability || 0;
+      const probClass = prob >= 70 ? 'high' : prob >= 45 ? 'medium' : 'low';
+      const probLabel = prob >= 75 ? 'Excelente' : prob >= 60 ? 'Bom' : prob >= 45 ? 'Razoável' : 'Fraco';
       html += `
         <div class="opp-item">
           <div class="opp-dot ${dotClass}"></div>
@@ -919,7 +934,12 @@ const UI = {
             <div class="opp-title">${opp.title}</div>
             <div class="opp-desc">${opp.desc}</div>
           </div>
-          <div class="opp-time">${opp.time || 'agora'}</div>
+          <div class="opp-right">
+            <div class="opp-prob ${probClass}">${prob}%</div>
+            <div class="opp-prob-bar"><div class="opp-prob-fill ${probClass}" style="width:${prob}%"></div></div>
+            <div class="opp-label">${probLabel}</div>
+            <div class="opp-time">${opp.time || 'agora'}</div>
+          </div>
         </div>`;
     }
     list.innerHTML = html;
@@ -991,163 +1011,101 @@ function detectOpportunities() {
   const riseThresh = state.settings.riseThreshold;
   const newSignals = []; // opportunities we haven't notified yet
 
-  // Crypto opportunities
+  // Crypto opportunities — with probability scoring
   for (const coin of state.watchlist.crypto) {
     const p = state.prices.crypto[coin.id];
     if (!p) continue;
     const sym = p.symbol.toUpperCase();
 
-    // Big 24h drop → BUY signal
-    if (p.change24h != null && p.change24h <= -dropThresh) {
-      const key = oppKey('buy', coin.id, 'drop24h');
+    // === CALCULATE BUY SCORE ===
+    const buyScore = calcBuyScore(p, dropThresh);
+    if (buyScore.total > 0) {
+      const prob = buyScore.total;
+      const probLabel = prob >= 75 ? 'EXCELENTE' : prob >= 60 ? 'BOM' : prob >= 45 ? 'RAZOÁVEL' : 'FRACO';
+      const urgency = prob >= 70 ? '🚨 URGENTE!' : prob >= 55 ? '🟢' : '🔵';
+      const key = oppKey('buy', coin.id, 'score');
       const opp = {
         key,
         type: 'buy',
-        title: `🟢 COMPRAR? ${sym} caiu ${Math.abs(p.change24h).toFixed(1)}%`,
-        desc: `Preço: ${fmtBRL(p.price)}. Queda forte em 24h — pode ser hora de comprar.`,
-        notification: `📉 ${sym} caiu ${Math.abs(p.change24h).toFixed(1)}% → ${fmtBRL(p.price)}. Possível hora de COMPRAR!`,
-        time: 'agora', priority: 10 + Math.abs(p.change24h)
+        probability: prob,
+        title: `${urgency} Cenário de COMPRA para ${sym} — ${prob}% de confiança`,
+        desc: `${fmtBRL(p.price)} • ${buyScore.reasons.join(' • ')}`,
+        notification: `${urgency} ${sym} ${fmtBRL(p.price)} — ${prob}% de chance de boa compra! ${buyScore.reasons[0]}`,
+        time: 'agora',
+        priority: prob
       };
       opps.push(opp);
       if (!notifiedOpps.has(key)) newSignals.push(opp);
     }
 
-    // Big 24h rise → SELL signal
-    if (p.change24h != null && p.change24h >= riseThresh) {
-      const key = oppKey('sell', coin.id, 'rise24h');
+    // === CALCULATE SELL SCORE ===
+    const sellScore = calcSellScore(p, riseThresh);
+    if (sellScore.total > 0) {
+      const prob = sellScore.total;
+      const probLabel = prob >= 75 ? 'EXCELENTE' : prob >= 60 ? 'BOM' : prob >= 45 ? 'RAZOÁVEL' : 'FRACO';
+      const urgency = prob >= 70 ? '🚨 URGENTE!' : prob >= 55 ? '🔴' : '🟡';
+      const key = oppKey('sell', coin.id, 'score');
       const opp = {
         key,
         type: 'sell',
-        title: `🔴 VENDER? ${sym} subiu ${p.change24h.toFixed(1)}%`,
-        desc: `Preço: ${fmtBRL(p.price)}. Alta forte em 24h — considere realizar lucro.`,
-        notification: `📈 ${sym} subiu ${p.change24h.toFixed(1)}% → ${fmtBRL(p.price)}. Possível hora de VENDER!`,
-        time: 'agora', priority: 10 + p.change24h
+        probability: prob,
+        title: `${urgency} Cenário de VENDA para ${sym} — ${prob}% de confiança`,
+        desc: `${fmtBRL(p.price)} • ${sellScore.reasons.join(' • ')}`,
+        notification: `${urgency} ${sym} ${fmtBRL(p.price)} — ${prob}% de chance de boa venda! ${sellScore.reasons[0]}`,
+        time: 'agora',
+        priority: prob
       };
       opps.push(opp);
       if (!notifiedOpps.has(key)) newSignals.push(opp);
-    }
-
-    // Near ATH (within 5%) → caution / sell zone
-    if (p.athChange != null && p.athChange > -5 && p.athChange < 0) {
-      const key = oppKey('sell', coin.id, 'nearATH');
-      const opp = {
-        key,
-        type: 'sell',
-        title: `⚡ ${sym} quase no RECORDE! A ${Math.abs(p.athChange).toFixed(1)}% do ATH`,
-        desc: `ATH: ${fmtBRL(p.ath)}. Atual: ${fmtBRL(p.price)}. Zona de euforia — cuidado ao comprar, bom pra vender.`,
-        notification: `⚡ ${sym} está a apenas ${Math.abs(p.athChange).toFixed(1)}% do recorde histórico! Zona de atenção.`,
-        time: 'agora', priority: 8
-      };
-      opps.push(opp);
-      if (!notifiedOpps.has(key)) newSignals.push(opp);
-    }
-
-    // Very far from ATH (>80% below) → deep value
-    if (p.athChange != null && p.athChange < -80) {
-      const key = oppKey('buy', coin.id, 'deepValue');
-      const opp = {
-        key,
-        type: 'buy',
-        title: `💎 ${sym} está ${Math.abs(p.athChange).toFixed(0)}% abaixo do ATH`,
-        desc: `ATH: ${fmtBRL(p.ath)}. Atual: ${fmtBRL(p.price)}. Preço de "pechincha" — mas pesquise se o projeto sobrevive.`,
-        notification: `💎 ${sym} está ${Math.abs(p.athChange).toFixed(0)}% abaixo do recorde. Pechincha ou armadilha?`,
-        time: 'agora', priority: 4
-      };
-      opps.push(opp);
-      if (!notifiedOpps.has(key)) newSignals.push(opp);
-    }
-
-    // 1h spike (>5% in 1 hour) → urgent signal
-    if (p.change1h != null && Math.abs(p.change1h) > 5) {
-      const isBuy = p.change1h < 0;
-      const key = oppKey(isBuy ? 'buy' : 'sell', coin.id, 'spike1h');
-      const dir = p.change1h > 0 ? 'subiu' : 'caiu';
-      const action = isBuy ? 'COMPRAR' : 'realizar lucro';
-      const opp = {
-        key,
-        type: isBuy ? 'buy' : 'sell',
-        title: `🚨 URGENTE: ${sym} ${dir} ${Math.abs(p.change1h).toFixed(1)}% em 1 HORA!`,
-        desc: `Movimentação brusca agora! Preço: ${fmtBRL(p.price)}. Pode ser hora de ${action}.`,
-        notification: `🚨 ${sym} ${dir} ${Math.abs(p.change1h).toFixed(1)}% na ÚLTIMA HORA! Preço: ${fmtBRL(p.price)}`,
-        time: 'agora', priority: 15
-      };
-      opps.push(opp);
-      if (!notifiedOpps.has(key)) newSignals.push(opp);
-    }
-
-    // Near 24h low (within 2%) → buy dip signal
-    if (p.low24h && p.price && p.low24h > 0) {
-      const distFromLow = ((p.price - p.low24h) / p.low24h) * 100;
-      if (distFromLow < 2 && distFromLow >= 0) {
-        const key = oppKey('buy', coin.id, 'nearLow');
-        const opp = {
-          key,
-          type: 'buy',
-          title: `📉 ${sym} perto da MÍNIMA do dia`,
-          desc: `Preço: ${fmtBRL(p.price)}. Mínima 24h: ${fmtBRL(p.low24h)}. Pode ser fundo — boa entrada?`,
-          notification: `📉 ${sym} perto da mínima de 24h: ${fmtBRL(p.price)}. Possível fundo!`,
-          time: 'agora', priority: 7
-        };
-        opps.push(opp);
-        if (!notifiedOpps.has(key)) newSignals.push(opp);
-      }
-    }
-
-    // Near 24h high (within 2%) → sell/caution signal
-    if (p.high24h && p.price && p.high24h > 0) {
-      const distFromHigh = ((p.high24h - p.price) / p.high24h) * 100;
-      if (distFromHigh < 2 && distFromHigh >= 0) {
-        const key = oppKey('sell', coin.id, 'nearHigh');
-        const opp = {
-          key,
-          type: 'sell',
-          title: `📈 ${sym} perto da MÁXIMA do dia`,
-          desc: `Preço: ${fmtBRL(p.price)}. Máxima 24h: ${fmtBRL(p.high24h)}. Topo do dia — realizar lucro?`,
-          notification: `📈 ${sym} perto da máxima de 24h: ${fmtBRL(p.price)}. Possível topo!`,
-          time: 'agora', priority: 6
-        };
-        opps.push(opp);
-        if (!notifiedOpps.has(key)) newSignals.push(opp);
-      }
     }
   }
 
-  // Stock opportunities
+  // Stock opportunities — with probability scoring
   for (const ticker of state.watchlist.stocks) {
     const p = state.prices.stocks[ticker];
     if (!p) continue;
 
-    if (p.changePct != null && p.changePct <= -dropThresh) {
-      const key = oppKey('buy', ticker, 'drop');
+    const buyScore = calcStockBuyScore(p, dropThresh);
+    if (buyScore.total > 0) {
+      const prob = buyScore.total;
+      const urgency = prob >= 70 ? '🚨 URGENTE!' : prob >= 55 ? '🟢' : '🔵';
+      const key = oppKey('buy', ticker, 'score');
       const opp = {
         key,
         type: 'buy',
-        title: `🟢 COMPRAR? ${ticker} caiu ${Math.abs(p.changePct).toFixed(1)}% hoje`,
-        desc: `${p.name} a ${fmtBRL(p.price)}. Queda forte — pode ser oportunidade.`,
-        notification: `📉 ${ticker} caiu ${Math.abs(p.changePct).toFixed(1)}% → ${fmtBRL(p.price)}. COMPRAR?`,
-        time: 'agora', priority: 10 + Math.abs(p.changePct)
+        probability: prob,
+        title: `${urgency} Cenário de COMPRA para ${ticker} — ${prob}% de confiança`,
+        desc: `${p.name} a ${fmtBRL(p.price)} • ${buyScore.reasons.join(' • ')}`,
+        notification: `${urgency} ${ticker} ${fmtBRL(p.price)} — ${prob}% de chance de boa compra!`,
+        time: 'agora',
+        priority: prob
       };
       opps.push(opp);
       if (!notifiedOpps.has(key)) newSignals.push(opp);
     }
 
-    if (p.changePct != null && p.changePct >= riseThresh) {
-      const key = oppKey('sell', ticker, 'rise');
+    const sellScore = calcStockSellScore(p, riseThresh);
+    if (sellScore.total > 0) {
+      const prob = sellScore.total;
+      const urgency = prob >= 70 ? '🚨 URGENTE!' : prob >= 55 ? '🔴' : '🟡';
+      const key = oppKey('sell', ticker, 'score');
       const opp = {
         key,
         type: 'sell',
-        title: `🔴 VENDER? ${ticker} subiu ${p.changePct.toFixed(1)}% hoje`,
-        desc: `${p.name} a ${fmtBRL(p.price)}. Alta forte — hora de realizar?`,
-        notification: `📈 ${ticker} subiu ${p.changePct.toFixed(1)}% → ${fmtBRL(p.price)}. VENDER?`,
-        time: 'agora', priority: 10 + p.changePct
+        probability: prob,
+        title: `${urgency} Cenário de VENDA para ${ticker} — ${prob}% de confiança`,
+        desc: `${p.name} a ${fmtBRL(p.price)} • ${sellScore.reasons.join(' • ')}`,
+        notification: `${urgency} ${ticker} ${fmtBRL(p.price)} — ${prob}% de chance de boa venda!`,
+        time: 'agora',
+        priority: prob
       };
       opps.push(opp);
       if (!notifiedOpps.has(key)) newSignals.push(opp);
     }
   }
 
-  // Sort by priority (urgent first)
-  opps.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+  // Sort by probability (highest first)
+  opps.sort((a, b) => (b.probability || 0) - (a.probability || 0));
   state.opportunities = opps;
   UI.renderOpportunities();
 
@@ -1155,36 +1113,253 @@ function detectOpportunities() {
   for (const opp of newSignals) {
     notifiedOpps.add(opp.key);
 
-    // In-app toast
+    // In-app toast with probability
     showToast({
       type: opp.type,
-      title: opp.title,
+      title: `${opp.title}`,
       msg: opp.desc
     });
 
     // Browser push notification (works even with tab in background!)
     if (state.settings.notifications && 'Notification' in window && Notification.permission === 'granted') {
       try {
-        const n = new Notification(opp.title.replace(/[🟢🔴⚡🚨💎📉📈]/g, '').trim(), {
+        const n = new Notification(`${opp.probability}% — ${opp.title.replace(/[🟢🔴🚨🟡🔵⚡💎📉📈]/g, '').trim()}`, {
           body: opp.notification,
           icon: opp.type === 'buy' ? '🟢' : '🔴',
           tag: opp.key,
-          requireInteraction: true,  // stays until user clicks
+          requireInteraction: opp.probability >= 60,
           silent: false
         });
         n.onclick = () => { window.focus(); n.close(); };
       } catch (e) { /* some browsers limit Notification */ }
     }
 
-    // Sound alert
+    // Sound alert — urgency based on probability
     if (state.settings.sound) {
-      if (opp.priority >= 15) playUrgentBeep();  // spike → more urgent sound
-      else playBeep();
+      if (opp.probability >= 70) playUrgentBeep();
+      else if (opp.probability >= 45) playBeep();
+      // below 45% = no sound, just visual
     }
   }
 
   // Save notified set to localStorage (reset daily via oppKey)
   try { localStorage.setItem('radar_notified', JSON.stringify([...notifiedOpps])); } catch(e) {}
+}
+
+// ===== PROBABILITY SCORING ENGINE =====
+// Combines multiple indicators into a 0-95% confidence score.
+// NOT a real statistical probability — it's a composite signal strength.
+
+function calcBuyScore(p, dropThresh) {
+  let score = 0;
+  const reasons = [];
+
+  // 1. 24h price drop (main trigger) — 0 to 30 pts
+  if (p.change24h != null && p.change24h <= -dropThresh) {
+    const dropMag = Math.abs(p.change24h);
+    const pts = Math.min(30, 10 + (dropMag - dropThresh) * 2.5);
+    score += pts;
+    reasons.push(`Queda de ${dropMag.toFixed(1)}% em 24h`);
+  }
+
+  // 2. 1h momentum confirms direction — 0 to 15 pts
+  if (p.change1h != null) {
+    if (p.change1h < -3) {
+      score += Math.min(15, 8 + Math.abs(p.change1h));
+      reasons.push(`Caindo ${Math.abs(p.change1h).toFixed(1)}% agora (1h)`);
+    } else if (p.change1h > 2) {
+      // Price recovering = bounce signal, also good for buy-the-dip
+      score += 8;
+      reasons.push(`Recuperando ${p.change1h.toFixed(1)}% na última hora`);
+    }
+  }
+
+  // 3. Near 24h low — 0 to 15 pts
+  if (p.low24h && p.price && p.low24h > 0) {
+    const distFromLow = ((p.price - p.low24h) / p.low24h) * 100;
+    if (distFromLow < 1) {
+      score += 15;
+      reasons.push('Na mínima do dia!');
+    } else if (distFromLow < 3) {
+      score += 10;
+      reasons.push(`Perto da mínima (${distFromLow.toFixed(1)}% acima)`);
+    } else if (distFromLow < 5) {
+      score += 5;
+      reasons.push(`Próximo da mínima do dia`);
+    }
+  }
+
+  // 4. 7d trend context — 0 to 10 pts
+  if (p.change7d != null) {
+    if (p.change7d < -15) {
+      score += 10;
+      reasons.push(`Semana vermelha: ${p.change7d.toFixed(1)}% em 7d`);
+    } else if (p.change7d < -8) {
+      score += 6;
+      reasons.push(`Tendência de baixa em 7d`);
+    } else if (p.change7d > 5 && p.change24h < -dropThresh) {
+      // Week is up but today crashed = possible flash crash
+      score += 8;
+      reasons.push(`Flash crash? Semana +${p.change7d.toFixed(1)}% mas hoje despencou`);
+    }
+  }
+
+  // 5. Distance from ATH — 0 to 15 pts
+  if (p.athChange != null) {
+    if (p.athChange < -90) {
+      score += 12;
+      reasons.push(`${Math.abs(p.athChange).toFixed(0)}% abaixo do ATH — pechincha?`);
+    } else if (p.athChange < -70) {
+      score += 10;
+      reasons.push(`${Math.abs(p.athChange).toFixed(0)}% abaixo do ATH`);
+    } else if (p.athChange < -50) {
+      score += 7;
+      reasons.push(`Metade do preço do ATH`);
+    } else if (p.athChange > -10) {
+      // Near ATH = bad time to buy
+      score -= 10;
+      reasons.push(`⚠️ Perto do ATH — risco alto de comprar no topo`);
+    }
+  }
+
+  // 6. Volume confirmation — 0 to 10 pts
+  // High volume on a drop = capitulation (bullish signal for contrarians)
+  if (p.volume24h && p.marketCap && p.marketCap > 0) {
+    const volRatio = p.volume24h / p.marketCap;
+    if (volRatio > 0.15) {
+      score += 10;
+      reasons.push(`Volume explosivo (${(volRatio*100).toFixed(1)}% do market cap)`);
+    } else if (volRatio > 0.08) {
+      score += 5;
+      reasons.push(`Volume acima do normal`);
+    }
+  }
+
+  // Cap at 95% (never 100%)
+  score = Math.max(0, Math.min(95, Math.round(score)));
+
+  // Only return if above minimum threshold
+  if (score < 25) return { total: 0, reasons: [] };
+  return { total: score, reasons };
+}
+
+function calcSellScore(p, riseThresh) {
+  let score = 0;
+  const reasons = [];
+
+  // 1. 24h price rise (main trigger) — 0 to 30 pts
+  if (p.change24h != null && p.change24h >= riseThresh) {
+    const riseMag = p.change24h;
+    const pts = Math.min(30, 10 + (riseMag - riseThresh) * 2);
+    score += pts;
+    reasons.push(`Alta de ${riseMag.toFixed(1)}% em 24h`);
+  }
+
+  // 2. 1h momentum — 0 to 15 pts
+  if (p.change1h != null) {
+    if (p.change1h > 3) {
+      score += Math.min(15, 8 + p.change1h);
+      reasons.push(`Disparando ${p.change1h.toFixed(1)}% agora (1h)`);
+    } else if (p.change1h < -2 && p.change24h > riseThresh) {
+      // Reversing after big rise = might be the top
+      score += 10;
+      reasons.push(`Revertendo após alta — possível topo`);
+    }
+  }
+
+  // 3. Near 24h high — 0 to 15 pts
+  if (p.high24h && p.price && p.high24h > 0) {
+    const distFromHigh = ((p.high24h - p.price) / p.high24h) * 100;
+    if (distFromHigh < 1) {
+      score += 15;
+      reasons.push('Na máxima do dia!');
+    } else if (distFromHigh < 3) {
+      score += 10;
+      reasons.push(`Perto da máxima (${distFromHigh.toFixed(1)}% abaixo)`);
+    } else if (distFromHigh < 5) {
+      score += 5;
+    }
+  }
+
+  // 4. Near ATH — 0 to 20 pts (strong sell signal)
+  if (p.athChange != null) {
+    if (p.athChange > -2) {
+      score += 20;
+      reasons.push(`Praticamente no ATH! Zona de euforia máxima`);
+    } else if (p.athChange > -5) {
+      score += 15;
+      reasons.push(`A ${Math.abs(p.athChange).toFixed(1)}% do recorde — zona perigosa`);
+    } else if (p.athChange > -10) {
+      score += 8;
+      reasons.push(`Próximo do ATH`);
+    }
+  }
+
+  // 5. 7d trend — 0 to 10 pts
+  if (p.change7d != null) {
+    if (p.change7d > 30) {
+      score += 10;
+      reasons.push(`Semana absurda: +${p.change7d.toFixed(1)}% — bolha?`);
+    } else if (p.change7d > 15) {
+      score += 6;
+      reasons.push(`Forte alta semanal: +${p.change7d.toFixed(1)}%`);
+    }
+  }
+
+  // Cap at 95%
+  score = Math.max(0, Math.min(95, Math.round(score)));
+  if (score < 25) return { total: 0, reasons: [] };
+  return { total: score, reasons };
+}
+
+function calcStockBuyScore(p, dropThresh) {
+  let score = 0;
+  const reasons = [];
+
+  // Price drop
+  if (p.changePct != null && p.changePct <= -dropThresh) {
+    const dropMag = Math.abs(p.changePct);
+    score += Math.min(35, 15 + (dropMag - dropThresh) * 3);
+    reasons.push(`Queda de ${dropMag.toFixed(1)}% hoje`);
+  }
+
+  // Near day low
+  if (p.low && p.price && p.low > 0) {
+    const dist = ((p.price - p.low) / p.low) * 100;
+    if (dist < 1) { score += 15; reasons.push('Na mínima do dia!'); }
+    else if (dist < 3) { score += 10; reasons.push('Perto da mínima'); }
+  }
+
+  // Volume spike (stock volume > 2x might indicate capitulation)
+  if (p.volume && p.volume > 0 && p.previousClose && p.price < p.previousClose) {
+    score += 10;
+    reasons.push('Volume alto na queda');
+  }
+
+  score = Math.max(0, Math.min(95, Math.round(score)));
+  if (score < 25) return { total: 0, reasons: [] };
+  return { total: score, reasons };
+}
+
+function calcStockSellScore(p, riseThresh) {
+  let score = 0;
+  const reasons = [];
+
+  if (p.changePct != null && p.changePct >= riseThresh) {
+    const riseMag = p.changePct;
+    score += Math.min(35, 15 + (riseMag - riseThresh) * 3);
+    reasons.push(`Alta de ${riseMag.toFixed(1)}% hoje`);
+  }
+
+  if (p.high && p.price && p.high > 0) {
+    const dist = ((p.high - p.price) / p.high) * 100;
+    if (dist < 1) { score += 15; reasons.push('Na máxima do dia!'); }
+    else if (dist < 3) { score += 10; reasons.push('Perto da máxima'); }
+  }
+
+  score = Math.max(0, Math.min(95, Math.round(score)));
+  if (score < 25) return { total: 0, reasons: [] };
+  return { total: score, reasons };
 }
 
 // Load previously notified opportunities on startup
