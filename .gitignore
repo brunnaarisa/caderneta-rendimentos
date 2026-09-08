@@ -1,2 +1,8 @@
 playstore-package/
 Caderneta - Google Play package.zip
+
+# Telegram Bot
+telegram-bot/.env
+telegram-bot/bot_data.db
+telegram-bot/__pycache__/
+*.pyc
