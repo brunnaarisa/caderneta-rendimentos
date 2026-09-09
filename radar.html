@@ -677,6 +677,32 @@ select.form-input{-webkit-appearance:none;appearance:none;background-image:url("
       </div>
 
       <div class="setting-card">
+        <h3>📱 Instalar no Celular (PWA)</h3>
+        <div class="setting-row" style="flex-direction:column;align-items:stretch;gap:6px">
+          <div>
+            <div class="setting-label" id="pwa-status">Verificando...</div>
+            <div class="setting-desc">Instalar como app melhora as notificações em background</div>
+          </div>
+          <div style="font-size:.72rem;color:var(--text-secondary);line-height:1.5;padding:8px 10px;background:var(--bg-inset);border-radius:var(--radius-sm)">
+            <strong>Como instalar:</strong><br>
+            📱 <b>Android Chrome:</b> Menu (⋮) → "Adicionar à tela inicial" ou "Instalar app"<br>
+            🍎 <b>iPhone Safari:</b> Compartilhar (↑) → "Adicionar à Tela de Início"<br>
+            💻 <b>Desktop Chrome:</b> Barra de endereço → ícone de instalar (⊕)
+          </div>
+          <div style="font-size:.68rem;color:var(--text-muted);line-height:1.4;margin-top:4px">
+            ⚠️ <b>Limitação importante:</b> Sem servidor backend, notificações com app fechado dependem do "Periodic Background Sync" do Chrome Android — o navegador decide quando checar (pode ser a cada 15min ou a cada algumas horas). No iPhone, não funciona com app fechado. Para garantia, mantenha a aba aberta.
+          </div>
+        </div>
+        <div class="setting-row" style="margin-top:8px">
+          <div>
+            <div class="setting-label">Background Sync</div>
+            <div class="setting-desc" id="bg-sync-status">Verificando...</div>
+          </div>
+          <span id="bg-sync-badge" style="font-size:.72rem;padding:3px 10px;border-radius:12px;font-weight:600;font-family:var(--mono)">---</span>
+        </div>
+      </div>
+
+      <div class="setting-card">
         <h3>💾 Dados</h3>
         <div class="setting-row">
           <div>
@@ -4520,6 +4546,20 @@ function startAutoRefresh() {
   refreshTimer = setInterval(refreshData, state.settings.refreshInterval * 1000);
 }
 
+// Refresh imediato quando o usuário volta ao app (trocou de aba ou desbloqueou tela)
+let lastVisibleRefresh = Date.now();
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    const elapsed = Date.now() - lastVisibleRefresh;
+    // Se ficou mais de 30s fora, faz refresh imediato em vez de esperar o timer
+    if (elapsed > 30000) {
+      debugLog('App voltou ao foco após ' + Math.round(elapsed / 1000) + 's — refresh imediato');
+      lastVisibleRefresh = Date.now();
+      refreshData();
+    }
+  }
+});
+
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -4788,6 +4828,55 @@ function sendTestNotification() {
   });
 }
 
+function checkPwaStatus() {
+  const pwaEl = document.getElementById('pwa-status');
+  const bgEl = document.getElementById('bg-sync-status');
+  const bgBadge = document.getElementById('bg-sync-badge');
+  if (!pwaEl) return;
+
+  // Detecta se está rodando como PWA (standalone)
+  const isPwa = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  if (isPwa) {
+    pwaEl.textContent = '✅ Instalado como app';
+    pwaEl.style.color = 'var(--gain)';
+  } else {
+    pwaEl.textContent = '📲 Não instalado — siga as instruções abaixo';
+    pwaEl.style.color = 'var(--warn)';
+  }
+
+  // Verifica Periodic Background Sync
+  if (swRegistration && 'periodicSync' in swRegistration) {
+    navigator.permissions.query({ name: 'periodic-background-sync' }).then(perm => {
+      if (perm.state === 'granted') {
+        bgEl.textContent = 'Ativo — o navegador checará preços em background';
+        bgBadge.textContent = 'ATIVO';
+        bgBadge.style.background = 'var(--gain-bg)';
+        bgBadge.style.color = 'var(--gain)';
+      } else if (perm.state === 'prompt') {
+        bgEl.textContent = isPwa ? 'Disponível — instale como app pra ativar' : 'Precisa instalar como app';
+        bgBadge.textContent = 'PENDENTE';
+        bgBadge.style.background = 'var(--warn-bg)';
+        bgBadge.style.color = 'var(--warn)';
+      } else {
+        bgEl.textContent = 'Bloqueado pelo navegador';
+        bgBadge.textContent = 'BLOQUEADO';
+        bgBadge.style.background = 'var(--loss-bg)';
+        bgBadge.style.color = 'var(--loss)';
+      }
+    }).catch(() => {
+      bgEl.textContent = 'Não suportado neste navegador';
+      bgBadge.textContent = 'N/A';
+      bgBadge.style.background = 'var(--bg-inset)';
+      bgBadge.style.color = 'var(--text-muted)';
+    });
+  } else {
+    bgEl.textContent = 'Não suportado — mantenha a aba aberta para receber alertas';
+    bgBadge.textContent = 'N/A';
+    bgBadge.style.background = 'var(--bg-inset)';
+    bgBadge.style.color = 'var(--text-muted)';
+  }
+}
+
 function saveBrapiToken() {
   state.settings.brapiToken = document.getElementById('set-brapi-token').value.trim();
   saveState();
@@ -4942,6 +5031,9 @@ window.addEventListener('error', e => {
       saveState();
     }
   }
+
+  // Detecta PWA e Background Sync status
+  checkPwaStatus();
 
   debugLog('init: lançando primeiro refresh...');
   refreshData();
