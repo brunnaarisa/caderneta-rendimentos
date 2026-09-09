@@ -2638,6 +2638,18 @@ const UI = {
     badge.textContent = state.opportunities.length;
     badge.hidden = false;
     let html = '';
+    // Aviso se notificações estão desativadas e há sinais fortes
+    const hasStrongSignals = state.opportunities.some(o => o.probability >= 65);
+    const notifOff = !state.settings.notifications || !('Notification' in window) || Notification.permission !== 'granted';
+    if (hasStrongSignals && notifOff) {
+      html += `<div style="padding:10px 14px;background:var(--warn-bg);border:1px solid var(--warn);border-radius:var(--radius-sm);font-size:.78rem;margin-bottom:8px;display:flex;align-items:center;gap:10px">
+        <span style="font-size:1.2rem;flex-shrink:0">🔕</span>
+        <div style="flex:1">
+          <strong>Notificações desativadas!</strong> Você tem sinais fortes mas não será avisado quando a tela estiver fechada.
+        </div>
+        <button onclick="testNotification()" style="padding:5px 12px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);font-size:.75rem;font-weight:600;cursor:pointer;white-space:nowrap">🔔 Ativar</button>
+      </div>`;
+    }
     for (const opp of state.opportunities) {
       const dotClass = opp.type === 'buy' ? 'buy' : opp.type === 'sell' ? 'sell' : opp.type === 'info' ? 'info' : 'neutral';
       const prob = opp.probability || 0;
@@ -4901,20 +4913,34 @@ window.addEventListener('error', e => {
     debugLog(`init: sync adicionou ${state.watchlist.crypto.length - cryptoCountBefore} cryptos, ${state.watchlist.stocks.length - stockCountBefore} ações`);
   }
 
-  if ('Notification' in window && Notification.permission === 'default') {
-    setTimeout(() => {
-      showToast({ type: 'info', title: '🔔 Ative as notificações!', msg: 'Clique em "Permitir" para receber alertas de compra e venda mesmo com a aba minimizada.' });
+  // Sincroniza estado das notificações com a permissão real do browser
+  if ('Notification' in window) {
+    if (Notification.permission === 'granted' && !state.settings.notifications) {
+      // Permissão já concedida mas setting estava desligado — reativa
+      state.settings.notifications = true;
+      document.getElementById('set-notifications').checked = true;
+      saveState();
+      debugLog('Notificações: reativadas (permissão já concedida)');
+    } else if (Notification.permission === 'default') {
+      // Nunca pediu — pede na primeira visita
       setTimeout(() => {
-        Notification.requestPermission().then(perm => {
-          state.settings.notifications = perm === 'granted';
-          document.getElementById('set-notifications').checked = state.settings.notifications;
-          saveState();
-          if (perm === 'granted') {
-            showToast({ type: 'buy', title: '✅ Notificações ativadas!', msg: 'Você receberá alertas mesmo com a aba minimizada.' });
-          }
-        });
-      }, 1500);
-    }, 2000);
+        showToast({ type: 'info', title: '🔔 Ative as notificações!', msg: 'Clique em "Permitir" para receber alertas de compra e venda mesmo com a aba minimizada.' });
+        setTimeout(() => {
+          Notification.requestPermission().then(perm => {
+            state.settings.notifications = perm === 'granted';
+            document.getElementById('set-notifications').checked = state.settings.notifications;
+            saveState();
+            if (perm === 'granted') {
+              showToast({ type: 'buy', title: '✅ Notificações ativadas!', msg: 'Você receberá alertas mesmo com a aba minimizada.' });
+            }
+          });
+        }, 1500);
+      }, 2000);
+    } else if (Notification.permission === 'denied') {
+      state.settings.notifications = false;
+      document.getElementById('set-notifications').checked = false;
+      saveState();
+    }
   }
 
   debugLog('init: lançando primeiro refresh...');
