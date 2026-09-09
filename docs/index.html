@@ -299,6 +299,41 @@ select.form-input{-webkit-appearance:none;appearance:none;background-image:url("
 .disclaimer-close{margin-left:auto;opacity:.4;cursor:pointer;flex-shrink:0}
 .disclaimer-close:hover{opacity:1}
 
+/* ===== PORTFOLIO SUMMARY ===== */
+.portfolio-summary{background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:18px}
+.portfolio-summary h3{font-size:.9rem;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.portfolio-stats{display:flex;gap:12px;flex-wrap:wrap}
+.portfolio-stat{flex:1;min-width:100px;text-align:center;padding:10px 8px;background:var(--bg-inset);border-radius:var(--radius-sm)}
+.portfolio-stat .stat-value{font-size:1.3rem;font-weight:700;font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.portfolio-stat .stat-label{font-size:.65rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;font-family:var(--mono);margin-top:2px}
+.portfolio-alloc{display:flex;height:6px;border-radius:3px;overflow:hidden;margin-top:12px;gap:2px}
+.portfolio-alloc-seg{height:100%;border-radius:2px;transition:width .4s ease}
+.portfolio-legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:.68rem;color:var(--text-muted)}
+.portfolio-legend-item{display:flex;align-items:center;gap:4px}
+.portfolio-legend-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+
+/* ===== MARKET REGIME ===== */
+.regime-card{background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:14px;display:flex;align-items:center;gap:14px}
+.regime-icon{font-size:1.8rem;flex-shrink:0}
+.regime-info{flex:1}
+.regime-title{font-weight:700;font-size:.92rem;margin-bottom:2px}
+.regime-desc{font-size:.72rem;color:var(--text-secondary);line-height:1.4}
+.regime-badge{padding:3px 10px;border-radius:12px;font-size:.7rem;font-weight:700;font-family:var(--mono);letter-spacing:.04em;white-space:nowrap;flex-shrink:0}
+.regime-badge.bull{background:var(--gain-bg);color:var(--gain)}
+.regime-badge.bear{background:var(--loss-bg);color:var(--loss)}
+.regime-badge.sideways{background:var(--warn-bg);color:var(--warn)}
+
+/* ===== SCORE BREAKDOWN ===== */
+.opp-breakdown-toggle{font-size:.68rem;color:var(--accent);cursor:pointer;padding:2px 0;margin-top:4px;user-select:none;font-family:var(--mono)}
+.opp-breakdown-toggle:hover{text-decoration:underline}
+.opp-breakdown{display:none;margin-top:6px;padding:8px 10px;background:var(--bg-inset);border-radius:var(--radius-sm);font-size:.7rem;line-height:1.6}
+.opp-breakdown.open{display:block}
+.opp-breakdown-row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.opp-breakdown-indicator{color:var(--text-secondary);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.opp-breakdown-pts{font-family:var(--mono);font-weight:600;font-variant-numeric:tabular-nums;flex-shrink:0}
+.opp-breakdown-pts.positive{color:var(--gain)}
+.opp-breakdown-pts.negative{color:var(--loss)}
+
 /* ===== SCROLLBAR ===== */
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:transparent}
@@ -426,6 +461,14 @@ select.form-input{-webkit-appearance:none;appearance:none;background-image:url("
 
   <!-- PANEL: DASHBOARD -->
   <section class="panel" id="panel-dashboard">
+    <!-- PORTFOLIO SUMMARY -->
+    <div class="portfolio-summary" id="portfolio-summary" hidden>
+      <h3>💼 Resumo do Portfólio</h3>
+      <div class="portfolio-stats" id="portfolio-stats"></div>
+      <div class="portfolio-alloc" id="portfolio-alloc"></div>
+      <div class="portfolio-legend" id="portfolio-legend"></div>
+    </div>
+
     <div class="cards-header">
       <h2>🪙 Criptomoedas</h2>
       <button class="btn btn-ghost btn-sm" onclick="openAddModal('crypto')">+ Adicionar cripto</button>
@@ -452,6 +495,16 @@ select.form-input{-webkit-appearance:none;appearance:none;background-image:url("
 
   <!-- PANEL: OPPORTUNITIES -->
   <section class="panel active" id="panel-opportunities">
+    <!-- Market Regime -->
+    <div class="regime-card" id="regime-card" hidden>
+      <div class="regime-icon" id="regime-icon">📊</div>
+      <div class="regime-info">
+        <div class="regime-title" id="regime-title">Analisando mercado...</div>
+        <div class="regime-desc" id="regime-desc"></div>
+      </div>
+      <div class="regime-badge" id="regime-badge">---</div>
+    </div>
+
     <!-- Fear & Greed Index -->
     <div class="fg-card" id="fg-card" hidden>
       <h3>😱 Índice de Medo e Ganância do Mercado Cripto</h3>
@@ -1478,6 +1531,201 @@ function clearHistory() {
   showToast({ type: 'info', title: 'Histórico limpo', msg: 'Todos os alertas antigos foram removidos.' });
 }
 
+/* ===== PORTFOLIO SUMMARY ===== */
+function renderPortfolio() {
+  const container = document.getElementById('portfolio-summary');
+  const statsEl = document.getElementById('portfolio-stats');
+  const allocBar = document.getElementById('portfolio-alloc');
+  const legendEl = document.getElementById('portfolio-legend');
+
+  // Coleta posições com preço atual
+  const holdings = [];
+  for (const coin of state.watchlist.crypto) {
+    const pos = state.positions[coin.id];
+    const p = state.prices.crypto[coin.id];
+    if (pos && pos.buyPrice && pos.quantity && p) {
+      const currentVal = p.price * pos.quantity;
+      const investedVal = pos.buyPrice * pos.quantity;
+      holdings.push({ name: coin.symbol.toUpperCase(), type: 'crypto', currentVal, investedVal, pnl: currentVal - investedVal });
+    }
+  }
+  for (const ticker of state.watchlist.stocks) {
+    const pos = state.positions[ticker];
+    const p = state.prices.stocks[ticker];
+    if (pos && pos.buyPrice && pos.quantity && p) {
+      const currentVal = p.price * pos.quantity;
+      const investedVal = pos.buyPrice * pos.quantity;
+      holdings.push({ name: ticker, type: 'stock', currentVal, investedVal, pnl: currentVal - investedVal });
+    }
+  }
+
+  if (!holdings.length) { container.hidden = true; return; }
+  container.hidden = false;
+
+  const totalCurrent = holdings.reduce((s, h) => s + h.currentVal, 0);
+  const totalInvested = holdings.reduce((s, h) => s + h.investedVal, 0);
+  const totalPnl = totalCurrent - totalInvested;
+  const totalPnlPct = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
+  const cryptoVal = holdings.filter(h => h.type === 'crypto').reduce((s, h) => s + h.currentVal, 0);
+  const stockVal = holdings.filter(h => h.type === 'stock').reduce((s, h) => s + h.currentVal, 0);
+  const numAssets = holdings.length;
+
+  const pnlColor = totalPnl >= 0 ? 'var(--gain)' : 'var(--loss)';
+  statsEl.innerHTML = `
+    <div class="portfolio-stat">
+      <div class="stat-value">${fmtBRL(totalCurrent)}</div>
+      <div class="stat-label">VALOR ATUAL</div>
+    </div>
+    <div class="portfolio-stat">
+      <div class="stat-value" style="color:${pnlColor}">${totalPnl >= 0 ? '+' : ''}${fmtBRL(totalPnl)}</div>
+      <div class="stat-label">P&L TOTAL (${fmtPct(totalPnlPct)})</div>
+    </div>
+    <div class="portfolio-stat">
+      <div class="stat-value">${fmtBRL(totalInvested)}</div>
+      <div class="stat-label">INVESTIDO</div>
+    </div>
+    <div class="portfolio-stat">
+      <div class="stat-value">${numAssets}</div>
+      <div class="stat-label">ATIVOS</div>
+    </div>`;
+
+  // Barra de alocação
+  const allocColors = ['#0088bb','#16a362','#c89200','#8b5cf6','#ec4899','#f97316','#06b6d4','#84cc16'];
+  holdings.sort((a, b) => b.currentVal - a.currentVal);
+  let barHtml = '', legHtml = '';
+  holdings.forEach((h, i) => {
+    const pct = (h.currentVal / totalCurrent * 100);
+    if (pct < 1) return; // Ignora <1%
+    const color = allocColors[i % allocColors.length];
+    barHtml += `<div class="portfolio-alloc-seg" style="width:${pct}%;background:${color}" title="${h.name}: ${pct.toFixed(1)}%"></div>`;
+    legHtml += `<div class="portfolio-legend-item"><div class="portfolio-legend-dot" style="background:${color}"></div>${h.name} ${pct.toFixed(0)}%</div>`;
+  });
+  allocBar.innerHTML = barHtml;
+  legendEl.innerHTML = legHtml;
+}
+
+/* ===== MARKET REGIME DETECTION ===== */
+function detectMarketRegime() {
+  const card = document.getElementById('regime-card');
+  let bullSignals = 0, bearSignals = 0, totalSignals = 0;
+
+  // 1. Fear & Greed
+  if (state.fearGreed) {
+    totalSignals++;
+    if (state.fearGreed.value >= 60) bullSignals++;
+    else if (state.fearGreed.value <= 35) bearSignals++;
+  }
+
+  // 2. BTC 24h trend
+  const btc = state.prices.crypto['bitcoin'];
+  if (btc && btc.change24h != null) {
+    totalSignals++;
+    if (btc.change24h > 2) bullSignals++;
+    else if (btc.change24h < -2) bearSignals++;
+  }
+
+  // 3. BTC 7d trend
+  if (btc && btc.change7d != null) {
+    totalSignals++;
+    if (btc.change7d > 5) bullSignals++;
+    else if (btc.change7d < -5) bearSignals++;
+  }
+
+  // 4. BTC RSI
+  if (btc && btc.sparkline_in_7d?.price) {
+    const rsi = calcRSI(btc.sparkline_in_7d.price, 14);
+    if (rsi != null) {
+      totalSignals++;
+      if (rsi > 60) bullSignals++;
+      else if (rsi < 40) bearSignals++;
+    }
+  }
+
+  // 5. BTC Dominance trend
+  if (state.btcDominance && state.btcDominance.totalMcapChange != null) {
+    totalSignals++;
+    if (state.btcDominance.totalMcapChange > 1) bullSignals++;
+    else if (state.btcDominance.totalMcapChange < -1) bearSignals++;
+  }
+
+  // 6. Stock market (average of stocks)
+  const stockChanges = state.watchlist.stocks
+    .map(t => state.prices.stocks[t]?.changePct)
+    .filter(c => c != null);
+  if (stockChanges.length) {
+    const avgChange = stockChanges.reduce((a, b) => a + b, 0) / stockChanges.length;
+    totalSignals++;
+    if (avgChange > 1) bullSignals++;
+    else if (avgChange < -1) bearSignals++;
+  }
+
+  // 7. IBOV trend (if available)
+  if (state.ibovHistory && state.ibovHistory.closes) {
+    const ic = state.ibovHistory.closes;
+    if (ic.length >= 20) {
+      const recent = ic[ic.length - 1];
+      const past = ic[ic.length - 20];
+      const ibovPerf = ((recent - past) / past) * 100;
+      totalSignals++;
+      if (ibovPerf > 3) bullSignals++;
+      else if (ibovPerf < -3) bearSignals++;
+    }
+  }
+
+  if (totalSignals < 2) { card.hidden = true; return; }
+  card.hidden = false;
+
+  const bullPct = bullSignals / totalSignals;
+  const bearPct = bearSignals / totalSignals;
+  let regime, icon, title, desc, badgeClass;
+
+  if (bullPct >= 0.6) {
+    regime = 'bull';
+    icon = '🐂';
+    title = 'Mercado em Alta (Bull Market)';
+    badgeClass = 'bull';
+    if (bullPct >= 0.8) {
+      desc = `${bullSignals}/${totalSignals} indicadores positivos. Tendência forte de alta — cuidado com euforia, considere stops mais apertados.`;
+    } else {
+      desc = `${bullSignals}/${totalSignals} indicadores positivos. Tendência de alta — momento favorável para posições compradas, mas monitore reversões.`;
+    }
+  } else if (bearPct >= 0.6) {
+    regime = 'bear';
+    icon = '🐻';
+    title = 'Mercado em Baixa (Bear Market)';
+    badgeClass = 'bear';
+    if (bearPct >= 0.8) {
+      desc = `${bearSignals}/${totalSignals} indicadores negativos. Tendência forte de baixa — proteja posições, busque compras defensivas ou aguarde.`;
+    } else {
+      desc = `${bearSignals}/${totalSignals} indicadores negativos. Tendência de baixa — cautela com novas compras, pode haver oportunidades seletivas.`;
+    }
+  } else {
+    regime = 'sideways';
+    icon = '↔️';
+    title = 'Mercado Lateral (Sem Tendência Clara)';
+    badgeClass = 'sideways';
+    desc = `${bullSignals} alta vs ${bearSignals} baixa de ${totalSignals} sinais. Sem tendência definida — sinais individuais dos ativos ganham mais importância.`;
+  }
+
+  document.getElementById('regime-icon').textContent = icon;
+  document.getElementById('regime-title').textContent = title;
+  document.getElementById('regime-desc').textContent = desc;
+  const badge = document.getElementById('regime-badge');
+  badge.textContent = regime === 'bull' ? 'ALTA' : regime === 'bear' ? 'BAIXA' : 'LATERAL';
+  badge.className = 'regime-badge ' + badgeClass;
+
+  return regime;
+}
+
+/* ===== STOCK SPARKLINE ===== */
+function renderStockSparkline(ticker) {
+  const hist = state.prices.stockHistory[ticker];
+  if (!hist || !hist.closes || hist.closes.length < 5) return '';
+  const p = state.prices.stocks[ticker];
+  const isUp = p ? p.changePct >= 0 : (hist.closes[hist.closes.length - 1] >= hist.closes[hist.closes.length - 2]);
+  return renderSparkline(hist.closes, isUp);
+}
+
 /* ===== TECHNICAL ANALYSIS ENGINE ===== */
 
 // RSI com suavização exponencial de Wilder (mais preciso que SMA)
@@ -2361,6 +2609,7 @@ const UI = {
               <span class="card-stat">Máx: <b>${fmtBRL(p.high)}</b></span>
             ` : (!state.settings.brapiToken ? '' : '<span class="skeleton" style="width:70px;height:14px;display:inline-block"></span>')}
           </div>
+          ${renderStockSparkline(ticker)}
           ${pnlHtml}
         </div>`;
     }
@@ -2406,12 +2655,23 @@ const UI = {
       const isConvictionBuy = opp.type === 'buy' && (opp.conviction === 'high' || opp.conviction === 'satellite');
       const convictionStyle = isConvictionBuy ? 'border-color:var(--accent);box-shadow:0 0 0 1px var(--accent-glow)' : '';
       const idx = state.opportunities.indexOf(opp);
+      // Score breakdown (reasons array)
+      let breakdownHtml = '';
+      if (opp.reasons && opp.reasons.length > 0) {
+        const bdId = `bd-${idx}`;
+        breakdownHtml = `
+          <div class="opp-breakdown-toggle" onclick="document.getElementById('${bdId}').classList.toggle('open');this.textContent=document.getElementById('${bdId}').classList.contains('open')?'▴ Esconder análise':'▾ Ver análise detalhada'">▾ Ver análise detalhada</div>
+          <div class="opp-breakdown" id="${bdId}">
+            ${opp.reasons.map(r => `<div class="opp-breakdown-row"><span class="opp-breakdown-indicator">• ${r}</span></div>`).join('')}
+          </div>`;
+      }
       html += `
         <div class="opp-item" style="${convictionStyle}">
           <div class="opp-dot ${dotClass}"></div>
           <div class="opp-text">
             <div class="opp-title">${opp.title}</div>
             <div class="opp-desc">${opp.desc}</div>
+            ${breakdownHtml}
           </div>
           <div class="opp-right">
             <div class="opp-prob ${probClass}">${prob}%</div>
@@ -2615,7 +2875,7 @@ function detectOpportunities() {
       const kellyInfo = kelly.suggestedPct > 0 ? ` · 📐 Kelly sugere ${kelly.suggestedPct.toFixed(1)}% do capital` : '';
       const opp = {
         key, type: 'buy', probability: prob, conviction: tier,
-        title,
+        title, reasons: buyScore.reasons,
         desc: `${fmtBRL(p.price)} · ${buyScore.reasons.join(' · ')} · Alvo +${targets.target}${targets.resistancePrice ? ' (resist. ' + fmtBRL(targets.resistancePrice) + ')' : ''} | stop -${targets.stop}${targets.supportPrice ? ' (suporte ' + fmtBRL(targets.supportPrice) + ')' : ''}${kellyInfo}`,
         notification: notif,
         time: 'agora', priority: prob + (isConviction ? 10 : 0)
@@ -2639,7 +2899,7 @@ function detectOpportunities() {
       if (tier === 'high') sellTitle += ' · ativo sólido: só pra trade de curto prazo';
       const opp = {
         key, type: 'sell', probability: prob, conviction: tier,
-        title: sellTitle,
+        title: sellTitle, reasons: sellScore.reasons,
         desc: `${fmtBRL(p.price)} · ${sellScore.reasons.join(' · ')}`,
         notification: `${prob >= 70 ? '🚨' : '🔴'} ${sym} ${fmtBRL(p.price)} — sinal de venda (${prob}%) ${sellScore.reasons[0]}`,
         time: 'agora', priority: prob
@@ -2742,7 +3002,7 @@ function detectOpportunities() {
       const kellyStockInfo = kellyStock.suggestedPct > 0 ? ` · 📐 Kelly sugere ${kellyStock.suggestedPct.toFixed(1)}% do capital` : '';
       const opp = {
         key, type: 'buy', probability: prob, conviction: tier,
-        title,
+        title, reasons: buyScore.reasons,
         desc: `${p.name} a ${fmtBRL(p.price)} · ${buyScore.reasons.join(' · ')} · Alvo +${targets.target} | stop -${targets.stop}${kellyStockInfo}`,
         notification: notif,
         time: 'agora', priority: prob + (isConviction ? 10 : 0)
@@ -2766,7 +3026,7 @@ function detectOpportunities() {
       if (tier === 'high') sellTitle += ' · ativo sólido: só pra trade de curto prazo';
       const opp = {
         key, type: 'sell', probability: prob, conviction: tier,
-        title: sellTitle,
+        title: sellTitle, reasons: sellScore.reasons,
         desc: `${p.name} a ${fmtBRL(p.price)} · ${sellScore.reasons.join(' · ')}`,
         notification: `${prob >= 70 ? '🚨' : '🔴'} ${ticker} ${fmtBRL(p.price)} — sinal de venda (${prob}%)`,
         time: 'agora', priority: prob
@@ -4226,6 +4486,8 @@ async function refreshData() {
     try { UI.renderTicker(); } catch (e) { debugLog(`render ticker ERRO: ${e.message}`); }
     try { renderFearGreed(); } catch (e) { debugLog(`render F&G ERRO: ${e.message}`); }
     try { renderAccuracy(); } catch (e) { debugLog(`render accuracy ERRO: ${e.message}`); }
+    try { detectMarketRegime(); } catch (e) { debugLog(`regime ERRO: ${e.message}`); }
+    try { renderPortfolio(); } catch (e) { debugLog(`portfolio ERRO: ${e.message}`); }
     try { detectOpportunities(); } catch (e) { debugLog(`detectOpps ERRO: ${e.message}`); }
     try { checkAlerts(); } catch (e) { debugLog(`checkAlerts ERRO: ${e.message}`); }
     try { renderHistory(); } catch (e) { debugLog(`render history ERRO: ${e.message}`); }
