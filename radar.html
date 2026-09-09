@@ -974,6 +974,7 @@ let state = {
   opportunities: [],
   fearGreed: null,
   btcDominance: null,
+  ibovHistory: null,
   signalTracker: [], // rastreia acurácia dos sinais passados
   settings: {
     refreshInterval: 15,
@@ -1866,6 +1867,226 @@ function calcVolumeAvgRatio(volumes, currentVolume) {
   return { ratio: currentVolume / avg, avg: Math.round(avg) };
 }
 
+// OBV (On-Balance Volume): confirma movimentos de preço com volume
+// Se o preço sobe e o OBV sobe junto = movimento saudável
+// Se o preço sobe mas OBV cai = divergência (fraqueza)
+function calcOBV(closes, volumes) {
+  if (!closes || !volumes || closes.length < 10 || volumes.length < 10) return null;
+  const len = Math.min(closes.length, volumes.length);
+  let obv = 0;
+  const obvArr = [0];
+  for (let i = 1; i < len; i++) {
+    if (closes[i] > closes[i - 1]) obv += volumes[i];
+    else if (closes[i] < closes[i - 1]) obv -= volumes[i];
+    obvArr.push(obv);
+  }
+  // Tendência do OBV nos últimos 10 períodos
+  const recent = obvArr.slice(-10);
+  const older = obvArr.slice(-20, -10);
+  if (older.length < 5) return null;
+  const recentAvg = recent.reduce((a, b) => a + b, 0) / recent.length;
+  const olderAvg = older.reduce((a, b) => a + b, 0) / older.length;
+  const obvTrend = olderAvg !== 0 ? ((recentAvg - olderAvg) / Math.abs(olderAvg)) * 100 : 0;
+  // Tendência do preço nos últimos 10 períodos
+  const priceRecent = closes.slice(-5);
+  const priceOlder = closes.slice(-10, -5);
+  const priceRecentAvg = priceRecent.reduce((a, b) => a + b, 0) / priceRecent.length;
+  const priceOlderAvg = priceOlder.reduce((a, b) => a + b, 0) / priceOlder.length;
+  const priceTrend = priceOlderAvg > 0 ? ((priceRecentAvg - priceOlderAvg) / priceOlderAvg) * 100 : 0;
+  // Divergência: preço e OBV em direções opostas
+  const bullishDiv = priceTrend < -1 && obvTrend > 5;   // preço cai mas OBV sobe = acumulação
+  const bearishDiv = priceTrend > 1 && obvTrend < -5;   // preço sobe mas OBV cai = distribuição
+  const confirming = (priceTrend > 0 && obvTrend > 0) || (priceTrend < 0 && obvTrend < 0);
+  return { obvTrend: Math.round(obvTrend), priceTrend: Math.round(priceTrend * 10) / 10, bullishDiv, bearishDiv, confirming };
+}
+
+// Padrões de Candle (precisa de OHLC)
+// Detecta martelo, engulfing, doji nos últimos 2-3 candles
+function detectCandlePatterns(opens, highs, lows, closes) {
+  if (!opens || !highs || !lows || !closes || closes.length < 3) return null;
+  const n = closes.length;
+  const patterns = [];
+  // Último candle
+  const o = opens[n - 1], h = highs[n - 1], l = lows[n - 1], c = closes[n - 1];
+  const body = Math.abs(c - o);
+  const range = h - l;
+  const upperWick = h - Math.max(o, c);
+  const lowerWick = Math.min(o, c) - l;
+  const isBullish = c > o;
+  // Candle anterior
+  const o2 = opens[n - 2], c2 = closes[n - 2];
+  const body2 = Math.abs(c2 - o2);
+  const isBullish2 = c2 > o2;
+
+  // === MARTELO (Hammer): corpo pequeno no topo, pavio inferior longo ===
+  // Sinal bullish em tendência de baixa
+  if (range > 0 && body < range * 0.35 && lowerWick > body * 2 && upperWick < body * 0.5) {
+    // Confirma tendência de baixa nos 3 candles anteriores
+    if (closes[n - 2] < closes[n - 4] || closes[n - 3] < closes[n - 4]) {
+      patterns.push({ name: 'hammer', signal: 'buy', strength: lowerWick / body > 3 ? 'strong' : 'moderate',
+        desc: 'Martelo — reversão bullish' });
+    }
+  }
+
+  // === ESTRELA CADENTE (Shooting Star): corpo pequeno embaixo, pavio superior longo ===
+  // Sinal bearish em tendência de alta
+  if (range > 0 && body < range * 0.35 && upperWick > body * 2 && lowerWick < body * 0.5) {
+    if (closes[n - 2] > closes[n - 4] || closes[n - 3] > closes[n - 4]) {
+      patterns.push({ name: 'shootingStar', signal: 'sell', strength: upperWick / body > 3 ? 'strong' : 'moderate',
+        desc: 'Estrela Cadente — reversão bearish' });
+    }
+  }
+
+  // === ENGULFING: candle atual engole completamente o anterior ===
+  if (body > 0 && body2 > 0) {
+    // Bullish Engulfing: anterior bearish + atual bullish maior
+    if (!isBullish2 && isBullish && c > o2 && o < c2 && body > body2 * 1.2) {
+      patterns.push({ name: 'bullishEngulfing', signal: 'buy', strength: body > body2 * 1.8 ? 'strong' : 'moderate',
+        desc: 'Engulfing Bullish — reversão forte' });
+    }
+    // Bearish Engulfing: anterior bullish + atual bearish maior
+    if (isBullish2 && !isBullish && o > c2 && c < o2 && body > body2 * 1.2) {
+      patterns.push({ name: 'bearishEngulfing', signal: 'sell', strength: body > body2 * 1.8 ? 'strong' : 'moderate',
+        desc: 'Engulfing Bearish — reversão forte' });
+    }
+  }
+
+  // === DOJI: corpo muito pequeno (abertura ≈ fechamento) ===
+  if (range > 0 && body < range * 0.1) {
+    patterns.push({ name: 'doji', signal: 'neutral', strength: 'moderate',
+      desc: 'Doji — indecisão, possível reversão' });
+  }
+
+  // === MORNING STAR (3 candles): bearish grande + doji/corpo pequeno + bullish grande ===
+  if (n >= 3) {
+    const o3 = opens[n - 3], c3 = closes[n - 3];
+    const body3 = Math.abs(c3 - o3);
+    if (c3 < o3 && body3 > body2 * 1.5 && body2 < body3 * 0.4 && isBullish && body > body2 * 1.5) {
+      patterns.push({ name: 'morningStar', signal: 'buy', strength: 'strong',
+        desc: '⭐ Morning Star — reversão bullish forte' });
+    }
+    // EVENING STAR
+    if (c3 > o3 && body3 > body2 * 1.5 && body2 < body3 * 0.4 && !isBullish && body > body2 * 1.5) {
+      patterns.push({ name: 'eveningStar', signal: 'sell', strength: 'strong',
+        desc: '⭐ Evening Star — reversão bearish forte' });
+    }
+  }
+
+  return patterns.length > 0 ? patterns : null;
+}
+
+// Kelly Criterion: calcula tamanho ótimo de posição baseado na acurácia dos sinais
+function calcKellyPosition(signalProbability) {
+  const acc = getSignalAccuracy();
+  if (!acc || acc.total < 5) return null;
+  // Win rate dos sinais passados
+  const W = acc.hitRate / 100;
+  // Razão ganho médio / perda média
+  const resolved = state.signalTracker.filter(s => s.result !== null);
+  const wins = resolved.filter(s => s.result === true);
+  const losses = resolved.filter(s => s.result === false);
+  const avgWin = wins.length > 0 ? wins.reduce((sum, s) => sum + Math.abs(s.resultPct), 0) / wins.length : 3;
+  const avgLoss = losses.length > 0 ? losses.reduce((sum, s) => sum + Math.abs(s.resultPct), 0) / losses.length : 3;
+  const R = avgLoss > 0 ? avgWin / avgLoss : 1;
+  // Kelly % = W - (1-W)/R
+  let kelly = W - (1 - W) / R;
+  kelly = Math.max(0, Math.min(0.25, kelly)); // Cap em 25% do capital
+  // Ajusta pelo nível de confiança do sinal atual
+  const confMult = signalProbability >= 75 ? 1.0 : signalProbability >= 60 ? 0.7 : signalProbability >= 45 ? 0.4 : 0.2;
+  const suggested = kelly * confMult;
+  // Half-Kelly (mais conservador, comum na prática)
+  const halfKelly = suggested / 2;
+  return {
+    kellyPct: Math.round(kelly * 1000) / 10,
+    suggestedPct: Math.round(suggested * 1000) / 10,
+    halfKellyPct: Math.round(halfKelly * 1000) / 10,
+    winRate: Math.round(W * 100),
+    avgWin: Math.round(avgWin * 10) / 10,
+    avgLoss: Math.round(avgLoss * 10) / 10,
+    ratio: Math.round(R * 100) / 100
+  };
+}
+
+// Trailing Stop dinâmico baseado no ATR
+// Quando o ativo está em lucro, o stop sobe acompanhando o preço
+function calcTrailingStop(buyPrice, currentPrice, atrData) {
+  if (!buyPrice || !currentPrice || currentPrice <= buyPrice) return null;
+  const pnlPct = ((currentPrice - buyPrice) / buyPrice) * 100;
+  if (pnlPct < 3) return null; // Só ativa trailing stop com pelo menos 3% de lucro
+  // Stop baseado no ATR (2x ATR abaixo do preço atual)
+  let stopDistance;
+  if (atrData && atrData.atr > 0) {
+    stopDistance = atrData.atr * 2;
+  } else {
+    // Fallback: 60% do lucro atual como stop
+    stopDistance = (currentPrice - buyPrice) * 0.4;
+  }
+  const trailingStop = currentPrice - stopDistance;
+  // O trailing stop nunca fica abaixo do preço de compra
+  const finalStop = Math.max(trailingStop, buyPrice * 1.005);
+  const protectedPct = ((finalStop - buyPrice) / buyPrice) * 100;
+  return {
+    stopPrice: Math.round(finalStop * 100) / 100,
+    protectedPct: Math.round(protectedPct * 10) / 10,
+    currentPnl: Math.round(pnlPct * 10) / 10,
+    method: atrData ? 'ATR' : 'fixed'
+  };
+}
+
+// IBOVESPA como benchmark para ações (força relativa)
+async function fetchIBOVHistory() {
+  if (!state.settings.brapiToken) return null;
+  const now = Date.now();
+  if (state.ibovHistory && state.ibovHistory.lastFetched && (now - state.ibovHistory.lastFetched < 30 * 60 * 1000)) {
+    return state.ibovHistory;
+  }
+  try {
+    const url = `https://brapi.dev/api/quote/%5EBVSP?range=3mo&interval=1d&token=${state.settings.brapiToken}`;
+    const data = await fetchJSON(url, 15000);
+    if (data.results && data.results[0] && data.results[0].historicalDataPrice) {
+      const hist = data.results[0].historicalDataPrice.filter(d => d.close != null);
+      if (hist.length >= 10) {
+        state.ibovHistory = {
+          closes: hist.map(d => d.close),
+          lastFetched: now
+        };
+        debugLog(`IBOV: ${hist.length} candles carregados`);
+        return state.ibovHistory;
+      }
+    }
+  } catch (e) { debugLog(`IBOV ERRO: ${e.message}`); }
+  return state.ibovHistory || null;
+}
+
+function calcRelativeStrength(stockCloses, ibovCloses) {
+  if (!stockCloses || !ibovCloses || stockCloses.length < 10 || ibovCloses.length < 10) return null;
+  // Alinha os arrays pelo final (últimos N dias)
+  const len = Math.min(stockCloses.length, ibovCloses.length, 60);
+  const sc = stockCloses.slice(-len);
+  const ic = ibovCloses.slice(-len);
+  // Performance relativa nos últimos 20 dias
+  const period = Math.min(20, len);
+  const stockPerf = ((sc[sc.length - 1] - sc[sc.length - period]) / sc[sc.length - period]) * 100;
+  const ibovPerf = ((ic[ic.length - 1] - ic[ic.length - period]) / ic[ic.length - period]) * 100;
+  const relativePerf = stockPerf - ibovPerf;
+  // RS ratio: performance da ação / performance do IBOV
+  // > 1 = ação mais forte que o mercado
+  const rsRatio = ibovPerf !== 0 ? stockPerf / ibovPerf : 1;
+  // Tendência do RS nos últimos 5 vs 10 dias
+  const shortPerf = ((sc[sc.length - 1] - sc[sc.length - Math.min(5, len)]) / sc[sc.length - Math.min(5, len)]) * 100;
+  const shortIbov = ((ic[ic.length - 1] - ic[ic.length - Math.min(5, len)]) / ic[ic.length - Math.min(5, len)]) * 100;
+  const rsImproving = (shortPerf - shortIbov) > (stockPerf - ibovPerf) / 2;
+  return {
+    stockPerf: Math.round(stockPerf * 10) / 10,
+    ibovPerf: Math.round(ibovPerf * 10) / 10,
+    relativePerf: Math.round(relativePerf * 10) / 10,
+    rsRatio: Math.round(rsRatio * 100) / 100,
+    outperforming: relativePerf > 2,
+    underperforming: relativePerf < -2,
+    rsImproving
+  };
+}
+
 // EMA Crossover (Golden/Death Cross) do sparkline
 // Usa EMA 9 vs EMA 21 (adaptado pro período de 7 dias do sparkline)
 function calcEMACrossover(prices) {
@@ -2382,10 +2603,13 @@ function detectOpportunities() {
         notif = `👀 ${sym} ${fmtBRL(p.price)} — movimento fraco (${prob}%), só acompanhar`;
       }
       if (tier === 'satellite') title += ' · posição pequena';
+      // Kelly Criterion: sugere tamanho ideal da posição
+      const kelly = calcKellyPosition(prob / 100);
+      const kellyInfo = kelly.suggestedPct > 0 ? ` · 📐 Kelly sugere ${kelly.suggestedPct.toFixed(1)}% do capital` : '';
       const opp = {
         key, type: 'buy', probability: prob, conviction: tier,
         title,
-        desc: `${fmtBRL(p.price)} · ${buyScore.reasons.join(' · ')} · Alvo +${targets.target}${targets.resistancePrice ? ' (resist. ' + fmtBRL(targets.resistancePrice) + ')' : ''} | stop -${targets.stop}${targets.supportPrice ? ' (suporte ' + fmtBRL(targets.supportPrice) + ')' : ''}`,
+        desc: `${fmtBRL(p.price)} · ${buyScore.reasons.join(' · ')} · Alvo +${targets.target}${targets.resistancePrice ? ' (resist. ' + fmtBRL(targets.resistancePrice) + ')' : ''} | stop -${targets.stop}${targets.supportPrice ? ' (suporte ' + fmtBRL(targets.supportPrice) + ')' : ''}${kellyInfo}`,
         notification: notif,
         time: 'agora', priority: prob + (isConviction ? 10 : 0)
       };
@@ -2435,10 +2659,22 @@ function detectOpportunities() {
       if (pnlPct >= 8) {
         const quality = pnlPct >= 40 ? 92 : pnlPct >= 20 ? 82 : pnlPct >= 12 ? 70 : 55;
         const key = oppKey('profit', coin.id, Math.floor(pnlPct / 4) * 4 + 'pct');
+        // Trailing stop dinâmico pra crypto
+        const sparkline = p.sparkline_in_7d?.price;
+        let trailInfo = '';
+        if (sparkline && sparkline.length > 14) {
+          const atrData = calcATR(sparkline, 14);
+          if (atrData) {
+            const trail = calcTrailingStop(pos.buyPrice, p.price, atrData);
+            if (trail.stopPrice > 0) {
+              trailInfo = ` · 🛡️ Trailing stop em ${fmtBRL(trail.stopPrice)} (protege +${trail.protectedPct.toFixed(1)}%)`;
+            }
+          }
+        }
         const opp = {
           key, type: 'sell', probability: quality,
           title: `💰 REALIZAR LUCRO: ${sym} subiu ${pnlPct.toFixed(1)}% desde sua compra!`,
-          desc: `Compra: ${fmtBRL(pos.buyPrice)} → Agora: ${fmtBRL(p.price)}. Ganho: ${fmtBRL(p.price - pos.buyPrice)}/un.${pos.quantity ? ' Total: +' + fmtBRL((p.price - pos.buyPrice) * pos.quantity) : ''} · Curto prazo: bateu o alvo, considere realizar.`,
+          desc: `Compra: ${fmtBRL(pos.buyPrice)} → Agora: ${fmtBRL(p.price)}. Ganho: ${fmtBRL(p.price - pos.buyPrice)}/un.${pos.quantity ? ' Total: +' + fmtBRL((p.price - pos.buyPrice) * pos.quantity) : ''}${trailInfo} · Curto prazo: bateu o alvo, considere realizar.`,
           notification: `💰 ${sym} +${pnlPct.toFixed(1)}% desde compra! Bateu o alvo de curto prazo.`,
           time: 'agora', priority: quality + 5
         };
@@ -2494,10 +2730,13 @@ function detectOpportunities() {
         title = `👀 ${ticker} no radar (${prob}%) — arriscado e momento fraco, só observar`;
         notif = `👀 ${ticker} ${fmtBRL(p.price)} — movimento fraco (${prob}%), só acompanhar`;
       }
+      // Kelly Criterion: sugere tamanho ideal da posição
+      const kellyStock = calcKellyPosition(prob / 100);
+      const kellyStockInfo = kellyStock.suggestedPct > 0 ? ` · 📐 Kelly sugere ${kellyStock.suggestedPct.toFixed(1)}% do capital` : '';
       const opp = {
         key, type: 'buy', probability: prob, conviction: tier,
         title,
-        desc: `${p.name} a ${fmtBRL(p.price)} · ${buyScore.reasons.join(' · ')} · Alvo +${targets.target} | stop -${targets.stop}`,
+        desc: `${p.name} a ${fmtBRL(p.price)} · ${buyScore.reasons.join(' · ')} · Alvo +${targets.target} | stop -${targets.stop}${kellyStockInfo}`,
         notification: notif,
         time: 'agora', priority: prob + (isConviction ? 10 : 0)
       };
@@ -2547,10 +2786,22 @@ function detectOpportunities() {
       if (pnlPct >= 4) {
         const quality = pnlPct >= 20 ? 92 : pnlPct >= 10 ? 82 : pnlPct >= 6 ? 70 : 55;
         const key = oppKey('profit', ticker, Math.floor(pnlPct / 2) * 2 + 'pct');
+        // Trailing stop dinâmico pra ações
+        const hist = state.prices.stockHistory[ticker];
+        let trailStockInfo = '';
+        if (hist && hist.highs && hist.lows && hist.closes) {
+          const atrData = calcStockATR(hist.highs, hist.lows, hist.closes, 14);
+          if (atrData) {
+            const trail = calcTrailingStop(pos.buyPrice, p.price, atrData);
+            if (trail.stopPrice > 0) {
+              trailStockInfo = ` · 🛡️ Trailing stop em ${fmtBRL(trail.stopPrice)} (protege +${trail.protectedPct.toFixed(1)}%)`;
+            }
+          }
+        }
         const opp = {
           key, type: 'sell', probability: quality,
           title: `💰 REALIZAR LUCRO: ${ticker} subiu ${pnlPct.toFixed(1)}% desde sua compra!`,
-          desc: `Compra: ${fmtBRL(pos.buyPrice)} → Agora: ${fmtBRL(p.price)}.${pos.quantity ? ' Lucro total: +' + fmtBRL((p.price - pos.buyPrice) * pos.quantity) : ''} · Curto prazo: bateu o alvo, considere realizar.`,
+          desc: `Compra: ${fmtBRL(pos.buyPrice)} → Agora: ${fmtBRL(p.price)}.${pos.quantity ? ' Lucro total: +' + fmtBRL((p.price - pos.buyPrice) * pos.quantity) : ''}${trailStockInfo} · Curto prazo: bateu o alvo, considere realizar.`,
           notification: `💰 ${ticker} +${pnlPct.toFixed(1)}% desde compra! Bateu o alvo de curto prazo.`,
           time: 'agora', priority: quality + 5
         };
@@ -3435,6 +3686,55 @@ function calcStockBuyScore(p, dropThresh, pos) {
     }
   }
 
+  // === OBV (On-Balance Volume) ===
+  if (hist && hist.closes && hist.volumes && hist.closes.length >= 20) {
+    const obv = calcOBV(hist.closes, hist.volumes);
+    if (obv) {
+      if (obv.bullishDiv) {
+        score += 10; reasons.push('📈 OBV divergência bullish — acumulação silenciosa (volume comprando enquanto preço cai)');
+        confluenceSignals.push(1);
+      } else if (obv.bearishDiv) {
+        score -= 6; reasons.push('⚠️ OBV divergência bearish — distribuição');
+        confluenceSignals.push(-1);
+      } else if (obv.confirming && obv.priceTrend < -2) {
+        score += 3; reasons.push('OBV confirma tendência de baixa');
+      }
+    }
+  }
+
+  // === PADRÕES DE CANDLE ===
+  if (hist && hist.opens && hist.highs && hist.lows && hist.closes && hist.closes.length >= 5) {
+    const patterns = detectCandlePatterns(hist.opens, hist.highs, hist.lows, hist.closes);
+    if (patterns) {
+      for (const pat of patterns) {
+        if (pat.signal === 'buy') {
+          const bonus = pat.strength === 'strong' ? 12 : 8;
+          score += bonus; reasons.push(`🕯️ ${pat.desc}`);
+          confluenceSignals.push(1);
+        } else if (pat.signal === 'sell') {
+          score -= 6; reasons.push(`⚠️ 🕯️ ${pat.desc}`);
+          confluenceSignals.push(-1);
+        }
+      }
+    }
+  }
+
+  // === FORÇA RELATIVA vs IBOVESPA ===
+  if (hist && hist.closes && state.ibovHistory && state.ibovHistory.closes) {
+    const rs = calcRelativeStrength(hist.closes, state.ibovHistory.closes);
+    if (rs) {
+      if (rs.underperforming && rs.relativePerf < -5 && rs.rsImproving) {
+        score += 8; reasons.push(`💪 Underperformou IBOV (${rs.relativePerf}%) mas RS melhorando — possível catch-up`);
+        confluenceSignals.push(1);
+      } else if (rs.underperforming && rs.relativePerf < -8) {
+        score += 5; reasons.push(`Underperformou IBOV em ${Math.abs(rs.relativePerf)}% — pode estar barato vs mercado`);
+      } else if (rs.outperforming && rs.relativePerf > 8) {
+        score -= 4; reasons.push(`⚠️ Outperformou IBOV em +${rs.relativePerf}% — já esticado`);
+        confluenceSignals.push(-1);
+      }
+    }
+  }
+
   // === FEAR & GREED INDEX ===
   if (state.fearGreed) {
     const fg = state.fearGreed.value;
@@ -3458,9 +3758,11 @@ function calcStockBuyScore(p, dropThresh, pos) {
   // === CONFLUÊNCIA ===
   const conf = calcConfluence(confluenceSignals);
   if (conf.total >= 3) {
-    if (conf.bullish >= 5) { score += Math.round(12 * aw.confluence); reasons.push(`📊 ${conf.bullish}/${conf.total} indicadores confirmam compra — confluência forte`); }
+    if (conf.bullish >= 6) { score += Math.round(15 * aw.confluence); reasons.push(`📊 ${conf.bullish}/${conf.total} indicadores confirmam compra — confluência excepcional`); }
+    else if (conf.bullish >= 5) { score += Math.round(12 * aw.confluence); reasons.push(`📊 ${conf.bullish}/${conf.total} indicadores confirmam compra — confluência forte`); }
     else if (conf.bullish >= 4) { score += Math.round(10 * aw.confluence); reasons.push(`📊 ${conf.bullish}/${conf.total} indicadores confirmam compra`); }
     else if (conf.bullish >= 3 && conf.bearish <= 1) { score += Math.round(6 * aw.confluence); reasons.push(`📊 ${conf.bullish}/${conf.total} indicadores positivos`); }
+    else if (conf.bearish >= 5) { score -= Math.round(12 * aw.confluence); reasons.push(`⚠️ ${conf.bearish}/${conf.total} indicadores contra — muito arriscado`); }
     else if (conf.bearish >= 4) { score -= Math.round(10 * aw.confluence); reasons.push(`⚠️ ${conf.bearish}/${conf.total} indicadores contra — sinal muito fraco`); }
     else if (conf.bearish >= 3) { score -= Math.round(8 * aw.confluence); reasons.push(`⚠️ ${conf.bearish}/${conf.total} indicadores contra`); }
     else if (conf.bullish === conf.bearish) { score -= 4; reasons.push(`📊 Sinais mistos (${conf.bullish} pró, ${conf.bearish} contra)`); }
@@ -3652,6 +3954,55 @@ function calcStockSellScore(p, riseThresh, pos) {
     }
   }
 
+  // === OBV (On-Balance Volume) ===
+  if (hist && hist.closes && hist.volumes && hist.closes.length >= 20) {
+    const obv = calcOBV(hist.closes, hist.volumes);
+    if (obv) {
+      if (obv.bearishDiv) {
+        score += 10; reasons.push('📉 OBV divergência bearish — distribuição (volume vendendo enquanto preço sobe)');
+        confluenceSignals.push(1);
+      } else if (obv.bullishDiv) {
+        score -= 6; reasons.push('⚠️ OBV divergência bullish — acumulação, vender pode ser cedo');
+        confluenceSignals.push(-1);
+      } else if (obv.confirming && obv.priceTrend > 2) {
+        score += 3; reasons.push('OBV confirma tendência de alta — considere realizar');
+      }
+    }
+  }
+
+  // === PADRÕES DE CANDLE ===
+  if (hist && hist.opens && hist.highs && hist.lows && hist.closes && hist.closes.length >= 5) {
+    const patterns = detectCandlePatterns(hist.opens, hist.highs, hist.lows, hist.closes);
+    if (patterns) {
+      for (const pat of patterns) {
+        if (pat.signal === 'sell') {
+          const bonus = pat.strength === 'strong' ? 12 : 8;
+          score += bonus; reasons.push(`🕯️ ${pat.desc}`);
+          confluenceSignals.push(1);
+        } else if (pat.signal === 'buy') {
+          score -= 6; reasons.push(`⚠️ 🕯️ ${pat.desc} — vender pode ser prematuro`);
+          confluenceSignals.push(-1);
+        }
+      }
+    }
+  }
+
+  // === FORÇA RELATIVA vs IBOVESPA ===
+  if (hist && hist.closes && state.ibovHistory && state.ibovHistory.closes) {
+    const rs = calcRelativeStrength(hist.closes, state.ibovHistory.closes);
+    if (rs) {
+      if (rs.outperforming && rs.relativePerf > 8 && !rs.rsImproving) {
+        score += 8; reasons.push(`💪 Outperformou IBOV em +${rs.relativePerf}% e RS enfraquecendo — bom pra realizar`);
+        confluenceSignals.push(1);
+      } else if (rs.outperforming && rs.relativePerf > 5) {
+        score += 4; reasons.push(`Outperformou IBOV em +${rs.relativePerf}%`);
+      } else if (rs.underperforming && rs.relativePerf < -5) {
+        score -= 4; reasons.push(`⚠️ Underperformou IBOV em ${rs.relativePerf}% — vender agora é vender na baixa`);
+        confluenceSignals.push(-1);
+      }
+    }
+  }
+
   // === FEAR & GREED ===
   if (state.fearGreed) {
     const fg = state.fearGreed.value;
@@ -3673,9 +4024,11 @@ function calcStockSellScore(p, riseThresh, pos) {
   // === CONFLUÊNCIA ===
   const conf = calcConfluence(confluenceSignals);
   if (conf.total >= 3) {
-    if (conf.bullish >= 5) { score += Math.round(12 * aw.confluence); reasons.push(`📊 ${conf.bullish}/${conf.total} indicadores confirmam venda — confluência forte`); }
+    if (conf.bullish >= 6) { score += Math.round(15 * aw.confluence); reasons.push(`📊 ${conf.bullish}/${conf.total} indicadores confirmam venda — confluência excepcional`); }
+    else if (conf.bullish >= 5) { score += Math.round(12 * aw.confluence); reasons.push(`📊 ${conf.bullish}/${conf.total} indicadores confirmam venda — confluência forte`); }
     else if (conf.bullish >= 4) { score += Math.round(10 * aw.confluence); reasons.push(`📊 ${conf.bullish}/${conf.total} indicadores confirmam venda`); }
     else if (conf.bullish >= 3 && conf.bearish <= 1) { score += Math.round(6 * aw.confluence); reasons.push(`📊 ${conf.bullish}/${conf.total} sinais de venda`); }
+    else if (conf.bearish >= 5) { score -= Math.round(12 * aw.confluence); reasons.push(`⚠️ ${conf.bearish}/${conf.total} indicadores contra venda — muito arriscado`); }
     else if (conf.bearish >= 4) { score -= Math.round(10 * aw.confluence); reasons.push(`⚠️ ${conf.bearish}/${conf.total} indicadores contra venda`); }
     else if (conf.bearish >= 3) { score -= Math.round(8 * aw.confluence); reasons.push(`⚠️ ${conf.bearish}/${conf.total} indicadores contra`); }
     else if (conf.bullish === conf.bearish) { score -= 4; reasons.push(`📊 Sinais mistos (${conf.bullish} pró, ${conf.bearish} contra)`); }
@@ -3845,6 +4198,8 @@ async function refreshData() {
       } catch (e) {
         debugLog(`Ações histórico ERRO: ${e.message}`);
       }
+      // Busca IBOV pra análise de força relativa
+      try { await fetchIBOVHistory(); } catch (e) { debugLog(`IBOV ERRO: ${e.message}`); }
     }
     try {
       const [cdi, usd, fg, btcDom] = await Promise.all([API.fetchCDI(), API.fetchUSD(), API.fetchFearGreed(), API.fetchBTCDominance()]);
