@@ -886,6 +886,43 @@ function suggestTargets(assetClass, coinId) {
     const stop = Math.round(baseStop * mult);
     return { target: `${target}–${targetHigh}%`, stop: `${stop}%` };
   }
+  // Ações: usa dados históricos se disponíveis
+  if (assetClass === 'stock' && coinId) {
+    const hist = state.prices.stockHistory[coinId];
+    if (hist && hist.closes && hist.closes.length > 20) {
+      const atrData = calcStockATR(hist.highs, hist.lows, hist.closes, 14);
+      const rr = calcRiskReward(hist.closes, hist.closes[hist.closes.length - 1]);
+      const fib = calcFibonacciLevels(hist.closes);
+      if (atrData && atrData.stopPct > 0) {
+        let stopPct = atrData.stopPct;
+        let targetPct = atrData.targetPct;
+        let supportPrice = atrData.stopPrice;
+        let resistancePrice = atrData.targetPrice;
+        if (rr && rr.risk !== null && rr.risk > 0 && rr.risk < stopPct) {
+          stopPct = rr.risk; supportPrice = rr.supportPrice;
+        }
+        if (rr && rr.reward !== null && rr.reward > 0) {
+          targetPct = rr.reward; resistancePrice = rr.resistancePrice;
+        }
+        if (fib && fib.fibResistance && !resistancePrice) resistancePrice = fib.fibResistance.price;
+        if (fib && fib.fibSupport && !supportPrice) supportPrice = fib.fibSupport.price;
+        const targetHigh = Math.round(targetPct * 1.4 * 10) / 10;
+        return {
+          target: `${Math.round(targetPct * 10) / 10}–${targetHigh}%`,
+          stop: `${Math.round(stopPct * 10) / 10}%`,
+          supportPrice, resistancePrice, method: 'ATR'
+        };
+      }
+      if (rr && rr.reward !== null && rr.risk !== null && rr.reward > 0 && rr.risk > 0) {
+        const targetHigh = Math.round(rr.reward * 1.5 * 10) / 10;
+        return {
+          target: `${Math.round(rr.reward * 10) / 10}–${targetHigh}%`,
+          stop: `${Math.round(rr.risk * 10) / 10}%`,
+          supportPrice: rr.supportPrice, resistancePrice: rr.resistancePrice, method: 'S/R'
+        };
+      }
+    }
+  }
   return { target: '3–5%', stop: '2,5%' };
 }
 
@@ -933,7 +970,7 @@ let state = {
   alerts: [],
   alertHistory: [],
   dismissedCurated: { crypto: [], stocks: [] },
-  prices: { crypto: {}, stocks: {} },
+  prices: { crypto: {}, stocks: {}, stockHistory: {} },
   opportunities: [],
   fearGreed: null,
   btcDominance: null,
@@ -1124,6 +1161,46 @@ const API = {
       }
     }
     return result;
+  },
+
+  // Busca dados históricos OHLC (3 meses, intervalo diário) pra análise técnica completa
+  // Roda menos frequente que o quote (a cada 30 min), pois candles diários não mudam rápido
+  async fetchStockHistory(tickers) {
+    if (!tickers.length || !state.settings.brapiToken) return {};
+    const result = {};
+    const now = Date.now();
+    // Só busca tickers que não foram atualizados nos últimos 30 min
+    const stale = tickers.filter(t => {
+      const h = state.prices.stockHistory[t];
+      return !h || !h.lastFetched || (now - h.lastFetched > 30 * 60 * 1000);
+    });
+    if (!stale.length) return state.prices.stockHistory;
+    debugLog(`Ações histórico: buscando ${stale.length} tickers...`);
+    for (const ticker of stale) {
+      try {
+        const url = `https://brapi.dev/api/quote/${ticker}?range=3mo&interval=1d&token=${state.settings.brapiToken}`;
+        const data = await fetchJSON(url, 15000);
+        if (data.results && data.results[0] && data.results[0].historicalDataPrice) {
+          const hist = data.results[0].historicalDataPrice.filter(d => d.close != null);
+          if (hist.length >= 5) {
+            result[ticker] = {
+              closes: hist.map(d => d.close),
+              highs: hist.map(d => d.high || d.close),
+              lows: hist.map(d => d.low || d.close),
+              opens: hist.map(d => d.open || d.close),
+              volumes: hist.map(d => d.volume || 0),
+              dates: hist.map(d => d.date),
+              lastFetched: now
+            };
+            debugLog(`  ${ticker}: ${hist.length} candles carregados`);
+          }
+        }
+      } catch (e) {
+        debugLog(`  ${ticker} histórico ERRO: ${e.message}`);
+      }
+    }
+    // Merge com dados existentes (mantém os que não atualizaram)
+    return { ...state.prices.stockHistory, ...result };
   },
 
   async fetchCDI() {
@@ -1726,6 +1803,67 @@ function calcATR(prices, period) {
     targetPct: Math.round(targetPct * 100) / 100,
     targetPrice: Math.round((current + targetDistance) * 100) / 100
   };
+}
+
+// ATR com dados OHLC reais (ações) — muito mais preciso que o proxy close-only usado pra cripto
+function calcStockATR(highs, lows, closes, period) {
+  if (!highs || !lows || !closes || closes.length < (period || 14) + 1) return null;
+  period = period || 14;
+  // True Range real: max(high-low, |high-prevClose|, |low-prevClose|)
+  const trs = [];
+  for (let i = 1; i < closes.length; i++) {
+    const hl = (highs[i] || closes[i]) - (lows[i] || closes[i]);
+    const hc = Math.abs((highs[i] || closes[i]) - closes[i - 1]);
+    const lc = Math.abs((lows[i] || closes[i]) - closes[i - 1]);
+    trs.push(Math.max(hl, hc, lc));
+  }
+  if (trs.length < period) return null;
+  // Wilder smoothing
+  let atr = 0;
+  for (let i = 0; i < period; i++) atr += trs[i];
+  atr /= period;
+  for (let i = period; i < trs.length; i++) {
+    atr = (atr * (period - 1) + trs[i]) / period;
+  }
+  const current = closes[closes.length - 1];
+  const atrPct = current > 0 ? (atr / current) * 100 : 0;
+  const stopDistance = atr * 2;
+  const stopPct = atrPct * 2;
+  const targetDistance = atr * 3;
+  const targetPct = atrPct * 3;
+  return {
+    atr: Math.round(atr * 100) / 100,
+    atrPct: Math.round(atrPct * 100) / 100,
+    stopDistance: Math.round(stopDistance * 100) / 100,
+    stopPct: Math.round(stopPct * 100) / 100,
+    stopPrice: Math.round((current - stopDistance) * 100) / 100,
+    targetDistance: Math.round(targetDistance * 100) / 100,
+    targetPct: Math.round(targetPct * 100) / 100,
+    targetPrice: Math.round((current + targetDistance) * 100) / 100
+  };
+}
+
+// Estocástico com dados OHLC reais (ações) — usa high/low verdadeiro em vez de proxy
+function calcStockStochastic(highs, lows, closes, period) {
+  if (!highs || !lows || !closes || closes.length < (period || 14)) return null;
+  period = period || 14;
+  const slice = closes.length;
+  const hSlice = highs.slice(slice - period);
+  const lSlice = lows.slice(slice - period);
+  const highestHigh = Math.max(...hSlice);
+  const lowestLow = Math.min(...lSlice);
+  if (highestHigh === lowestLow) return null;
+  const current = closes[closes.length - 1];
+  const k = ((current - lowestLow) / (highestHigh - lowestLow)) * 100;
+  return { k: Math.round(k * 100) / 100 };
+}
+
+// Volume Médio: compara volume atual com média dos últimos N dias
+function calcVolumeAvgRatio(volumes, currentVolume) {
+  if (!volumes || volumes.length < 10 || !currentVolume) return null;
+  const avg = volumes.slice(-20).reduce((a, b) => a + b, 0) / Math.min(20, volumes.length);
+  if (avg <= 0) return null;
+  return { ratio: currentVolume / avg, avg: Math.round(avg) };
 }
 
 // EMA Crossover (Golden/Death Cross) do sparkline
@@ -2334,7 +2472,7 @@ function detectOpportunities() {
     const buyScore = calcStockBuyScore(p, dropThresh, pos);
     if (buyScore.total > 0) {
       const prob = buyScore.total;
-      const targets = suggestTargets('stock');
+      const targets = suggestTargets('stock', ticker);
       const key = oppKey('buy', ticker, 'score');
       let title, notif;
       if (isConviction && prob >= 65) {
@@ -3088,57 +3226,248 @@ function calcStockBuyScore(p, dropThresh, pos) {
   let score = 0;
   const reasons = [];
   const confluenceSignals = [];
+  const aw = getAdaptiveWeights();
+  const hist = state.prices.stockHistory[p.symbol];
+  const closes = hist ? hist.closes : null;
+  const hasHistory = closes && closes.length > 15;
 
-  // === QUEDA % ===
+  // === PREÇO: Queda do dia ===
   if (p.changePct != null && p.changePct <= -dropThresh) {
     const dropMag = Math.abs(p.changePct);
-    score += Math.min(30, 15 + (dropMag - dropThresh) * 3);
+    score += Math.min(25, 8 + (dropMag - dropThresh) * 2.5);
     reasons.push(`Queda de ${dropMag.toFixed(1)}% hoje`);
     confluenceSignals.push(1);
+  } else if (p.changePct != null && p.changePct > 0) {
+    confluenceSignals.push(-1);
   }
 
-  // === PERTO DA MÍNIMA ===
+  // === PREÇO: Perto da mínima do dia ===
   if (p.low && p.price && p.low > 0) {
     const dist = ((p.price - p.low) / p.low) * 100;
-    if (dist < 0.5) { score += 15; reasons.push('Na mínima do dia!'); confluenceSignals.push(1); }
-    else if (dist < 1.5) { score += 10; reasons.push('Perto da mínima'); }
-    else if (dist < 3) { score += 5; }
+    if (dist < 0.5) { score += 12; reasons.push('Na mínima do dia!'); confluenceSignals.push(1); }
+    else if (dist < 1.5) { score += 8; reasons.push(`Perto da mínima (${dist.toFixed(1)}% acima)`); }
+    else if (dist < 3) { score += 4; }
   }
 
-  // === VOLUME + DIREÇÃO ===
-  if (p.volume && p.volume > 0 && p.previousClose && p.price < p.previousClose) {
-    score += 8; reasons.push('Volume alto na queda — possível capitulação');
+  // === GAP de abertura ===
+  if (p.previousClose && p.price) {
+    const gapPct = ((p.price - p.previousClose) / p.previousClose) * 100;
+    if (gapPct < -4) { score += 8; reasons.push(`Gap de baixa forte: ${gapPct.toFixed(1)}% abaixo do fechamento`); confluenceSignals.push(1); }
+    else if (gapPct < -2) { score += 5; reasons.push(`Gap de baixa: ${gapPct.toFixed(1)}%`); }
+    else if (gapPct > 3) { confluenceSignals.push(-1); }
+  }
+
+  // === RSI (dados históricos) ===
+  if (hasHistory) {
+    const rsi = calcRSI(closes, 14);
+    if (rsi !== null) {
+      if (rsi < 20) { score += Math.round(15 * aw.rsi); reasons.push(`RSI extremo (${rsi.toFixed(0)}) — sobrevendido forte`); confluenceSignals.push(1); }
+      else if (rsi < 30) { score += Math.round(10 * aw.rsi); reasons.push(`RSI sobrevendido (${rsi.toFixed(0)}) — sinal de reversão`); confluenceSignals.push(1); }
+      else if (rsi < 40) { score += Math.round(5 * aw.rsi); reasons.push(`RSI baixo (${rsi.toFixed(0)})`); }
+      else if (rsi > 70) { score -= Math.round(10 * aw.rsi); reasons.push(`⚠️ RSI sobrecomprado (${rsi.toFixed(0)})`); confluenceSignals.push(-1); }
+      else if (rsi > 60) { score -= 3; confluenceSignals.push(-1); }
+    }
+  }
+
+  // === DIVERGÊNCIA RSI ===
+  if (hasHistory && closes.length > 40) {
+    const div = calcRSIDivergence(closes, 14);
+    if (div) {
+      if (div.bullish) {
+        const bonus = div.bullishStrength > 10 ? 15 : div.bullishStrength > 5 ? 12 : 8;
+        score += Math.round(bonus * aw.rsi);
+        reasons.push(`🔥 Divergência RSI bullish (força ${div.bullishStrength}) — preço caiu mas RSI subiu`);
+        confluenceSignals.push(1);
+      }
+      if (div.bearish) {
+        score -= Math.round(8 * aw.rsi);
+        reasons.push(`⚠️ Divergência RSI bearish — preço subiu mas RSI caiu`);
+        confluenceSignals.push(-1);
+      }
+    }
+  }
+
+  // === MACD ===
+  if (hasHistory && closes.length > 30) {
+    const macd = calcMACD(closes);
+    if (macd) {
+      if (macd.bullishCross) { score += Math.round(12 * aw.macd); reasons.push('MACD cruzou pra cima — reversão técnica'); confluenceSignals.push(1); }
+      else if (macd.trend === 'bear' && !macd.diverging) { score += Math.round(5 * aw.macd); reasons.push('MACD: tendência de baixa desacelerando'); confluenceSignals.push(1); }
+      else if (macd.bearishCross) { score -= Math.round(8 * aw.macd); reasons.push('⚠️ MACD cruzou pra baixo'); confluenceSignals.push(-1); }
+      else if (macd.trend === 'bull' && macd.diverging) { confluenceSignals.push(-1); }
+    }
+  }
+
+  // === BOLLINGER BANDS ===
+  if (hasHistory && closes.length > 20) {
+    const bb = calcBollinger(closes, 20, 2);
+    if (bb) {
+      if (bb.percentB < 0) { score += Math.round(12 * aw.bollinger); reasons.push('Preço abaixo da Banda de Bollinger inferior — extremamente sobrevendido'); confluenceSignals.push(1); }
+      else if (bb.percentB < 0.1) { score += Math.round(8 * aw.bollinger); reasons.push(`Preço na borda inferior de Bollinger (${(bb.percentB*100).toFixed(0)}%)`); confluenceSignals.push(1); }
+      else if (bb.percentB > 0.95) { score -= Math.round(8 * aw.bollinger); reasons.push('⚠️ Preço na borda superior de Bollinger'); confluenceSignals.push(-1); }
+      if (bb.bandwidth < 3) { score += 4; reasons.push('Bollinger apertado — possível breakout em breve'); }
+    }
+  }
+
+  // === EMA CROSSOVER (Golden/Death Cross) ===
+  if (hasHistory && closes.length > 25) {
+    const emaCross = calcEMACrossover(closes);
+    if (emaCross) {
+      if (emaCross.goldenCross) {
+        score += Math.round(14 * aw.ema); reasons.push('🔥 Golden Cross (EMA 9 cruzou EMA 21) — reversão forte');
+        confluenceSignals.push(1);
+      } else if (emaCross.trend === 'bull' && emaCross.spread > 0.5) {
+        score += Math.round(6 * aw.ema); reasons.push(`EMA bullish (spread +${emaCross.spread}%)`);
+        confluenceSignals.push(1);
+      } else if (emaCross.deathCross) {
+        score -= Math.round(10 * aw.ema); reasons.push('⚠️ Death Cross (EMA 9 cruzou EMA 21 pra baixo)');
+        confluenceSignals.push(-1);
+      } else if (emaCross.trend === 'bear' && emaCross.spread < -1) {
+        score -= 4; confluenceSignals.push(-1);
+      }
+    }
+  }
+
+  // === ESTOCÁSTICO (com OHLC real se disponível) ===
+  if (hist && hist.highs && hist.lows && hist.closes && hist.closes.length >= 14) {
+    const stoch = calcStockStochastic(hist.highs, hist.lows, hist.closes, 14);
+    if (stoch) {
+      if (stoch.k < 15) { score += Math.round(10 * aw.stochastic); reasons.push(`Estocástico extremo (${stoch.k.toFixed(0)}%) — zona de acumulação`); confluenceSignals.push(1); }
+      else if (stoch.k < 25) { score += Math.round(6 * aw.stochastic); reasons.push(`Estocástico sobrevendido (${stoch.k.toFixed(0)}%)`); confluenceSignals.push(1); }
+      else if (stoch.k > 85) { score -= Math.round(6 * aw.stochastic); reasons.push(`⚠️ Estocástico sobrecomprado (${stoch.k.toFixed(0)}%)`); confluenceSignals.push(-1); }
+    }
+  } else if (hasHistory) {
+    const stoch = calcStochastic(closes, 14);
+    if (stoch) {
+      if (stoch.k < 15) { score += Math.round(10 * aw.stochastic); reasons.push(`Estocástico extremo (${stoch.k.toFixed(0)}%)`); confluenceSignals.push(1); }
+      else if (stoch.k < 25) { score += Math.round(6 * aw.stochastic); reasons.push(`Estocástico sobrevendido (${stoch.k.toFixed(0)}%)`); }
+      else if (stoch.k > 85) { score -= Math.round(6 * aw.stochastic); reasons.push(`⚠️ Estocástico sobrecomprado (${stoch.k.toFixed(0)}%)`); confluenceSignals.push(-1); }
+    }
+  }
+
+  // === FIBONACCI RETRACEMENT ===
+  if (hasHistory && closes.length > 20) {
+    const fib = calcFibonacciLevels(closes);
+    if (fib) {
+      if (fib.fibSupport && fib.nearestDist < 2) {
+        const level = (parseFloat(fib.nearestName) * 100).toFixed(1);
+        if (fib.nearestName === '0.618' || fib.nearestName === '0.5') {
+          score += 10; reasons.push(`📐 No nível Fibonacci ${level}% (zona dourada de retração)`);
+          confluenceSignals.push(1);
+        } else if (fib.nearestName === '0.382' || fib.nearestName === '0.786') {
+          score += 6; reasons.push(`📐 Perto do nível Fibonacci ${level}%`);
+        }
+      }
+      if (fib.fibResistance && fib.nearestDist < 1 && (fib.nearestName === '0.618' || fib.nearestName === '0.786')) {
+        score -= 4; reasons.push(`⚠️ Resistência Fibonacci ${(parseFloat(fib.nearestName) * 100).toFixed(1)}% logo acima`);
+      }
+    }
+  }
+
+  // === ATR (volatilidade real com OHLC) ===
+  if (hist && hist.highs && hist.lows && hist.closes && hist.closes.length > 15) {
+    const atrData = calcStockATR(hist.highs, hist.lows, hist.closes, 14);
+    if (atrData) {
+      if (atrData.atrPct > 4) { score += 3; reasons.push(`Volatilidade alta (ATR ${atrData.atrPct.toFixed(1)}%) — mais espaço pro trade`); }
+      if (atrData.atrPct < 0.8) { score += 4; reasons.push(`Volatilidade comprimida (ATR ${atrData.atrPct.toFixed(1)}%) — breakout iminente`); }
+    }
+  }
+
+  // === SUPORTES / RESISTÊNCIAS ===
+  if (hasHistory && closes.length > 20) {
+    const sr = calcSupportResistance(closes);
+    if (sr && sr.distToSupport != null) {
+      if (sr.distToSupport < 1) { score += 8; reasons.push('Perto de suporte técnico importante'); confluenceSignals.push(1); }
+      else if (sr.distToSupport < 3) { score += 4; reasons.push('Próximo de zona de suporte'); }
+    }
+  }
+
+  // === RISK/REWARD ===
+  if (hasHistory && closes.length > 20 && p.price) {
+    const rr = calcRiskReward(closes, p.price);
+    if (rr && rr.ratio !== null) {
+      if (rr.ratio >= 3) { score += 10; reasons.push(`Risco/Retorno excelente (${rr.ratio}:1) — alvo +${rr.reward}%, stop -${rr.risk}%`); confluenceSignals.push(1); }
+      else if (rr.ratio >= 2) { score += 6; reasons.push(`Risco/Retorno bom (${rr.ratio}:1)`); }
+      else if (rr.ratio < 0.8) { score -= 5; reasons.push(`⚠️ Risco/Retorno desfavorável (${rr.ratio}:1)`); confluenceSignals.push(-1); }
+    }
+  }
+
+  // === MOMENTUM ===
+  if (hasHistory && closes.length > 20) {
+    const mom = calcMomentum(closes);
+    if (mom < -3) { score += 5; reasons.push('Momentum negativo acelerando'); }
+    else if (mom > 3 && p.changePct != null && p.changePct < -dropThresh) { score += 6; reasons.push('Momentum virando — possível reversão'); confluenceSignals.push(1); }
+  }
+
+  // === VOLUME vs MÉDIA HISTÓRICA ===
+  if (hist && hist.volumes && p.volume) {
+    const volData = calcVolumeAvgRatio(hist.volumes, p.volume);
+    if (volData) {
+      if (volData.ratio > 2 && p.changePct < 0) {
+        score += Math.round(10 * aw.volume); reasons.push(`Volume ${volData.ratio.toFixed(1)}x acima da média na queda — capitulação?`);
+        confluenceSignals.push(1);
+      } else if (volData.ratio > 1.5 && p.changePct < 0) {
+        score += Math.round(5 * aw.volume); reasons.push(`Volume ${volData.ratio.toFixed(1)}x a média na queda`);
+      } else if (volData.ratio > 2 && p.changePct > 0) {
+        score -= 3; // volume alto com preço subindo confirma a alta
+      } else if (volData.ratio < 0.5 && p.changePct < -2) {
+        score += 3; reasons.push('Queda sem volume — pode ser correção saudável');
+      }
+    }
+  } else if (p.volume && p.volume > 0 && p.previousClose && p.price < p.previousClose) {
+    score += 5; reasons.push('Volume na queda');
     confluenceSignals.push(1);
   }
 
-  // === DISTÂNCIA DO PREÇO DE FECHAMENTO ANTERIOR ===
-  if (p.previousClose && p.price) {
-    const gapPct = ((p.price - p.previousClose) / p.previousClose) * 100;
-    if (gapPct < -3) { score += 6; reasons.push(`Gap de baixa: ${gapPct.toFixed(1)}% abaixo do fechamento`); }
+  // === TENDÊNCIA 3 meses (dados históricos) ===
+  if (hasHistory && closes.length >= 20) {
+    const old20 = closes[closes.length - 20];
+    const changeMo = ((closes[closes.length - 1] - old20) / old20) * 100;
+    if (changeMo < -20) { score += 8; reasons.push(`Queda de ${Math.abs(changeMo).toFixed(1)}% no mês — possível oversold`); confluenceSignals.push(1); }
+    else if (changeMo < -10) { score += 5; reasons.push(`Tendência de baixa no mês (${changeMo.toFixed(1)}%)`); }
+    else if (changeMo > 20) { confluenceSignals.push(-1); }
+    // Distância da máxima de 3 meses
+    if (closes.length >= 10) {
+      const max3m = Math.max(...closes);
+      const distATH = ((p.price - max3m) / max3m) * 100;
+      if (distATH < -25) { score += 6; reasons.push(`${Math.abs(distATH).toFixed(0)}% abaixo da máx. de 3 meses`); }
+      else if (distATH > -3) { score -= 5; reasons.push('⚠️ Perto da máxima de 3 meses — risco de correção'); confluenceSignals.push(-1); }
+    }
   }
 
-  // === FEAR & GREED (macro) ===
+  // === FEAR & GREED INDEX ===
   if (state.fearGreed) {
     const fg = state.fearGreed.value;
-    if (fg <= 25) { score += 6; reasons.push(`Sentimento de medo global (${fg}/100)`); confluenceSignals.push(1); }
-    else if (fg >= 80) { score -= 5; reasons.push(`⚠️ Euforia global (${fg}/100) — cautela`); confluenceSignals.push(-1); }
+    if (fg <= 15) { score += Math.round(12 * aw.fearGreed); reasons.push(`Pânico extremo (Medo: ${fg}/100) — hora de comprar`); confluenceSignals.push(1); }
+    else if (fg <= 25) { score += Math.round(8 * aw.fearGreed); reasons.push(`Mercado em pânico (${fg}/100)`); confluenceSignals.push(1); }
+    else if (fg <= 40) { score += Math.round(4 * aw.fearGreed); reasons.push(`Mercado com medo (${fg}/100)`); }
+    else if (fg >= 85) { score -= Math.round(12 * aw.fearGreed); reasons.push(`⚠️ Euforia extrema (${fg}/100)`); confluenceSignals.push(-1); }
+    else if (fg >= 75) { score -= Math.round(8 * aw.fearGreed); reasons.push(`⚠️ Ganância (${fg}/100)`); confluenceSignals.push(-1); }
+    else if (fg >= 60) { score -= 3; }
   }
 
   // === POSIÇÃO DO USUÁRIO ===
   if (pos && pos.buyPrice && p.price) {
     const pnlPct = ((p.price - pos.buyPrice) / pos.buyPrice) * 100;
-    if (pnlPct < -15) { score += 8; reasons.push(`${Math.abs(pnlPct).toFixed(0)}% abaixo da compra — oportunidade de média`); }
-    else if (pnlPct < -8) { score += 5; reasons.push(`${Math.abs(pnlPct).toFixed(0)}% abaixo da compra`); }
-    else if (pnlPct > 10) { score -= 4; reasons.push(`⚠️ Já com lucro de ${pnlPct.toFixed(0)}%`); }
+    if (pnlPct < -25) { score += 10; reasons.push(`${Math.abs(pnlPct).toFixed(0)}% abaixo da compra — forte oportunidade de média`); }
+    else if (pnlPct < -15) { score += 7; reasons.push(`${Math.abs(pnlPct).toFixed(0)}% abaixo da compra`); }
+    else if (pnlPct < -8) { score += 4; reasons.push(`${Math.abs(pnlPct).toFixed(0)}% abaixo da compra`); }
+    else if (pnlPct > 15) { score -= 6; reasons.push(`⚠️ Já com ${pnlPct.toFixed(0)}% de lucro — comprar mais aumenta exposição`); }
   }
 
   // === CONFLUÊNCIA ===
   const conf = calcConfluence(confluenceSignals);
-  if (conf.total >= 2 && conf.bullish >= 2) {
-    score += 6; reasons.push(`📊 ${conf.bullish}/${conf.total} sinais convergentes`);
-  } else if (conf.total >= 2 && conf.bearish >= 2) {
-    score -= 5;
+  if (conf.total >= 3) {
+    if (conf.bullish >= 5) { score += Math.round(12 * aw.confluence); reasons.push(`📊 ${conf.bullish}/${conf.total} indicadores confirmam compra — confluência forte`); }
+    else if (conf.bullish >= 4) { score += Math.round(10 * aw.confluence); reasons.push(`📊 ${conf.bullish}/${conf.total} indicadores confirmam compra`); }
+    else if (conf.bullish >= 3 && conf.bearish <= 1) { score += Math.round(6 * aw.confluence); reasons.push(`📊 ${conf.bullish}/${conf.total} indicadores positivos`); }
+    else if (conf.bearish >= 4) { score -= Math.round(10 * aw.confluence); reasons.push(`⚠️ ${conf.bearish}/${conf.total} indicadores contra — sinal muito fraco`); }
+    else if (conf.bearish >= 3) { score -= Math.round(8 * aw.confluence); reasons.push(`⚠️ ${conf.bearish}/${conf.total} indicadores contra`); }
+    else if (conf.bullish === conf.bearish) { score -= 4; reasons.push(`📊 Sinais mistos (${conf.bullish} pró, ${conf.bearish} contra)`); }
   }
+
+  // === ADAPTIVE BIAS ===
+  if (aw.buyBias && aw.buyBias !== 1) { score = Math.round(score * aw.buyBias); }
 
   score = Math.max(0, Math.min(95, Math.round(score)));
   if (score < 25) return { total: 0, reasons: [] };
@@ -3149,40 +3478,193 @@ function calcStockSellScore(p, riseThresh, pos) {
   let score = 0;
   const reasons = [];
   const confluenceSignals = [];
+  const aw = getAdaptiveWeights();
+  const hist = state.prices.stockHistory[p.symbol];
+  const closes = hist ? hist.closes : null;
+  const hasHistory = closes && closes.length > 15;
 
-  // === ALTA % ===
+  // === PREÇO: Alta do dia ===
   if (p.changePct != null && p.changePct >= riseThresh) {
     const riseMag = p.changePct;
-    score += Math.min(30, 15 + (riseMag - riseThresh) * 3);
+    score += Math.min(25, 8 + (riseMag - riseThresh) * 2.5);
     reasons.push(`Alta de ${riseMag.toFixed(1)}% hoje`);
     confluenceSignals.push(1);
   }
 
-  // === PERTO DA MÁXIMA ===
+  // === PREÇO: Perto da máxima do dia ===
   if (p.high && p.price && p.high > 0) {
     const dist = ((p.high - p.price) / p.high) * 100;
-    if (dist < 0.5) { score += 15; reasons.push('Na máxima do dia!'); confluenceSignals.push(1); }
-    else if (dist < 1.5) { score += 10; reasons.push('Perto da máxima'); }
-    else if (dist < 3) { score += 5; }
+    if (dist < 0.5) { score += 12; reasons.push('Na máxima do dia!'); confluenceSignals.push(1); }
+    else if (dist < 1.5) { score += 8; reasons.push('Perto da máxima'); }
+    else if (dist < 3) { score += 4; }
   }
 
-  // === DISTÂNCIA DO FECHAMENTO ANTERIOR ===
+  // === GAP de abertura ===
   if (p.previousClose && p.price) {
     const gapPct = ((p.price - p.previousClose) / p.previousClose) * 100;
-    if (gapPct > 3) { score += 6; reasons.push(`Gap de alta: +${gapPct.toFixed(1)}% acima do fechamento`); }
+    if (gapPct > 4) { score += 8; reasons.push(`Gap de alta forte: +${gapPct.toFixed(1)}% acima do fechamento`); confluenceSignals.push(1); }
+    else if (gapPct > 2) { score += 5; reasons.push(`Gap de alta: +${gapPct.toFixed(1)}%`); }
+  }
+
+  // === RSI (dados históricos) ===
+  if (hasHistory) {
+    const rsi = calcRSI(closes, 14);
+    if (rsi !== null) {
+      if (rsi > 80) { score += Math.round(15 * aw.rsi); reasons.push(`RSI extremo (${rsi.toFixed(0)}) — sobrecomprado forte`); confluenceSignals.push(1); }
+      else if (rsi > 70) { score += Math.round(10 * aw.rsi); reasons.push(`RSI sobrecomprado (${rsi.toFixed(0)}) — sinal de topo`); confluenceSignals.push(1); }
+      else if (rsi > 60) { score += Math.round(4 * aw.rsi); reasons.push(`RSI elevado (${rsi.toFixed(0)})`); }
+      else if (rsi < 30) { score -= Math.round(10 * aw.rsi); reasons.push(`⚠️ RSI sobrevendido (${rsi.toFixed(0)}) — vender agora pode ser caro`); confluenceSignals.push(-1); }
+      else if (rsi < 40) { score -= 3; confluenceSignals.push(-1); }
+    }
+  }
+
+  // === DIVERGÊNCIA RSI ===
+  if (hasHistory && closes.length > 40) {
+    const div = calcRSIDivergence(closes, 14);
+    if (div) {
+      if (div.bearish) {
+        const bonus = div.bearishStrength > 10 ? 15 : div.bearishStrength > 5 ? 12 : 8;
+        score += Math.round(bonus * aw.rsi);
+        reasons.push(`🔥 Divergência RSI bearish (força ${div.bearishStrength}) — preço subiu mas RSI caiu`);
+        confluenceSignals.push(1);
+      }
+      if (div.bullish) {
+        score -= Math.round(8 * aw.rsi);
+        reasons.push(`⚠️ Divergência RSI bullish — vender pode ser prematuro`);
+        confluenceSignals.push(-1);
+      }
+    }
+  }
+
+  // === MACD ===
+  if (hasHistory && closes.length > 30) {
+    const macd = calcMACD(closes);
+    if (macd) {
+      if (macd.bearishCross) { score += Math.round(12 * aw.macd); reasons.push('MACD cruzou pra baixo — sinal de topo'); confluenceSignals.push(1); }
+      else if (macd.trend === 'bull' && macd.diverging) { score += Math.round(5 * aw.macd); reasons.push('MACD: alta perdendo força'); confluenceSignals.push(1); }
+      else if (macd.bullishCross) { score -= Math.round(8 * aw.macd); reasons.push('⚠️ MACD cruzou pra cima — vender pode ser cedo'); confluenceSignals.push(-1); }
+    }
+  }
+
+  // === BOLLINGER BANDS ===
+  if (hasHistory && closes.length > 20) {
+    const bb = calcBollinger(closes, 20, 2);
+    if (bb) {
+      if (bb.percentB > 1) { score += Math.round(12 * aw.bollinger); reasons.push('Preço acima da Banda de Bollinger superior — extremamente sobrecomprado'); confluenceSignals.push(1); }
+      else if (bb.percentB > 0.9) { score += Math.round(8 * aw.bollinger); reasons.push(`Preço na borda superior de Bollinger (${(bb.percentB*100).toFixed(0)}%)`); confluenceSignals.push(1); }
+      else if (bb.percentB < 0.05) { score -= Math.round(8 * aw.bollinger); reasons.push('⚠️ Preço na borda inferior de Bollinger — vender realiza perda'); confluenceSignals.push(-1); }
+    }
+  }
+
+  // === EMA CROSSOVER ===
+  if (hasHistory && closes.length > 25) {
+    const emaCross = calcEMACrossover(closes);
+    if (emaCross) {
+      if (emaCross.deathCross) {
+        score += Math.round(14 * aw.ema); reasons.push('🔥 Death Cross (EMA 9 cruzou EMA 21 pra baixo) — saia do trade');
+        confluenceSignals.push(1);
+      } else if (emaCross.trend === 'bear' && emaCross.spread < -0.5) {
+        score += Math.round(6 * aw.ema); reasons.push(`EMA bearish (spread ${emaCross.spread}%)`);
+        confluenceSignals.push(1);
+      } else if (emaCross.goldenCross) {
+        score -= Math.round(10 * aw.ema); reasons.push('⚠️ Golden Cross — vender pode ser prematuro');
+        confluenceSignals.push(-1);
+      } else if (emaCross.trend === 'bull' && emaCross.spread > 1) {
+        score -= 4; confluenceSignals.push(-1);
+      }
+    }
+  }
+
+  // === ESTOCÁSTICO ===
+  if (hist && hist.highs && hist.lows && hist.closes && hist.closes.length >= 14) {
+    const stoch = calcStockStochastic(hist.highs, hist.lows, hist.closes, 14);
+    if (stoch) {
+      if (stoch.k > 85) { score += Math.round(10 * aw.stochastic); reasons.push(`Estocástico sobrecomprado (${stoch.k.toFixed(0)}%) — zona de distribuição`); confluenceSignals.push(1); }
+      else if (stoch.k > 75) { score += Math.round(6 * aw.stochastic); reasons.push(`Estocástico alto (${stoch.k.toFixed(0)}%)`); }
+      else if (stoch.k < 15) { score -= Math.round(6 * aw.stochastic); reasons.push(`⚠️ Estocástico sobrevendido (${stoch.k.toFixed(0)}%)`); confluenceSignals.push(-1); }
+    }
+  } else if (hasHistory) {
+    const stoch = calcStochastic(closes, 14);
+    if (stoch) {
+      if (stoch.k > 85) { score += Math.round(10 * aw.stochastic); reasons.push(`Estocástico sobrecomprado (${stoch.k.toFixed(0)}%)`); confluenceSignals.push(1); }
+      else if (stoch.k < 15) { score -= Math.round(6 * aw.stochastic); reasons.push(`⚠️ Estocástico sobrevendido (${stoch.k.toFixed(0)}%)`); confluenceSignals.push(-1); }
+    }
+  }
+
+  // === FIBONACCI ===
+  if (hasHistory && closes.length > 20) {
+    const fib = calcFibonacciLevels(closes);
+    if (fib) {
+      if (fib.fibResistance && fib.nearestDist < 2) {
+        const level = (parseFloat(fib.nearestName) * 100).toFixed(1);
+        if (fib.nearestName === '0.618' || fib.nearestName === '0.786') {
+          score += 8; reasons.push(`📐 Na resistência Fibonacci ${level}% — bom ponto de saída`);
+          confluenceSignals.push(1);
+        }
+      }
+      if (fib.fibSupport && fib.nearestDist < 1 && (fib.nearestName === '0.382' || fib.nearestName === '0.5')) {
+        score -= 4; reasons.push(`Suporte Fibonacci ${(parseFloat(fib.nearestName)*100).toFixed(1)}% logo abaixo`);
+      }
+    }
+  }
+
+  // === RISK/REWARD (invertido pra venda) ===
+  if (hasHistory && closes.length > 20 && p.price) {
+    const rr = calcRiskReward(closes, p.price);
+    if (rr && rr.ratio !== null) {
+      if (rr.ratio < 0.8) { score += 6; reasons.push(`Risco/Retorno desfavorável pra manter (${rr.ratio}:1)`); confluenceSignals.push(1); }
+      else if (rr.ratio >= 3) { score -= 5; reasons.push(`⚠️ R/R bom pra manter (${rr.ratio}:1) — vender pode ser cedo`); confluenceSignals.push(-1); }
+    }
+  }
+
+  // === MOMENTUM ===
+  if (hasHistory && closes.length > 20) {
+    const mom = calcMomentum(closes);
+    if (mom > 5) { score += 5; reasons.push('Momentum positivo forte — pode estar esticado'); }
+    else if (mom < -3 && p.changePct > riseThresh) { score += 4; reasons.push('Momentum virando negativo'); confluenceSignals.push(1); }
+  }
+
+  // === VOLUME vs MÉDIA HISTÓRICA ===
+  if (hist && hist.volumes && p.volume) {
+    const volData = calcVolumeAvgRatio(hist.volumes, p.volume);
+    if (volData) {
+      if (volData.ratio > 2 && p.changePct > 0) {
+        score += Math.round(8 * aw.volume); reasons.push(`Volume ${volData.ratio.toFixed(1)}x acima da média na alta — possível climax`);
+        confluenceSignals.push(1);
+      } else if (volData.ratio > 2 && p.changePct < 0) {
+        score += 5; reasons.push(`Volume ${volData.ratio.toFixed(1)}x na queda — pressão vendedora forte`);
+        confluenceSignals.push(1);
+      }
+    }
+  }
+
+  // === TENDÊNCIA 3 meses ===
+  if (hasHistory && closes.length >= 20) {
+    const old20 = closes[closes.length - 20];
+    const changeMo = ((closes[closes.length - 1] - old20) / old20) * 100;
+    if (changeMo > 25) { score += 6; reasons.push(`Alta de ${changeMo.toFixed(1)}% no mês — esticado, bom pra realizar`); confluenceSignals.push(1); }
+    else if (changeMo > 15) { score += 3; reasons.push(`Alta de ${changeMo.toFixed(1)}% no mês`); }
+    // Perto da máxima de 3 meses
+    if (closes.length >= 10) {
+      const max3m = Math.max(...closes);
+      const distMax = ((p.price - max3m) / max3m) * 100;
+      if (distMax > -2) { score += 5; reasons.push('Perto da máxima de 3 meses — bom ponto de saída'); confluenceSignals.push(1); }
+    }
   }
 
   // === FEAR & GREED ===
   if (state.fearGreed) {
     const fg = state.fearGreed.value;
-    if (fg >= 80) { score += 6; reasons.push(`Euforia global (${fg}/100) — bom pra realizar`); confluenceSignals.push(1); }
-    else if (fg <= 25) { score -= 5; reasons.push(`⚠️ Medo global (${fg}/100) — vender agora pode ser caro`); confluenceSignals.push(-1); }
+    if (fg >= 85) { score += Math.round(12 * aw.fearGreed); reasons.push(`Euforia extrema (${fg}/100) — hora de realizar`); confluenceSignals.push(1); }
+    else if (fg >= 75) { score += Math.round(8 * aw.fearGreed); reasons.push(`Ganância (${fg}/100) — bom pra vender`); confluenceSignals.push(1); }
+    else if (fg <= 15) { score -= Math.round(12 * aw.fearGreed); reasons.push(`⚠️ Pânico extremo (${fg}/100) — vender agora é entregar barato`); confluenceSignals.push(-1); }
+    else if (fg <= 25) { score -= Math.round(8 * aw.fearGreed); reasons.push(`⚠️ Medo global (${fg}/100) — vender agora pode ser caro`); confluenceSignals.push(-1); }
   }
 
   // === POSIÇÃO DO USUÁRIO ===
   if (pos && pos.buyPrice && p.price) {
     const pnlPct = ((p.price - pos.buyPrice) / pos.buyPrice) * 100;
-    if (pnlPct >= 30) { score += 12; reasons.push(`🎉 Lucro de ${pnlPct.toFixed(0)}%!`); }
+    if (pnlPct >= 30) { score += 12; reasons.push(`🎉 Lucro de ${pnlPct.toFixed(0)}%! Considere realizar`); }
     else if (pnlPct >= 15) { score += 8; reasons.push(`+${pnlPct.toFixed(0)}% desde compra — bom lucro`); }
     else if (pnlPct >= 5) { score += 4; reasons.push(`+${pnlPct.toFixed(0)}% desde compra`); }
     else if (pnlPct < -5) { score -= 8; reasons.push(`⚠️ ${pnlPct.toFixed(0)}% de prejuízo — vender realiza perda`); }
@@ -3190,9 +3672,17 @@ function calcStockSellScore(p, riseThresh, pos) {
 
   // === CONFLUÊNCIA ===
   const conf = calcConfluence(confluenceSignals);
-  if (conf.total >= 2 && conf.bullish >= 2) {
-    score += 6; reasons.push(`📊 ${conf.bullish}/${conf.total} sinais de venda`);
+  if (conf.total >= 3) {
+    if (conf.bullish >= 5) { score += Math.round(12 * aw.confluence); reasons.push(`📊 ${conf.bullish}/${conf.total} indicadores confirmam venda — confluência forte`); }
+    else if (conf.bullish >= 4) { score += Math.round(10 * aw.confluence); reasons.push(`📊 ${conf.bullish}/${conf.total} indicadores confirmam venda`); }
+    else if (conf.bullish >= 3 && conf.bearish <= 1) { score += Math.round(6 * aw.confluence); reasons.push(`📊 ${conf.bullish}/${conf.total} sinais de venda`); }
+    else if (conf.bearish >= 4) { score -= Math.round(10 * aw.confluence); reasons.push(`⚠️ ${conf.bearish}/${conf.total} indicadores contra venda`); }
+    else if (conf.bearish >= 3) { score -= Math.round(8 * aw.confluence); reasons.push(`⚠️ ${conf.bearish}/${conf.total} indicadores contra`); }
+    else if (conf.bullish === conf.bearish) { score -= 4; reasons.push(`📊 Sinais mistos (${conf.bullish} pró, ${conf.bearish} contra)`); }
   }
+
+  // === ADAPTIVE BIAS ===
+  if (aw.sellBias && aw.sellBias !== 1) { score = Math.round(score * aw.sellBias); }
 
   score = Math.max(0, Math.min(95, Math.round(score)));
   if (score < 25) return { total: 0, reasons: [] };
@@ -3347,6 +3837,13 @@ async function refreshData() {
       } catch (e) {
         errors.push('Ações');
         debugLog(`Ações ERRO: ${e.name}: ${e.message}`);
+      }
+      // Busca dados históricos OHLC pra análise técnica (cache de 30 min)
+      try {
+        const history = await API.fetchStockHistory(state.watchlist.stocks);
+        state.prices.stockHistory = history;
+      } catch (e) {
+        debugLog(`Ações histórico ERRO: ${e.message}`);
       }
     }
     try {
