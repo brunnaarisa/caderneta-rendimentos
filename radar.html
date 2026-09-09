@@ -831,19 +831,51 @@ function convictionBadge(assetId, type) {
 function suggestTargets(assetClass, coinId) {
   if (assetClass === 'crypto') {
     const mult = coinId ? getVolatilityMultiplier(coinId) : 1.3;
-    // Tenta usar suporte/resistência real do sparkline
     const p = coinId ? state.prices.crypto[coinId] : null;
     if (p && p.sparkline && p.sparkline.length > 20 && p.price) {
+      // 1ª prioridade: ATR (stop/target baseado na volatilidade REAL do ativo)
+      const atrData = calcATR(p.sparkline, 14);
       const rr = calcRiskReward(p.sparkline, p.price);
-      if (rr && rr.reward !== null && rr.risk !== null && rr.reward > 0 && rr.risk > 0) {
-        const targetLow = Math.round(rr.reward * 10) / 10;
-        const targetHigh = Math.round(rr.reward * 1.5 * 10) / 10;
-        const stop = Math.round(rr.risk * 10) / 10;
+      const fib = calcFibonacciLevels(p.sparkline);
+      if (atrData && atrData.stopPct > 0) {
+        // Usa ATR pra stop, mas ajusta com S/R real se disponível
+        let stopPct = atrData.stopPct;
+        let targetPct = atrData.targetPct;
+        let supportPrice = atrData.stopPrice;
+        let resistancePrice = atrData.targetPrice;
+        // Se tem S/R real e é mais apertado que o ATR, usa ele
+        if (rr && rr.risk !== null && rr.risk > 0 && rr.risk < stopPct) {
+          stopPct = rr.risk;
+          supportPrice = rr.supportPrice;
+        }
+        if (rr && rr.reward !== null && rr.reward > 0) {
+          targetPct = rr.reward;
+          resistancePrice = rr.resistancePrice;
+        }
+        // Se tem Fibonacci, adiciona como referência extra
+        if (fib && fib.fibResistance && !resistancePrice) {
+          resistancePrice = fib.fibResistance.price;
+        }
+        if (fib && fib.fibSupport && !supportPrice) {
+          supportPrice = fib.fibSupport.price;
+        }
+        const targetHigh = Math.round(targetPct * 1.4 * 10) / 10;
         return {
-          target: `${targetLow}–${targetHigh}%`,
-          stop: `${stop}%`,
+          target: `${Math.round(targetPct * 10) / 10}–${targetHigh}%`,
+          stop: `${Math.round(stopPct * 10) / 10}%`,
+          supportPrice, resistancePrice,
+          method: 'ATR'
+        };
+      }
+      // 2ª prioridade: S/R direto
+      if (rr && rr.reward !== null && rr.risk !== null && rr.reward > 0 && rr.risk > 0) {
+        const targetHigh = Math.round(rr.reward * 1.5 * 10) / 10;
+        return {
+          target: `${Math.round(rr.reward * 10) / 10}–${targetHigh}%`,
+          stop: `${Math.round(rr.risk * 10) / 10}%`,
           supportPrice: rr.supportPrice,
-          resistancePrice: rr.resistancePrice
+          resistancePrice: rr.resistancePrice,
+          method: 'S/R'
         };
       }
     }
@@ -1539,6 +1571,161 @@ function calcConfluence(indicators) {
     else if (ind < 0) bearish++;
   }
   return { bullish, bearish, total, ratio: total > 0 ? Math.max(bullish, bearish) / total : 0 };
+}
+
+// Divergência RSI: detecta quando preço e RSI divergem (sinal forte de reversão)
+// Bullish: preço faz nova mínima mas RSI faz mínima mais alta
+// Bearish: preço faz nova máxima mas RSI faz máxima mais baixa
+function calcRSIDivergence(prices, period) {
+  if (!prices || prices.length < 40) return null;
+  period = period || 14;
+  // Calcula RSI pra cada ponto (últimos 30 pontos)
+  const windowSize = Math.min(30, prices.length - period - 1);
+  if (windowSize < 10) return null;
+  const rsiValues = [];
+  for (let end = prices.length - windowSize; end <= prices.length; end++) {
+    const slice = prices.slice(0, end);
+    if (slice.length < period + 1) { rsiValues.push(null); continue; }
+    const data = slice.slice(-(period * 3));
+    if (data.length < period + 1) { rsiValues.push(null); continue; }
+    let avgGain = 0, avgLoss = 0;
+    for (let i = 1; i <= period; i++) {
+      const diff = data[i] - data[i - 1];
+      if (diff > 0) avgGain += diff; else avgLoss -= diff;
+    }
+    avgGain /= period; avgLoss /= period;
+    for (let i = period + 1; i < data.length; i++) {
+      const diff = data[i] - data[i - 1];
+      if (diff > 0) { avgGain = (avgGain * (period - 1) + diff) / period; avgLoss = (avgLoss * (period - 1)) / period; }
+      else { avgGain = (avgGain * (period - 1)) / period; avgLoss = (avgLoss * (period - 1) - diff) / period; }
+    }
+    rsiValues.push(avgLoss === 0 ? 100 : 100 - (100 / (1 + avgGain / avgLoss)));
+  }
+  // Alinha preços com RSI
+  const pSlice = prices.slice(prices.length - rsiValues.length);
+  if (pSlice.length < 10 || rsiValues.length < 10) return null;
+  // Encontra mínimas e máximas locais nos últimos ~20 pontos
+  const lookback = Math.min(20, pSlice.length - 2);
+  const start = pSlice.length - lookback;
+  const priceLows = [], priceHighs = [], rsiLows = [], rsiHighs = [];
+  for (let i = start + 1; i < pSlice.length - 1; i++) {
+    if (rsiValues[i] === null) continue;
+    // Mínima local
+    if (pSlice[i] <= pSlice[i - 1] && pSlice[i] <= pSlice[i + 1]) {
+      priceLows.push({ idx: i, price: pSlice[i], rsi: rsiValues[i] });
+    }
+    // Máxima local
+    if (pSlice[i] >= pSlice[i - 1] && pSlice[i] >= pSlice[i + 1]) {
+      priceHighs.push({ idx: i, price: pSlice[i], rsi: rsiValues[i] });
+    }
+  }
+  let bullishDiv = false, bearishDiv = false;
+  let bullishStrength = 0, bearishStrength = 0;
+  // Bullish: preço faz lower low mas RSI faz higher low
+  if (priceLows.length >= 2) {
+    const recent = priceLows[priceLows.length - 1];
+    const prev = priceLows[priceLows.length - 2];
+    if (recent.price < prev.price && recent.rsi > prev.rsi) {
+      bullishDiv = true;
+      // Força: quanto maior a divergência, mais forte o sinal
+      bullishStrength = Math.abs(recent.rsi - prev.rsi);
+    }
+  }
+  // Bearish: preço faz higher high mas RSI faz lower high
+  if (priceHighs.length >= 2) {
+    const recent = priceHighs[priceHighs.length - 1];
+    const prev = priceHighs[priceHighs.length - 2];
+    if (recent.price > prev.price && recent.rsi < prev.rsi) {
+      bearishDiv = true;
+      bearishStrength = Math.abs(prev.rsi - recent.rsi);
+    }
+  }
+  if (!bullishDiv && !bearishDiv) return null;
+  return { bullish: bullishDiv, bearish: bearishDiv, bullishStrength: Math.round(bullishStrength), bearishStrength: Math.round(bearishStrength) };
+}
+
+// Fibonacci Retracement: calcula níveis a partir do swing high/low recente
+function calcFibonacciLevels(prices) {
+  if (!prices || prices.length < 20) return null;
+  // Encontra o swing high e swing low nos dados
+  let swingHigh = -Infinity, swingLow = Infinity;
+  let highIdx = 0, lowIdx = 0;
+  for (let i = 0; i < prices.length; i++) {
+    if (prices[i] > swingHigh) { swingHigh = prices[i]; highIdx = i; }
+    if (prices[i] < swingLow) { swingLow = prices[i]; lowIdx = i; }
+  }
+  if (swingHigh === swingLow) return null;
+  const range = swingHigh - swingLow;
+  const current = prices[prices.length - 1];
+  // Direção do swing: se o high veio antes do low = downtrend (retrace pra cima)
+  const isDowntrend = highIdx < lowIdx;
+  // Níveis de Fibonacci
+  const levels = {
+    '0': isDowntrend ? swingLow : swingHigh,
+    '0.236': isDowntrend ? swingLow + range * 0.236 : swingHigh - range * 0.236,
+    '0.382': isDowntrend ? swingLow + range * 0.382 : swingHigh - range * 0.382,
+    '0.5': isDowntrend ? swingLow + range * 0.5 : swingHigh - range * 0.5,
+    '0.618': isDowntrend ? swingLow + range * 0.618 : swingHigh - range * 0.618,
+    '0.786': isDowntrend ? swingLow + range * 0.786 : swingHigh - range * 0.786,
+    '1': isDowntrend ? swingHigh : swingLow
+  };
+  // Encontra o nível mais próximo do preço atual
+  let nearestLevel = null, nearestDist = Infinity, nearestName = '';
+  for (const [name, level] of Object.entries(levels)) {
+    const dist = Math.abs(current - level) / current * 100;
+    if (dist < nearestDist) { nearestDist = dist; nearestLevel = level; nearestName = name; }
+  }
+  // Próximo suporte e resistência Fibonacci
+  const fibSupports = Object.entries(levels).filter(([, v]) => v < current).sort((a, b) => b[1] - a[1]);
+  const fibResistances = Object.entries(levels).filter(([, v]) => v > current).sort((a, b) => a[1] - b[1]);
+  return {
+    levels,
+    isDowntrend,
+    swingHigh, swingLow,
+    nearestLevel, nearestDist: Math.round(nearestDist * 10) / 10, nearestName,
+    fibSupport: fibSupports[0] ? { name: fibSupports[0][0], price: fibSupports[0][1] } : null,
+    fibResistance: fibResistances[0] ? { name: fibResistances[0][0], price: fibResistances[0][1] } : null
+  };
+}
+
+// ATR (Average True Range): mede a volatilidade real pra stops dinâmicos
+// No sparkline (preços horários), calcula o range médio entre pontos consecutivos
+function calcATR(prices, period) {
+  if (!prices || prices.length < (period || 14) + 1) return null;
+  period = period || 14;
+  // True Range simplificado pro sparkline (não temos OHLC, apenas close)
+  // Usa |close[i] - close[i-1]| como proxy do True Range
+  const trs = [];
+  for (let i = 1; i < prices.length; i++) {
+    trs.push(Math.abs(prices[i] - prices[i - 1]));
+  }
+  if (trs.length < period) return null;
+  // ATR com suavização exponencial (Wilder)
+  let atr = 0;
+  for (let i = 0; i < period; i++) atr += trs[i];
+  atr /= period;
+  for (let i = period; i < trs.length; i++) {
+    atr = (atr * (period - 1) + trs[i]) / period;
+  }
+  const current = prices[prices.length - 1];
+  // ATR em % do preço atual
+  const atrPct = current > 0 ? (atr / current) * 100 : 0;
+  // Stop dinâmico: 2x ATR (padrão Chandelier Exit)
+  const stopDistance = atr * 2;
+  const stopPct = atrPct * 2;
+  // Target: 3x ATR (ratio 1.5:1 mínimo)
+  const targetDistance = atr * 3;
+  const targetPct = atrPct * 3;
+  return {
+    atr: Math.round(atr * 100) / 100,
+    atrPct: Math.round(atrPct * 100) / 100,
+    stopDistance: Math.round(stopDistance * 100) / 100,
+    stopPct: Math.round(stopPct * 100) / 100,
+    stopPrice: Math.round((current - stopDistance) * 100) / 100,
+    targetDistance: Math.round(targetDistance * 100) / 100,
+    targetPct: Math.round(targetPct * 100) / 100,
+    targetPrice: Math.round((current + targetDistance) * 100) / 100
+  };
 }
 
 // EMA Crossover (Golden/Death Cross) do sparkline
@@ -2358,6 +2545,60 @@ function calcBuyScore(p, dropThresh, pos) {
     }
   }
 
+  // === DIVERGÊNCIA RSI (sinal mais confiável de reversão) ===
+  if (p.sparkline && p.sparkline.length > 40) {
+    const div = calcRSIDivergence(p.sparkline, 14);
+    if (div) {
+      if (div.bullish) {
+        const bonus = div.bullishStrength > 10 ? 15 : div.bullishStrength > 5 ? 12 : 8;
+        score += Math.round(bonus * aw.rsi);
+        reasons.push(`🔥 Divergência RSI bullish (força ${div.bullishStrength}) — preço caiu mas RSI subiu`);
+        confluenceSignals.push(1);
+      }
+      if (div.bearish) {
+        score -= Math.round(8 * aw.rsi);
+        reasons.push(`⚠️ Divergência RSI bearish — preço subiu mas RSI caiu`);
+        confluenceSignals.push(-1);
+      }
+    }
+  }
+
+  // === FIBONACCI RETRACEMENT ===
+  if (p.sparkline && p.sparkline.length > 20) {
+    const fib = calcFibonacciLevels(p.sparkline);
+    if (fib) {
+      // Perto de um nível Fibonacci de suporte = zona de compra
+      if (fib.fibSupport && fib.nearestDist < 2) {
+        const level = (parseFloat(fib.nearestName) * 100).toFixed(1);
+        if (fib.nearestName === '0.618' || fib.nearestName === '0.5') {
+          score += 10; reasons.push(`📐 No nível Fibonacci ${level}% (zona dourada de retração)`);
+          confluenceSignals.push(1);
+        } else if (fib.nearestName === '0.382' || fib.nearestName === '0.786') {
+          score += 6; reasons.push(`📐 Perto do nível Fibonacci ${level}%`);
+        }
+      }
+      // Perto de resistência Fibonacci forte = cuidado ao comprar
+      if (fib.fibResistance && fib.nearestDist < 1 && (fib.nearestName === '0.618' || fib.nearestName === '0.786')) {
+        score -= 4; reasons.push(`⚠️ Resistência Fibonacci ${(parseFloat(fib.nearestName) * 100).toFixed(1)}% logo acima`);
+      }
+    }
+  }
+
+  // === ATR (volatilidade real pra stops dinâmicos) ===
+  if (p.sparkline && p.sparkline.length > 15) {
+    const atrData = calcATR(p.sparkline, 14);
+    if (atrData) {
+      // Alta volatilidade = precisa de mais espaço pro trade, mas oportunidade maior
+      if (atrData.atrPct > 5) {
+        score += 3; reasons.push(`Volatilidade alta (ATR ${atrData.atrPct.toFixed(1)}%) — mais espaço pro trade`);
+      }
+      // Volatilidade muito baixa = possível breakout (Bollinger squeeze + ATR baixo = explosão)
+      if (atrData.atrPct < 1) {
+        score += 4; reasons.push(`Volatilidade comprimida (ATR ${atrData.atrPct.toFixed(1)}%) — breakout iminente`);
+      }
+    }
+  }
+
   // === MACD ===
   if (p.sparkline && p.sparkline.length > 30) {
     const macd = calcMACD(p.sparkline);
@@ -2616,6 +2857,57 @@ function calcSellScore(p, riseThresh, pos) {
       else if (rsi > 65) { score += 4; }
       else if (rsi < 30) { score -= Math.round(10 * aw.rsi); reasons.push(`⚠️ RSI sobrevendido (${rsi.toFixed(0)}) — arriscado vender agora`); confluenceSignals.push(-1); }
       else if (rsi < 40) { score -= 4; confluenceSignals.push(-1); }
+    }
+  }
+
+  // === DIVERGÊNCIA RSI ===
+  if (p.sparkline && p.sparkline.length > 40) {
+    const div = calcRSIDivergence(p.sparkline, 14);
+    if (div) {
+      if (div.bearish) {
+        const bonus = div.bearishStrength > 10 ? 15 : div.bearishStrength > 5 ? 12 : 8;
+        score += Math.round(bonus * aw.rsi);
+        reasons.push(`🔥 Divergência RSI bearish (força ${div.bearishStrength}) — preço subiu mas RSI caiu`);
+        confluenceSignals.push(1);
+      }
+      if (div.bullish) {
+        score -= Math.round(8 * aw.rsi);
+        reasons.push(`⚠️ Divergência RSI bullish — preço caiu mas RSI subiu, pode reverter`);
+        confluenceSignals.push(-1);
+      }
+    }
+  }
+
+  // === FIBONACCI RETRACEMENT ===
+  if (p.sparkline && p.sparkline.length > 20) {
+    const fib = calcFibonacciLevels(p.sparkline);
+    if (fib) {
+      // Perto de resistência Fibonacci = zona boa pra vender
+      if (fib.fibResistance && fib.nearestDist < 2) {
+        const level = (parseFloat(fib.nearestName) * 100).toFixed(1);
+        if (fib.nearestName === '0.618' || fib.nearestName === '0.786') {
+          score += 10; reasons.push(`📐 Na resistência Fibonacci ${level}% — zona de rejeição`);
+          confluenceSignals.push(1);
+        } else if (fib.nearestName === '0.5' || fib.nearestName === '0.382') {
+          score += 5; reasons.push(`📐 Perto de resistência Fibonacci ${level}%`);
+        }
+      }
+      // Perto de suporte Fibonacci forte = não é hora de vender
+      if (fib.fibSupport && fib.nearestDist < 1 && (fib.nearestName === '0.618' || fib.nearestName === '0.5')) {
+        score -= 5; reasons.push(`⚠️ Suporte Fibonacci ${(parseFloat(fib.nearestName) * 100).toFixed(1)}% logo abaixo — pode segurar`);
+        confluenceSignals.push(-1);
+      }
+    }
+  }
+
+  // === ATR ===
+  if (p.sparkline && p.sparkline.length > 15) {
+    const atrData = calcATR(p.sparkline, 14);
+    if (atrData) {
+      // Volatilidade muito alta = cuidado, pode corrigir
+      if (atrData.atrPct > 5) {
+        score += 4; reasons.push(`Volatilidade alta (ATR ${atrData.atrPct.toFixed(1)}%) — mais risco de correção`);
+      }
     }
   }
 
