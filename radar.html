@@ -1442,7 +1442,7 @@ function renderAccuracy() {
     if (pending > 0) {
       card.hidden = false;
       content.innerHTML = `<div style="text-align:center;padding:8px 0;color:var(--text-muted);font-size:.82rem">
-        ⏳ ${pending} sinal${pending > 1 ? 'is' : ''} em observação — resultados em 24h
+        ⏳ ${pending} sinal${pending > 1 ? 'is' : ''} em observação — resultados em 72h
       </div>`;
     } else { card.hidden = true; }
     return;
@@ -1490,8 +1490,15 @@ function renderAccuracy() {
   }
   const pending = state.signalTracker.filter(s => s.result === null).length;
   if (pending > 0) {
-    statsHtml += `<div style="text-align:center;margin-top:6px;font-size:.68rem;color:var(--text-muted)">⏳ ${pending} sinal${pending > 1 ? 'is' : ''} pendente${pending > 1 ? 's' : ''} (aguardando 24h)</div>`;
+    statsHtml += `<div style="text-align:center;margin-top:6px;font-size:.68rem;color:var(--text-muted)">⏳ ${pending} sinal${pending > 1 ? 'is' : ''} pendente${pending > 1 ? 's' : ''} (aguardando 72h)</div>`;
   }
+  // Botão para resetar acurácia (limpar histórico antigo com regras ruins)
+  statsHtml += `<div style="text-align:center;margin-top:8px">
+    <button onclick="if(confirm('Zerar histórico de acurácia? Os sinais antigos foram gerados com regras menos rigorosas.')){state.signalTracker=[];saveSignalTracker();renderAccuracy();}"
+      style="background:none;border:1px solid var(--border);color:var(--text-muted);font-size:.65rem;padding:3px 10px;border-radius:6px;cursor:pointer">
+      🗑️ Zerar histórico antigo
+    </button>
+  </div>`;
   content.innerHTML = statsHtml;
 }
 
@@ -2813,11 +2820,12 @@ function updateSignalTracker() {
   const now = Date.now();
   let changed = false;
   for (const sig of state.signalTracker) {
-    // Só verifica sinais pendentes com pelo menos 24h
+    // Só verifica sinais pendentes com pelo menos 72h (3 dias)
+    // Sinais técnicos precisam de tempo pra se concretizar
     if (sig.result !== null) continue;
     const signalTime = new Date(sig.date).getTime();
     const hoursSince = (now - signalTime) / (1000 * 60 * 60);
-    if (hoursSince < 24) continue;
+    if (hoursSince < 72) continue;
     // Busca preço atual
     const p = state.prices.crypto[sig.asset] || state.prices.stocks[sig.asset];
     if (!p || !p.price) continue;
@@ -2825,10 +2833,12 @@ function updateSignalTracker() {
     sig.resultPct = Math.round(pctChange * 10) / 10;
     sig.checkedAt = new Date().toISOString().slice(0, 10);
     // Acertou se:
-    // - Sinal de COMPRA e preço subiu ≥1%
-    // - Sinal de VENDA e preço caiu ≥1%
-    if (sig.type === 'buy') sig.result = pctChange >= 1;
-    else sig.result = pctChange <= -1;
+    // - Sinal de COMPRA e preço subiu ≥2% (ruído em crypto é ~1-2%, então 2% é real)
+    // - Sinal de VENDA e preço caiu ≥2%
+    // Para sinais de alta confiança (≥70%), usamos threshold menor (1%) pois são mais frequentes
+    const threshold = sig.probability >= 70 ? 1.5 : 2;
+    if (sig.type === 'buy') sig.result = pctChange >= threshold;
+    else sig.result = pctChange <= -threshold;
     changed = true;
   }
   if (changed) saveSignalTracker();
@@ -2864,9 +2874,14 @@ function detectOpportunities() {
   const riseThresh = state.settings.riseThreshold;
   const newSignals = [];
 
+  // Stablecoins NUNCA geram sinais — são atreladas ao dólar, qualquer sinal é falso
+  const STABLECOINS = new Set(['tether', 'usd-coin', 'dai', 'binance-usd', 'trueusd', 'frax', 'usdd', 'pax-dollar', 'first-digital-usd', 'paypal-usd', 'gemini-dollar', 'tether-gold', 'ethena-usde']);
+
   for (const coin of state.watchlist.crypto) {
     const p = state.prices.crypto[coin.id];
     if (!p) continue;
+    // Filtra stablecoins
+    if (STABLECOINS.has(coin.id) || (p.symbol && ['usdt','usdc','dai','busd','tusd','frax','usdd','usdp','fdusd','pyusd','gusd'].includes(p.symbol.toLowerCase()))) continue;
     const sym = p.symbol.toUpperCase();
     const pos = state.positions[coin.id];
 
@@ -2881,24 +2896,24 @@ function detectOpportunities() {
       const key = oppKey('buy', coin.id, 'score');
       // Combina qualidade do ativo + timing pra dar uma orientação clara
       let title, notif;
-      if (isConviction && prob >= 65) {
-        title = `🚨 COMPRA AGORA: ${sym} — ativo sólido + momento bom (${prob}%)`;
-        notif = `🚨 COMPRA ${sym} ${fmtBRL(p.price)} — ativo sólido E o momento tá bom! Alvo +${targets.target}`;
-      } else if (isConviction && prob >= 45) {
-        title = `🎯 ${sym} ficando interessante — ativo sólido, momento se formando (${prob}%)`;
-        notif = `🎯 ${sym} ${fmtBRL(p.price)} — ativo sólido, momento se formando (${prob}%)`;
+      if (isConviction && prob >= 70) {
+        title = `🚨 COMPRA AGORA: ${sym} — ativo sólido + confluência forte (${prob}%)`;
+        notif = `🚨 COMPRA ${sym} ${fmtBRL(p.price)} — ativo sólido E confluência forte! Alvo +${targets.target}`;
+      } else if (isConviction && prob >= 55) {
+        title = `🎯 ${sym} ficando interessante — ativo sólido, sinais se alinhando (${prob}%)`;
+        notif = `🎯 ${sym} ${fmtBRL(p.price)} — ativo sólido, sinais se alinhando (${prob}%)`;
       } else if (isConviction) {
-        title = `👀 ${sym} no radar — ativo sólido, mas não é hora de comprar (${prob}%)`;
-        notif = `👀 ${sym} ${fmtBRL(p.price)} — ativo sólido, mas timing fraco (${prob}%)`;
-      } else if (prob >= 70) {
-        title = `🚨 SINAL FORTE de trade: ${sym} (${prob}%) — arriscado, mas o momento compensa`;
+        title = `👀 ${sym} no radar — ativo sólido, confluência fraca (${prob}%)`;
+        notif = `👀 ${sym} ${fmtBRL(p.price)} — ativo sólido, mas confluência fraca (${prob}%)`;
+      } else if (prob >= 75) {
+        title = `🚨 SINAL FORTE: ${sym} (${prob}%) — múltiplos indicadores confirmam`;
         notif = `🚨 Trade ${sym} ${fmtBRL(p.price)} — sinal forte (${prob}%)! Alvo +${targets.target}, stop -${targets.stop}`;
-      } else if (prob >= 45) {
-        title = `🟢 Sinal de trade: ${sym} (${prob}%) — arriscado, fique atento`;
-        notif = `🟢 Trade ${sym} ${fmtBRL(p.price)} — sinal razoável (${prob}%)`;
+      } else if (prob >= 60) {
+        title = `🟢 Sinal de trade: ${sym} (${prob}%) — confluência moderada`;
+        notif = `🟢 Trade ${sym} ${fmtBRL(p.price)} — sinal moderado (${prob}%)`;
       } else {
-        title = `👀 ${sym} no radar (${prob}%) — arriscado e momento fraco, só observar`;
-        notif = `👀 ${sym} ${fmtBRL(p.price)} — movimento fraco (${prob}%), só acompanhar`;
+        title = `👀 ${sym} no radar (${prob}%) — poucos indicadores confirmam`;
+        notif = `👀 ${sym} ${fmtBRL(p.price)} — sinal fraco (${prob}%), só observar`;
       }
       if (tier === 'satellite') title += ' · posição pequena';
       // Kelly Criterion: sugere tamanho ideal da posição
@@ -2920,12 +2935,12 @@ function detectOpportunities() {
       const prob = sellScore.total;
       const key = oppKey('sell', coin.id, 'score');
       let sellTitle;
-      if (prob >= 70) {
-        sellTitle = `🚨 VENDA AGORA: ${sym} — sinal forte (${prob}%)`;
-      } else if (prob >= 45) {
+      if (prob >= 75) {
+        sellTitle = `🚨 VENDA AGORA: ${sym} — confluência forte (${prob}%)`;
+      } else if (prob >= 60) {
         sellTitle = `🔴 ${sym} esticado — considere vender (${prob}%)`;
       } else {
-        sellTitle = `🟡 ${sym} subindo — fique atento (${prob}%)`;
+        sellTitle = `🟡 ${sym} subindo — poucos indicadores (${prob}%)`;
       }
       if (tier === 'high') sellTitle += ' · ativo sólido: só pra trade de curto prazo';
       const opp = {
@@ -3118,14 +3133,14 @@ function detectOpportunities() {
     addToHistory(opp);
     showToast({ type: opp.type, title: opp.title, msg: opp.desc });
 
-    // Registra sinal no tracker de acurácia (só sinais ≥45%)
-    if (opp.probability >= 45 && (opp.type === 'buy' || opp.type === 'sell')) {
+    // Registra sinal no tracker de acurácia (só sinais ≥55% — sinais fracos são ruído)
+    if (opp.probability >= 55 && (opp.type === 'buy' || opp.type === 'sell')) {
       trackSignal(opp);
     }
 
-    // Notificação push: só sinais fortes (≥60%).
+    // Notificação push: só sinais com confluência real (≥65%).
     const isPositionAlert = opp.key.includes(':loss:') || opp.key.includes(':profit:');
-    const minPushThreshold = isPositionAlert ? 55 : 60;
+    const minPushThreshold = isPositionAlert ? 55 : 65;
     const shouldPush = opp.probability >= minPushThreshold;
 
     if (shouldPush && state.settings.notifications && 'Notification' in window && Notification.permission === 'granted') {
@@ -3186,9 +3201,13 @@ function calcBuyScore(p, dropThresh, pos) {
   // === PREÇO: Perto da mínima do dia ===
   if (p.low24h && p.price && p.low24h > 0) {
     const dist = ((p.price - p.low24h) / p.low24h) * 100;
-    if (dist < 1) { score += 12; reasons.push('Na mínima do dia!'); confluenceSignals.push(1); }
-    else if (dist < 3) { score += 8; reasons.push(`Perto da mínima (${dist.toFixed(1)}% acima)`); }
-    else if (dist < 5) { score += 4; }
+    // Só é relevante se a mínima é significativamente abaixo (>2% de range), senão é ruído
+    const range24h = p.high24h && p.high24h > 0 ? ((p.high24h - p.low24h) / p.low24h) * 100 : 0;
+    if (range24h > 2) {
+      if (dist < 0.5) { score += 8; reasons.push('Na mínima do dia!'); confluenceSignals.push(1); }
+      else if (dist < 2) { score += 5; reasons.push(`Perto da mínima (${dist.toFixed(1)}% acima)`); }
+      else if (dist < 4) { score += 2; }
+    }
   }
 
   // === TENDÊNCIA: 7 dias ===
@@ -3404,8 +3423,9 @@ function calcBuyScore(p, dropThresh, pos) {
   // === MULTI-TIMEFRAME ALIGNMENT ===
   const tf = calcTimeframeAlignment(p.change1h, p.change24h, p.change7d);
   if (tf.aligned && tf.direction === 'bear' && tf.strength >= 3) {
-    score += 6; reasons.push('Queda confirmada em todas as janelas (1h, 24h, 7d)');
-    confluenceSignals.push(1);
+    // TUDO caindo = falling knife, NÃO comprar! Penaliza fortemente.
+    score -= 10; reasons.push('⚠️ Queda em TODAS as janelas (1h, 24h, 7d) — falling knife, aguarde reversão');
+    confluenceSignals.push(-1);
   } else if (tf.aligned && tf.direction === 'bull' && tf.strength >= 3) {
     score -= 6; reasons.push('⚠️ Alta confirmada em todas as janelas — compra tardia');
     confluenceSignals.push(-1);
@@ -3462,12 +3482,19 @@ function calcBuyScore(p, dropThresh, pos) {
     } else if (conf.bullish >= 3 && conf.bearish <= 1) {
       score += Math.round(6 * aw.confluence); reasons.push(`📊 ${conf.bullish}/${conf.total} indicadores positivos`);
     } else if (conf.bearish >= 4) {
-      score -= Math.round(10 * aw.confluence); reasons.push(`⚠️ ${conf.bearish}/${conf.total} indicadores contra — sinal muito fraco`);
+      score -= Math.round(15 * aw.confluence); reasons.push(`⛔ ${conf.bearish}/${conf.total} indicadores contra — sinal muito fraco`);
     } else if (conf.bearish >= 3) {
-      score -= Math.round(8 * aw.confluence); reasons.push(`⚠️ ${conf.bearish}/${conf.total} indicadores contra — sinal fraco`);
+      score -= Math.round(12 * aw.confluence); reasons.push(`⚠️ ${conf.bearish}/${conf.total} indicadores contra — sinal fraco`);
     } else if (conf.bullish === conf.bearish) {
-      score -= 4; reasons.push(`📊 Sinais mistos (${conf.bullish} pró, ${conf.bearish} contra)`);
+      score -= 6; reasons.push(`📊 Sinais mistos (${conf.bullish} pró, ${conf.bearish} contra) — indeciso`);
     }
+  }
+
+  // === GATE DE QUALIDADE: exige mínimo de confluência bullish ===
+  // Sem pelo menos 2 indicadores concordando, o sinal é ruído
+  if (conf.total >= 3 && conf.bullish < 2) {
+    score = Math.min(score, 30); // Força abaixo do threshold de display
+    reasons.push('⛔ Confluência insuficiente — menos de 2 indicadores confirmam');
   }
 
   // === ADAPTIVE BIAS: ajusta score final baseado na acurácia histórica ===
@@ -3476,7 +3503,8 @@ function calcBuyScore(p, dropThresh, pos) {
   }
 
   score = Math.max(0, Math.min(95, Math.round(score)));
-  if (score < 25) return { total: 0, reasons: [] };
+  // Threshold mínimo elevado: precisa de 40+ pra aparecer como sinal
+  if (score < 40) return { total: 0, reasons: [] };
   return { total: score, reasons };
 }
 
@@ -3753,12 +3781,18 @@ function calcSellScore(p, riseThresh, pos) {
     } else if (conf.bullish >= 3 && conf.bearish <= 1) {
       score += Math.round(6 * aw.confluence); reasons.push(`📊 ${conf.bullish}/${conf.total} indicadores de venda`);
     } else if (conf.bearish >= 4) {
-      score -= Math.round(10 * aw.confluence); reasons.push(`⚠️ ${conf.bearish}/${conf.total} indicadores contra a venda`);
+      score -= Math.round(15 * aw.confluence); reasons.push(`⛔ ${conf.bearish}/${conf.total} indicadores contra a venda — sinal muito fraco`);
     } else if (conf.bearish >= 3) {
-      score -= Math.round(8 * aw.confluence); reasons.push(`⚠️ ${conf.bearish}/${conf.total} indicadores contra a venda`);
+      score -= Math.round(12 * aw.confluence); reasons.push(`⚠️ ${conf.bearish}/${conf.total} indicadores contra a venda`);
     } else if (conf.bullish === conf.bearish) {
-      score -= 4; reasons.push(`📊 Sinais mistos (${conf.bullish} pró, ${conf.bearish} contra)`);
+      score -= 6; reasons.push(`📊 Sinais mistos (${conf.bullish} pró, ${conf.bearish} contra) — indeciso`);
     }
+  }
+
+  // === GATE DE QUALIDADE: exige confluência mínima ===
+  if (conf.total >= 3 && conf.bullish < 2) {
+    score = Math.min(score, 30);
+    reasons.push('⛔ Confluência insuficiente — menos de 2 indicadores confirmam');
   }
 
   // === ADAPTIVE BIAS ===
@@ -3767,7 +3801,7 @@ function calcSellScore(p, riseThresh, pos) {
   }
 
   score = Math.max(0, Math.min(95, Math.round(score)));
-  if (score < 25) return { total: 0, reasons: [] };
+  if (score < 40) return { total: 0, reasons: [] };
   return { total: score, reasons };
 }
 
@@ -4061,16 +4095,22 @@ function calcStockBuyScore(p, dropThresh, pos) {
     else if (conf.bullish >= 4) { score += Math.round(10 * aw.confluence); reasons.push(`📊 ${conf.bullish}/${conf.total} indicadores confirmam compra`); }
     else if (conf.bullish >= 3 && conf.bearish <= 1) { score += Math.round(6 * aw.confluence); reasons.push(`📊 ${conf.bullish}/${conf.total} indicadores positivos`); }
     else if (conf.bearish >= 5) { score -= Math.round(12 * aw.confluence); reasons.push(`⚠️ ${conf.bearish}/${conf.total} indicadores contra — muito arriscado`); }
-    else if (conf.bearish >= 4) { score -= Math.round(10 * aw.confluence); reasons.push(`⚠️ ${conf.bearish}/${conf.total} indicadores contra — sinal muito fraco`); }
-    else if (conf.bearish >= 3) { score -= Math.round(8 * aw.confluence); reasons.push(`⚠️ ${conf.bearish}/${conf.total} indicadores contra`); }
-    else if (conf.bullish === conf.bearish) { score -= 4; reasons.push(`📊 Sinais mistos (${conf.bullish} pró, ${conf.bearish} contra)`); }
+    else if (conf.bearish >= 4) { score -= Math.round(15 * aw.confluence); reasons.push(`⛔ ${conf.bearish}/${conf.total} indicadores contra — sinal muito fraco`); }
+    else if (conf.bearish >= 3) { score -= Math.round(12 * aw.confluence); reasons.push(`⚠️ ${conf.bearish}/${conf.total} indicadores contra`); }
+    else if (conf.bullish === conf.bearish) { score -= 6; reasons.push(`📊 Sinais mistos (${conf.bullish} pró, ${conf.bearish} contra) — indeciso`); }
+  }
+
+  // === GATE DE QUALIDADE ===
+  if (conf.total >= 3 && conf.bullish < 2) {
+    score = Math.min(score, 30);
+    reasons.push('⛔ Confluência insuficiente — menos de 2 indicadores confirmam');
   }
 
   // === ADAPTIVE BIAS ===
   if (aw.buyBias && aw.buyBias !== 1) { score = Math.round(score * aw.buyBias); }
 
   score = Math.max(0, Math.min(95, Math.round(score)));
-  if (score < 25) return { total: 0, reasons: [] };
+  if (score < 40) return { total: 0, reasons: [] };
   return { total: score, reasons };
 }
 
@@ -4326,17 +4366,23 @@ function calcStockSellScore(p, riseThresh, pos) {
     else if (conf.bullish >= 5) { score += Math.round(12 * aw.confluence); reasons.push(`📊 ${conf.bullish}/${conf.total} indicadores confirmam venda — confluência forte`); }
     else if (conf.bullish >= 4) { score += Math.round(10 * aw.confluence); reasons.push(`📊 ${conf.bullish}/${conf.total} indicadores confirmam venda`); }
     else if (conf.bullish >= 3 && conf.bearish <= 1) { score += Math.round(6 * aw.confluence); reasons.push(`📊 ${conf.bullish}/${conf.total} sinais de venda`); }
-    else if (conf.bearish >= 5) { score -= Math.round(12 * aw.confluence); reasons.push(`⚠️ ${conf.bearish}/${conf.total} indicadores contra venda — muito arriscado`); }
-    else if (conf.bearish >= 4) { score -= Math.round(10 * aw.confluence); reasons.push(`⚠️ ${conf.bearish}/${conf.total} indicadores contra venda`); }
-    else if (conf.bearish >= 3) { score -= Math.round(8 * aw.confluence); reasons.push(`⚠️ ${conf.bearish}/${conf.total} indicadores contra`); }
-    else if (conf.bullish === conf.bearish) { score -= 4; reasons.push(`📊 Sinais mistos (${conf.bullish} pró, ${conf.bearish} contra)`); }
+    else if (conf.bearish >= 5) { score -= Math.round(15 * aw.confluence); reasons.push(`⛔ ${conf.bearish}/${conf.total} indicadores contra venda — muito arriscado`); }
+    else if (conf.bearish >= 4) { score -= Math.round(12 * aw.confluence); reasons.push(`⚠️ ${conf.bearish}/${conf.total} indicadores contra venda`); }
+    else if (conf.bearish >= 3) { score -= Math.round(10 * aw.confluence); reasons.push(`⚠️ ${conf.bearish}/${conf.total} indicadores contra`); }
+    else if (conf.bullish === conf.bearish) { score -= 6; reasons.push(`📊 Sinais mistos (${conf.bullish} pró, ${conf.bearish} contra) — indeciso`); }
+  }
+
+  // === GATE DE QUALIDADE ===
+  if (conf.total >= 3 && conf.bullish < 2) {
+    score = Math.min(score, 30);
+    reasons.push('⛔ Confluência insuficiente — menos de 2 indicadores confirmam');
   }
 
   // === ADAPTIVE BIAS ===
   if (aw.sellBias && aw.sellBias !== 1) { score = Math.round(score * aw.sellBias); }
 
   score = Math.max(0, Math.min(95, Math.round(score)));
-  if (score < 25) return { total: 0, reasons: [] };
+  if (score < 40) return { total: 0, reasons: [] };
   return { total: score, reasons };
 }
 
