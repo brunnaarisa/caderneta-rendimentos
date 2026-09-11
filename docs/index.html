@@ -1015,8 +1015,27 @@ function suggestTargets(assetClass, coinId) {
 // Service Worker pra notificações funcionarem no celular
 let swRegistration = null;
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').then(reg => {
+  // Força update do SW toda vez que o app abre
+  navigator.serviceWorker.getRegistrations().then(regs => {
+    regs.forEach(r => r.update());
+  });
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
     swRegistration = reg;
+    // Se tem SW esperando ativar, força ativação imediata
+    if (reg.waiting) {
+      reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+    }
+    reg.addEventListener('updatefound', () => {
+      const newWorker = reg.installing;
+      if (newWorker) {
+        newWorker.addEventListener('statechange', () => {
+          if (newWorker.state === 'activated') {
+            debugLog('SW atualizado! Recarregando...');
+            window.location.reload();
+          }
+        });
+      }
+    });
     debugLog('Service Worker registrado');
     // Periodic Background Sync: checar preços com app fechado (Chrome Android)
     if ('periodicSync' in reg) {

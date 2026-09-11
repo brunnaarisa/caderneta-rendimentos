@@ -18,6 +18,13 @@ self.addEventListener('install', function(event) {
   );
 });
 
+// Responde a SKIP_WAITING da página
+self.addEventListener('message', function(event) {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 // Ativa: limpa caches antigos
 self.addEventListener('activate', function(event) {
   event.waitUntil(
