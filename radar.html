@@ -1,10 +1,11 @@
 <title>Radar de Oportunidades</title>
 <script>
-// Nuclear cache-buster v6: limpa TUDO se versão antiga
+// Cache-buster v7: limpa SWs e caches HTTP, mas PRESERVA localStorage (tokens, watchlist, etc.)
 (function(){
-  var V = 'radar-v6';
+  var V = 'radar-v7';
   try {
     if (localStorage.getItem('_radar_ver') === V) return;
+    // Só limpa caches do Service Worker, NÃO toca no localStorage
     if ('caches' in window) {
       caches.keys().then(function(names) {
         names.forEach(function(n) { caches.delete(n); });
