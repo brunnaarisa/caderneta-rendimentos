@@ -1,4 +1,4 @@
-const CACHE_NAME = 'radar-v5';
+const CACHE_NAME = 'radar-v6';
 const SHELL_URLS = [
   './',
   './index.html',

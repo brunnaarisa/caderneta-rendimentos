@@ -4,6 +4,29 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Radar de Oportunidades</title>
+<script>
+// Nuclear cache-buster v6: limpa TUDO se versão antiga
+(function(){
+  var V = 'radar-v6';
+  try {
+    if (localStorage.getItem('_radar_ver') === V) return;
+    if ('caches' in window) {
+      caches.keys().then(function(names) {
+        names.forEach(function(n) { caches.delete(n); });
+      });
+    }
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(regs) {
+        regs.forEach(function(r) { r.unregister(); });
+        localStorage.setItem('_radar_ver', V);
+        setTimeout(function() { location.reload(true); }, 500);
+      });
+    } else {
+      localStorage.setItem('_radar_ver', V);
+    }
+  } catch(e) {}
+})();
+</script>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0088bb">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -3063,10 +3086,10 @@ function detectOpportunities() {
         title = `🚨 SINAL FORTE de trade: ${ticker} (${prob}%) — arriscado, mas o momento compensa`;
         notif = `🚨 Trade ${ticker} ${fmtBRL(p.price)} — sinal forte (${prob}%)! Alvo +${targets.target}, stop -${targets.stop}`;
       } else if (prob >= 45) {
-        title = `🟢 Sinal de trade: ${ticker} (${prob}%) — arriscado, fique atento`;
+        title = `🟢 Sinal de trade: ${ticker} (${prob}%) — confluência moderada`;
         notif = `🟢 Trade ${ticker} ${fmtBRL(p.price)} — sinal razoável (${prob}%)`;
       } else {
-        title = `👀 ${ticker} no radar (${prob}%) — arriscado e momento fraco, só observar`;
+        title = `👀 ${ticker} no radar (${prob}%) — poucos indicadores, só observar`;
         notif = `👀 ${ticker} ${fmtBRL(p.price)} — movimento fraco (${prob}%), só acompanhar`;
       }
       // Kelly Criterion: sugere tamanho ideal da posição
