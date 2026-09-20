@@ -2884,11 +2884,12 @@ function updateSignalTracker() {
     sig.checkedAt = new Date().toISOString().slice(0, 10);
     // Acertou se:
     // - Sinal de COMPRA e preço subiu ≥2% (ruído em crypto é ~1-2%, então 2% é real)
-    // - Sinal de VENDA e preço caiu ≥2%
-    // Para sinais de alta confiança (≥70%), usamos threshold menor (1%) pois são mais frequentes
-    const threshold = sig.probability >= 70 ? 1.5 : 2;
-    if (sig.type === 'buy') sig.result = pctChange >= threshold;
-    else sig.result = pctChange <= -threshold;
+    // - Sinal de VENDA e preço caiu ≥3% (venda precisa de queda mais forte pra confirmar)
+    // Para sinais de alta confiança (≥70%), thresholds menores
+    const buyThreshold = sig.probability >= 70 ? 1.5 : 2;
+    const sellThreshold = sig.probability >= 70 ? 2 : 3;
+    if (sig.type === 'buy') sig.result = pctChange >= buyThreshold;
+    else sig.result = pctChange <= -sellThreshold;
     changed = true;
   }
   if (changed) saveSignalTracker();
@@ -3590,12 +3591,14 @@ function calcSellScore(p, riseThresh, pos) {
     }
   }
 
-  // === PREÇO: Perto da máxima do dia ===
-  if (p.high24h && p.price && p.high24h > 0) {
-    const dist = ((p.high24h - p.price) / p.high24h) * 100;
-    if (dist < 1) { score += 12; reasons.push('Na máxima do dia!'); confluenceSignals.push(1); }
-    else if (dist < 3) { score += 8; reasons.push(`Perto da máxima (${dist.toFixed(1)}% abaixo)`); }
-    else if (dist < 5) { score += 4; }
+  // === PREÇO: Perto da máxima do dia (só se range significativo) ===
+  if (p.high24h && p.low24h && p.price && p.high24h > 0) {
+    const range24h = ((p.high24h - p.low24h) / p.low24h) * 100;
+    if (range24h > 2) {
+      const dist = ((p.high24h - p.price) / p.high24h) * 100;
+      if (dist < 1) { score += 8; reasons.push('Na máxima do dia!'); confluenceSignals.push(1); }
+      else if (dist < 3) { score += 5; reasons.push(`Perto da máxima (${dist.toFixed(1)}% abaixo)`); }
+    }
   }
 
   // === ATH ===
@@ -3785,10 +3788,12 @@ function calcSellScore(p, riseThresh, pos) {
   // === MULTI-TIMEFRAME ===
   const tf = calcTimeframeAlignment(p.change1h, p.change24h, p.change7d);
   if (tf.aligned && tf.direction === 'bull' && tf.strength >= 3) {
-    score += 6; reasons.push('Alta confirmada em todas as janelas (1h, 24h, 7d)');
-    confluenceSignals.push(1);
+    // Tendência forte de alta em TODAS as janelas = NÃO é hora de vender
+    // Vender contra momentum forte é o erro mais comum
+    score -= 10; reasons.push('⚠️ Alta forte em TODAS as janelas (1h, 24h, 7d) — vender contra momentum é arriscado');
+    confluenceSignals.push(-1);
   } else if (tf.aligned && tf.direction === 'bear' && tf.strength >= 3) {
-    score -= 6; reasons.push('⚠️ Queda confirmada em todas as janelas — venda tardia');
+    score -= 8; reasons.push('⚠️ Queda em todas as janelas — venda tardia, já caiu');
     confluenceSignals.push(-1);
   }
 
@@ -3839,10 +3844,25 @@ function calcSellScore(p, riseThresh, pos) {
     }
   }
 
-  // === GATE DE QUALIDADE: exige confluência mínima ===
-  if (conf.total >= 3 && conf.bullish < 2) {
+  // === GATE DE QUALIDADE: exige confluência mínima (mais rigoroso pra venda) ===
+  if (conf.total >= 3 && conf.bullish < 3) {
     score = Math.min(score, 30);
-    reasons.push('⛔ Confluência insuficiente — menos de 2 indicadores confirmam');
+    reasons.push('⛔ Confluência insuficiente — menos de 3 indicadores confirmam venda');
+  }
+
+  // === GATE DE REVERSÃO: pelo menos 1 indicador técnico de topo/reversão ===
+  // Sem sinal de reversão, é só "subiu muito" — não é motivo pra vender
+  const hasReversal = confluenceSignals.length > 0 && reasons.some(r =>
+    r.includes('RSI') && (r.includes('sobrecomprado') || r.includes('extremo')) ||
+    r.includes('Death Cross') ||
+    r.includes('Divergência RSI bearish') ||
+    r.includes('MACD cruzou pra baixo') ||
+    r.includes('Bollinger superior') ||
+    r.includes('Estocástico') && (r.includes('sobrecomprado') || r.includes('extremo'))
+  );
+  if (!hasReversal && score > 35) {
+    score = Math.min(score, 35);
+    reasons.push('⚠️ Nenhum indicador de reversão (RSI/MACD/Bollinger/Estocástico) — só alta de preço não é sinal de venda');
   }
 
   // === ADAPTIVE BIAS ===
@@ -3851,7 +3871,7 @@ function calcSellScore(p, riseThresh, pos) {
   }
 
   score = Math.max(0, Math.min(95, Math.round(score)));
-  if (score < 40) return { total: 0, reasons: [] };
+  if (score < 45) return { total: 0, reasons: [] };
   return { total: score, reasons };
 }
 
@@ -4181,12 +4201,14 @@ function calcStockSellScore(p, riseThresh, pos) {
     confluenceSignals.push(1);
   }
 
-  // === PREÇO: Perto da máxima do dia ===
-  if (p.high && p.price && p.high > 0) {
-    const dist = ((p.high - p.price) / p.high) * 100;
-    if (dist < 0.5) { score += 12; reasons.push('Na máxima do dia!'); confluenceSignals.push(1); }
-    else if (dist < 1.5) { score += 8; reasons.push('Perto da máxima'); }
-    else if (dist < 3) { score += 4; }
+  // === PREÇO: Perto da máxima do dia (só se range significativo) ===
+  if (p.high && p.low && p.price && p.high > 0 && p.low > 0) {
+    const rangeDay = ((p.high - p.low) / p.low) * 100;
+    if (rangeDay > 2) {
+      const dist = ((p.high - p.price) / p.high) * 100;
+      if (dist < 0.5) { score += 8; reasons.push('Na máxima do dia!'); confluenceSignals.push(1); }
+      else if (dist < 1.5) { score += 5; reasons.push('Perto da máxima'); }
+    }
   }
 
   // === GAP de abertura ===
@@ -4422,17 +4444,33 @@ function calcStockSellScore(p, riseThresh, pos) {
     else if (conf.bullish === conf.bearish) { score -= 6; reasons.push(`📊 Sinais mistos (${conf.bullish} pró, ${conf.bearish} contra) — indeciso`); }
   }
 
-  // === GATE DE QUALIDADE ===
-  if (conf.total >= 3 && conf.bullish < 2) {
+  // === GATE DE QUALIDADE (mais rigoroso pra venda) ===
+  if (conf.total >= 3 && conf.bullish < 3) {
     score = Math.min(score, 30);
-    reasons.push('⛔ Confluência insuficiente — menos de 2 indicadores confirmam');
+    reasons.push('⛔ Confluência insuficiente — menos de 3 indicadores confirmam venda');
+  }
+
+  // === GATE DE REVERSÃO: pelo menos 1 indicador técnico de topo/reversão ===
+  const hasReversal = confluenceSignals.length > 0 && reasons.some(r =>
+    r.includes('RSI') && (r.includes('sobrecomprado') || r.includes('extremo')) ||
+    r.includes('Death Cross') || r.includes('🔥 Death Cross') ||
+    r.includes('Divergência RSI bearish') ||
+    r.includes('MACD cruzou pra baixo') ||
+    r.includes('Bollinger superior') ||
+    r.includes('Estocástico sobrecomprado') ||
+    r.includes('OBV divergência bearish') ||
+    (r.includes('🕯️') && r.includes('bearish'))
+  );
+  if (!hasReversal && score > 35) {
+    score = Math.min(score, 35);
+    reasons.push('⚠️ Nenhum indicador de reversão — só alta de preço não é sinal de venda');
   }
 
   // === ADAPTIVE BIAS ===
   if (aw.sellBias && aw.sellBias !== 1) { score = Math.round(score * aw.sellBias); }
 
   score = Math.max(0, Math.min(95, Math.round(score)));
-  if (score < 40) return { total: 0, reasons: [] };
+  if (score < 45) return { total: 0, reasons: [] };
   return { total: score, reasons };
 }
 
