@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Radar de Oportunidades</title>
 <script>
-// Cache-buster v7: limpa SWs e caches HTTP, mas PRESERVA localStorage (tokens, watchlist, etc.)
+// Cache-buster v8: limpa SW + cache + força reload com query param pra burlar CDN
 (function(){
-  var V = 'radar-v7';
+  var V = 'radar-v8';
   try {
     if (localStorage.getItem('_radar_ver') === V) return;
-    // Só limpa caches do Service Worker, NÃO toca no localStorage
+    // Limpa caches do Service Worker
     if ('caches' in window) {
       caches.keys().then(function(names) {
         names.forEach(function(n) { caches.delete(n); });
@@ -20,10 +20,14 @@
       navigator.serviceWorker.getRegistrations().then(function(regs) {
         regs.forEach(function(r) { r.unregister(); });
         localStorage.setItem('_radar_ver', V);
-        setTimeout(function() { location.reload(true); }, 500);
+        // Reload com timestamp na URL pra burlar cache do CDN/browser
+        var url = location.href.split('?')[0] + '?_cb=' + Date.now();
+        setTimeout(function() { location.replace(url); }, 300);
       });
     } else {
       localStorage.setItem('_radar_ver', V);
+      var url = location.href.split('?')[0] + '?_cb=' + Date.now();
+      location.replace(url);
     }
   } catch(e) {}
 })();
