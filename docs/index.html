@@ -5,11 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Radar de Oportunidades</title>
 <script>
-// Cache-buster v8: limpa SW + cache + força reload com query param pra burlar CDN
+// Cache-buster v9: limpa SW + cache + histórico de sinais antigos + força reload
 (function(){
-  var V = 'radar-v8';
+  var V = 'radar-v9';
   try {
     if (localStorage.getItem('_radar_ver') === V) return;
+    // Limpa histórico de sinais antigos (gerados com regras menos rigorosas)
+    localStorage.removeItem('radar_signal_tracker');
     // Limpa caches do Service Worker
     if ('caches' in window) {
       caches.keys().then(function(names) {
@@ -20,7 +22,6 @@
       navigator.serviceWorker.getRegistrations().then(function(regs) {
         regs.forEach(function(r) { r.unregister(); });
         localStorage.setItem('_radar_ver', V);
-        // Reload com timestamp na URL pra burlar cache do CDN/browser
         var url = location.href.split('?')[0] + '?_cb=' + Date.now();
         setTimeout(function() { location.replace(url); }, 300);
       });
