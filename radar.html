@@ -1540,10 +1540,10 @@ function renderAccuracy() {
     statsHtml += `<div style="text-align:center;margin-top:6px;font-size:.68rem;color:var(--text-muted)">⏳ ${pending} sinal${pending > 1 ? 'is' : ''} pendente${pending > 1 ? 's' : ''} (aguardando 72h)</div>`;
   }
   // Botão para resetar acurácia (limpar histórico antigo com regras ruins)
-  statsHtml += `<div style="text-align:center;margin-top:8px">
-    <button onclick="if(confirm('Zerar histórico de acurácia? Os sinais antigos foram gerados com regras menos rigorosas.')){state.signalTracker=[];saveSignalTracker();renderAccuracy();}"
-      style="background:none;border:1px solid var(--border);color:var(--text-muted);font-size:.65rem;padding:3px 10px;border-radius:6px;cursor:pointer">
-      🗑️ Zerar histórico antigo
+  statsHtml += `<div style="text-align:center;margin-top:12px">
+    <button onclick="if(confirm('Zerar histórico de acurácia?\\n\\nOs sinais antigos foram gerados com regras menos rigorosas. Recomendado após atualizações.')){state.signalTracker=[];saveSignalTracker();renderAccuracy();}"
+      style="background:var(--bg-inset);border:1px solid var(--border);color:var(--text-body);font-size:.78rem;padding:8px 18px;border-radius:8px;cursor:pointer;font-weight:500">
+      🗑️ Zerar histórico de acurácia
     </button>
   </div>`;
   content.innerHTML = statsHtml;
