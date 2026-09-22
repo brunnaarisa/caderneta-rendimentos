@@ -1041,7 +1041,7 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then(regs => {
     regs.forEach(r => r.update());
   });
-  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
+  navigator.serviceWorker.register('sw.js?v=9', { updateViaCache: 'none' }).then(reg => {
     swRegistration = reg;
     // Se tem SW esperando ativar, força ativação imediata
     if (reg.waiting) {
