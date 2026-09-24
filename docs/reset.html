@@ -1,55 +1,100 @@
 <!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>Atualizando Radar...</title>
 <style>
 body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:system-ui;background:#0a1628;color:#fff;text-align:center}
 .box{padding:2rem}
 h2{font-size:1.3rem;margin-bottom:.5rem}
 p{color:#8899aa;font-size:.9rem}
+#status{color:#4fc3f7}
 .spinner{width:40px;height:40px;border:4px solid #223;border-top-color:#4fc3f7;border-radius:50%;animation:spin 1s linear infinite;margin:1.5rem auto}
 @keyframes spin{to{transform:rotate(360deg)}}
+.done{color:#4caf50!important}
 </style>
 </head><body>
 <div class="box">
-<div class="spinner"></div>
+<div class="spinner" id="spin"></div>
 <h2>Atualizando o Radar...</h2>
-<p>Limpando cache e dados antigos.</p>
-<p id="status">Aguarde...</p>
+<p>Limpando tudo para carregar a versão mais recente.</p>
+<p id="status">Iniciando...</p>
 </div>
 <script>
 (async function(){
   var el = document.getElementById('status');
+  var steps = [];
+
   try {
-    // 1. Remove signal tracker antigo
+    // 1. Limpa TODO o localStorage relacionado ao radar
+    el.textContent = '1/4 — Limpando dados antigos...';
     localStorage.removeItem('radar_signal_tracker');
     localStorage.removeItem('_radar_ver');
-    el.textContent = 'Limpando caches...';
+    localStorage.removeItem('radar_debug');
+    steps.push('dados');
 
-    // 2. Limpa todos os caches
+    // 2. Limpa absolutamente todos os caches
+    el.textContent = '2/4 — Limpando caches...';
     if ('caches' in window) {
       var names = await caches.keys();
       for (var i = 0; i < names.length; i++) {
         await caches.delete(names[i]);
       }
+      steps.push(names.length + ' caches');
     }
 
-    // 3. Desregistra todos os Service Workers
+    // 3. Desregistra TODOS os Service Workers e espera confirmar
+    el.textContent = '3/4 — Removendo Service Workers...';
     if ('serviceWorker' in navigator) {
       var regs = await navigator.serviceWorker.getRegistrations();
+      var unregPromises = [];
       for (var i = 0; i < regs.length; i++) {
-        await regs[i].unregister();
+        unregPromises.push(regs[i].unregister());
       }
+      if (unregPromises.length > 0) {
+        await Promise.all(unregPromises);
+        // Espera um pouco pro browser confirmar a remoção
+        await new Promise(function(r){ setTimeout(r, 1000); });
+        // Verifica de novo se realmente foram removidos
+        var regs2 = await navigator.serviceWorker.getRegistrations();
+        if (regs2.length > 0) {
+          for (var j = 0; j < regs2.length; j++) {
+            await regs2[j].unregister();
+          }
+          await new Promise(function(r){ setTimeout(r, 1000); });
+        }
+      }
+      steps.push(regs.length + ' SWs');
     }
 
-    el.textContent = 'Redirecionando...';
+    // 4. Seta a versão correta ANTES de redirecionar
+    // Assim o cache-buster no index.html não vai tentar rodar de novo
+    localStorage.setItem('_radar_ver', 'radar-v9');
 
-    // 4. Redireciona com cache-buster na URL
+    el.textContent = '4/4 — Redirecionando...';
+    el.className = 'done';
+    steps.push('versão v9 definida');
+
+    // 5. Redireciona com timestamp forte pra burlar qualquer cache
+    // Usa fetch com no-cache primeiro pra forçar o servidor a entregar o arquivo novo
+    var targetUrl = './index.html?_nocache=' + Date.now() + '&_r=' + Math.random().toString(36).slice(2);
+
+    try {
+      await fetch(targetUrl, { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } });
+    } catch(e) {}
+
     setTimeout(function(){
-      window.location.replace('./index.html?_reset=' + Date.now());
-    }, 500);
+      window.location.replace(targetUrl);
+    }, 800);
 
   } catch(e) {
-    el.textContent = 'Erro: ' + e.message + '. Tente recarregar.';
+    el.textContent = 'Erro: ' + e.message;
+    el.style.color = '#ff5252';
+    // Mesmo com erro, tenta redirecionar
+    setTimeout(function(){
+      window.location.replace('./index.html?_nocache=' + Date.now());
+    }, 2000);
   }
 })();
 </script>
