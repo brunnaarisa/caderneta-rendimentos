@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Radar de Oportunidades</title>
 <script>
-// Cache-buster v9: limpa SW + cache + histórico de sinais antigos + força reload
+// Cache-buster v10: ajusta sensibilidade do radar + retry de API
 (function(){
-  var V = 'radar-v9';
+  var V = 'radar-v10';
   try {
     if (localStorage.getItem('_radar_ver') === V) return;
     // Limpa histórico de sinais antigos (gerados com regras menos rigorosas)
@@ -562,8 +562,8 @@ select.form-input{-webkit-appearance:none;appearance:none;background-image:url("
     <div class="opps-list" id="opps-list">
       <div class="opp-empty" id="opps-empty">
         <div class="emoji">📡</div>
-        <p>Radar escaneando o mercado...</p>
-        <p style="font-size:.78rem">Monitorando as principais criptos e ações. Oportunidades aparecem aqui automaticamente.</p>
+        <p>Carregando dados do mercado...</p>
+        <p style="font-size:.78rem">Primeira atualização pode demorar alguns segundos.</p>
       </div>
     </div>
   </section>
@@ -1048,7 +1048,7 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then(regs => {
     regs.forEach(r => r.update());
   });
-  navigator.serviceWorker.register('sw.js?v=9', { updateViaCache: 'none' }).then(reg => {
+  navigator.serviceWorker.register('sw.js?v=10', { updateViaCache: 'none' }).then(reg => {
     swRegistration = reg;
     // Se tem SW esperando ativar, força ativação imediata
     if (reg.waiting) {
@@ -1111,7 +1111,7 @@ let state = {
   ibovHistory: null,
   signalTracker: [], // rastreia acurácia dos sinais passados
   settings: {
-    refreshInterval: 15,
+    refreshInterval: 30,
     notifications: false,
     sound: true,
     dropThreshold: 2,
@@ -2719,7 +2719,20 @@ const UI = {
     const list = document.getElementById('opps-list');
     const badge = document.getElementById('opp-badge');
     if (!state.opportunities.length) {
-      list.innerHTML = `<div class="opp-empty"><div class="emoji">📡</div><p>Radar escaneando o mercado...</p><p style="font-size:.78rem">Monitorando as principais criptos e ações. Oportunidades aparecem aqui automaticamente.</p></div>`;
+      const nCrypto = state.watchlist.crypto.length;
+      const nStocks = state.watchlist.stocks.length;
+      const hasPrices = Object.keys(state.prices.crypto).length > 0;
+      const hasToken = !!state.settings.brapiToken;
+      let msg = '';
+      if (!hasPrices) {
+        msg = '<p>Carregando dados do mercado...</p><p style="font-size:.78rem">Primeira atualização pode demorar alguns segundos.</p>';
+      } else {
+        msg = `<p>Mercado calmo — sem sinais fortes agora</p><p style="font-size:.78rem">Monitorando ${nCrypto} criptos${nStocks ? ' e ' + nStocks + ' ações' : ''}. Oportunidades aparecem aqui quando os indicadores se alinham.</p>`;
+        if (nStocks && !hasToken) {
+          msg += '<p style="font-size:.75rem;color:var(--warn);margin-top:8px">⚠️ Token brapi.dev não configurado — ações não carregam. Vá em ⚙️ Config → Ações B3.</p>';
+        }
+      }
+      list.innerHTML = `<div class="opp-empty"><div class="emoji">${hasPrices ? '😴' : '📡'}</div>${msg}</div>`;
       badge.hidden = true;
       return;
     }
@@ -3546,11 +3559,13 @@ function calcBuyScore(p, dropThresh, pos) {
     }
   }
 
-  // === GATE DE QUALIDADE: exige mínimo de confluência bullish ===
-  // Sem pelo menos 2 indicadores concordando, o sinal é ruído
-  if (conf.total >= 3 && conf.bullish < 2) {
-    score = Math.min(score, 30); // Força abaixo do threshold de display
-    reasons.push('⛔ Confluência insuficiente — menos de 2 indicadores confirmam');
+  // === GATE DE QUALIDADE: penaliza quando maioria dos indicadores é contra ===
+  if (conf.bearish >= 3 && conf.bullish < 2) {
+    score = Math.min(score, 25);
+    reasons.push('⛔ Maioria dos indicadores contra — sinal muito fraco');
+  } else if (conf.total >= 4 && conf.bullish < 2 && conf.bearish >= 2) {
+    score = Math.round(score * 0.7);
+    reasons.push('⚠️ Poucos indicadores confirmam');
   }
 
   // === ADAPTIVE BIAS: ajusta score final baseado na acurácia histórica ===
@@ -3559,8 +3574,7 @@ function calcBuyScore(p, dropThresh, pos) {
   }
 
   score = Math.max(0, Math.min(95, Math.round(score)));
-  // Threshold mínimo elevado: precisa de 40+ pra aparecer como sinal
-  if (score < 40) return { total: 0, reasons: [] };
+  if (score < 35) return { total: 0, reasons: [] };
   return { total: score, reasons };
 }
 
@@ -4176,16 +4190,19 @@ function calcStockBuyScore(p, dropThresh, pos) {
   }
 
   // === GATE DE QUALIDADE ===
-  if (conf.total >= 3 && conf.bullish < 2) {
-    score = Math.min(score, 30);
-    reasons.push('⛔ Confluência insuficiente — menos de 2 indicadores confirmam');
+  if (conf.bearish >= 3 && conf.bullish < 2) {
+    score = Math.min(score, 25);
+    reasons.push('⛔ Maioria dos indicadores contra — sinal muito fraco');
+  } else if (conf.total >= 4 && conf.bullish < 2 && conf.bearish >= 2) {
+    score = Math.round(score * 0.7);
+    reasons.push('⚠️ Poucos indicadores confirmam');
   }
 
   // === ADAPTIVE BIAS ===
   if (aw.buyBias && aw.buyBias !== 1) { score = Math.round(score * aw.buyBias); }
 
   score = Math.max(0, Math.min(95, Math.round(score)));
-  if (score < 40) return { total: 0, reasons: [] };
+  if (score < 35) return { total: 0, reasons: [] };
   return { total: score, reasons };
 }
 
@@ -4592,7 +4609,14 @@ async function refreshData() {
     cryptoIds.add('bitcoin');
     cryptoIds.add('ethereum');
     try {
-      const prices = await API.fetchCryptoPrices([...cryptoIds]);
+      let prices;
+      try {
+        prices = await API.fetchCryptoPrices([...cryptoIds]);
+      } catch (e1) {
+        debugLog(`Cripto: 1ª tentativa falhou (${e1.message}), tentando de novo em 3s...`);
+        await new Promise(r => setTimeout(r, 3000));
+        prices = await API.fetchCryptoPrices([...cryptoIds]);
+      }
       const prev = { ...state.prices.crypto };
       state.prices.crypto = prices;
       for (const id of Object.keys(prices)) {
@@ -5076,7 +5100,7 @@ function clearAllData() {
   state.prices = { crypto: {}, stocks: {} };
   state.opportunities = [];
   state.settings = {
-    refreshInterval: 15, notifications: false, sound: true,
+    refreshInterval: 30, notifications: false, sound: true,
     dropThreshold: 2, riseThreshold: 5, brapiToken: '',
     dismissedDisclaimer: false, theme: null
   };
