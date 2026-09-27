@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Radar de Oportunidades</title>
 <script>
-// Cache-buster v11: fallback Binance quando CoinGecko falha
+// Cache-buster v12: fix notificações após reset do SW
 (function(){
-  var V = 'radar-v11';
+  var V = 'radar-v12';
   try {
     if (localStorage.getItem('_radar_ver') === V) return;
     // Limpa histórico de sinais antigos (gerados com regras menos rigorosas)
@@ -1048,7 +1048,12 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then(regs => {
     regs.forEach(r => r.update());
   });
-  navigator.serviceWorker.register('sw.js?v=11', { updateViaCache: 'none' }).then(reg => {
+  // Garante que swRegistration aponta pro SW ativo (caso já exista)
+  navigator.serviceWorker.ready.then(reg => {
+    if (!swRegistration) swRegistration = reg;
+    debugLog('SW ready: ' + (reg.active ? 'ativo' : 'aguardando'));
+  });
+  navigator.serviceWorker.register('sw.js?v=12', { updateViaCache: 'none' }).then(reg => {
     swRegistration = reg;
     // Se tem SW esperando ativar, força ativação imediata
     if (reg.waiting) {
@@ -1084,8 +1089,42 @@ if ('serviceWorker' in navigator) {
 
 // Wrapper: usa SW no mobile, fallback pra Notification no desktop
 function sendNotification(title, options) {
-  if (swRegistration) {
+  if (swRegistration && swRegistration.active) {
     return swRegistration.showNotification(title, options);
+  }
+  // SW registrado mas ainda não ativo: espera ativar
+  if (swRegistration && (swRegistration.installing || swRegistration.waiting)) {
+    return new Promise((resolve, reject) => {
+      const worker = swRegistration.installing || swRegistration.waiting;
+      if (swRegistration.waiting) {
+        swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
+      }
+      worker.addEventListener('statechange', function handler() {
+        if (worker.state === 'activated') {
+          worker.removeEventListener('statechange', handler);
+          swRegistration.showNotification(title, options).then(resolve).catch(reject);
+        }
+      });
+      setTimeout(() => {
+        // Fallback se demorar demais
+        if (swRegistration.active) {
+          swRegistration.showNotification(title, options).then(resolve).catch(reject);
+        } else {
+          try { const n = new Notification(title, options); n.onclick = () => { window.focus(); n.close(); }; resolve(); }
+          catch(e) { reject(e); }
+        }
+      }, 3000);
+    });
+  }
+  // Tenta re-registrar o SW se perdeu a referência
+  if ('serviceWorker' in navigator) {
+    return navigator.serviceWorker.ready.then(reg => {
+      swRegistration = reg;
+      return reg.showNotification(title, options);
+    }).catch(() => {
+      try { const n = new Notification(title, options); n.onclick = () => { window.focus(); n.close(); }; return Promise.resolve(); }
+      catch(e) { return Promise.reject(e); }
+    });
   }
   // Fallback desktop
   try {
