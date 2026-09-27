@@ -1,8 +1,8 @@
 <title>Radar de Oportunidades</title>
 <script>
-// Cache-buster v12: fix notificações após reset do SW
+// Cache-buster v13: fix timeout notificações + fallback robusto
 (function(){
-  var V = 'radar-v12';
+  var V = 'radar-v13';
   try {
     if (localStorage.getItem('_radar_ver') === V) return;
     // Limpa histórico de sinais antigos (gerados com regras menos rigorosas)
@@ -1046,7 +1046,7 @@ if ('serviceWorker' in navigator) {
     if (!swRegistration) swRegistration = reg;
     debugLog('SW ready: ' + (reg.active ? 'ativo' : 'aguardando'));
   });
-  navigator.serviceWorker.register('sw.js?v=12', { updateViaCache: 'none' }).then(reg => {
+  navigator.serviceWorker.register('sw.js?v=13', { updateViaCache: 'none' }).then(reg => {
     swRegistration = reg;
     // Se tem SW esperando ativar, força ativação imediata
     if (reg.waiting) {
@@ -1109,12 +1109,15 @@ function sendNotification(title, options) {
       }, 3000);
     });
   }
-  // Tenta re-registrar o SW se perdeu a referência
+  // Tenta re-registrar o SW se perdeu a referência (com timeout)
   if ('serviceWorker' in navigator) {
-    return navigator.serviceWorker.ready.then(reg => {
-      swRegistration = reg;
-      return reg.showNotification(title, options);
-    }).catch(() => {
+    return Promise.race([
+      navigator.serviceWorker.ready.then(reg => {
+        swRegistration = reg;
+        return reg.showNotification(title, options);
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('SW não ativou a tempo')), 3000))
+    ]).catch(() => {
       try { const n = new Notification(title, options); n.onclick = () => { window.focus(); n.close(); }; return Promise.resolve(); }
       catch(e) { return Promise.reject(e); }
     });
@@ -5098,14 +5101,31 @@ function testNotification() {
 }
 
 function sendTestNotification() {
+  showToast({ type: 'info', title: '⏳ Enviando...', msg: 'Aguarde...' });
+  // Timeout de segurança: se nada acontecer em 5s, mostra erro
+  let responded = false;
+  const timeout = setTimeout(() => {
+    if (!responded) {
+      responded = true;
+      showToast({ type: 'info', title: 'Erro', msg: 'Notificação demorou demais. Tente recarregar a página e testar novamente.' });
+    }
+  }, 5000);
   sendNotification('🎯 Radar funcionando!', {
     body: 'Os alertas vão chegar assim! Mantenha o radar aberto no navegador.',
     tag: 'test-notification', silent: false
   }).then(() => {
-    showToast({ type: 'buy', title: '✅ Notificação enviada!', msg: 'Deve ter aparecido uma notificação no seu celular.' });
-    if (state.settings.sound) playBeep();
+    if (!responded) {
+      responded = true;
+      clearTimeout(timeout);
+      showToast({ type: 'buy', title: '✅ Notificação enviada!', msg: 'Deve ter aparecido uma notificação no seu celular.' });
+      if (state.settings.sound) playBeep();
+    }
   }).catch(e => {
-    showToast({ type: 'info', title: 'Erro', msg: 'Não foi possível enviar: ' + e.message });
+    if (!responded) {
+      responded = true;
+      clearTimeout(timeout);
+      showToast({ type: 'info', title: 'Erro', msg: 'Não foi possível enviar: ' + e.message + '. Recarregue a página e tente de novo.' });
+    }
   });
 }
 
