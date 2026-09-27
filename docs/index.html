@@ -1228,13 +1228,17 @@ function timeAgo(d) {
 
 // Busca com timeout que cobre TUDO: conexão, headers E leitura do body.
 // Retorna o JSON já parseado — se qualquer etapa travar, aborta e joga erro.
-async function fetchJSON(url, ms = 12000) {
+async function fetchJSON(url, ms = 15000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
   try {
     const res = await fetch(url, { signal: controller.signal });
+    if (res.status === 429) {
+      debugLog(`Rate limit (429) em ${url.split('?')[0].split('/').pop()}`);
+      throw new Error('Rate limit (429) — muitas requisições');
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json(); // corpo lido DENTRO do timeout
+    const data = await res.json();
     return data;
   } finally {
     clearTimeout(timer);
@@ -1254,23 +1258,49 @@ function debugLog(msg) {
 const API = {
   async fetchCryptoPrices(ids) {
     if (!ids.length) return {};
-    const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=brl&ids=${ids.join(',')}&order=market_cap_desc&sparkline=true&price_change_percentage=1h,24h,7d`;
-    debugLog(`Cripto: buscando ${ids.length} moedas...`);
-    const data = await fetchJSON(url);
+    // Tenta com sparkline primeiro; se falhar, busca sem (mais leve, menos chance de rate limit)
+    let data;
+    try {
+      const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=brl&ids=${ids.join(',')}&order=market_cap_desc&sparkline=true&price_change_percentage=1h,24h,7d`;
+      debugLog(`Cripto: buscando ${ids.length} moedas (com sparkline)...`);
+      data = await fetchJSON(url);
+    } catch (e1) {
+      debugLog(`Cripto: sparkline falhou (${e1.message}), tentando sem...`);
+      try {
+        const url2 = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=brl&ids=${ids.join(',')}&order=market_cap_desc&sparkline=false&price_change_percentage=1h,24h,7d`;
+        data = await fetchJSON(url2);
+        debugLog(`Cripto: OK sem sparkline`);
+      } catch (e2) {
+        debugLog(`Cripto: fallback também falhou (${e2.message}), tentando simples...`);
+        // Último recurso: busca só preço via endpoint mais leve
+        const url3 = `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=brl&include_24hr_change=true&include_24hr_vol=true&include_market_cap=true`;
+        const simple = await fetchJSON(url3);
+        data = [];
+        for (const [id, d] of Object.entries(simple)) {
+          data.push({
+            id, current_price: d.brl, price_change_percentage_24h_in_currency: d.brl_24h_change,
+            total_volume: d.brl_24h_vol, market_cap: d.brl_market_cap,
+            symbol: id.slice(0, 4), name: id.charAt(0).toUpperCase() + id.slice(1)
+          });
+        }
+        debugLog(`Cripto: simples OK — ${data.length} moedas`);
+      }
+    }
     debugLog(`Cripto: recebeu ${data.length} resultados`);
     const result = {};
     for (const coin of data) {
+      const existing = state.prices.crypto[coin.id];
       result[coin.id] = {
-        id: coin.id, symbol: coin.symbol, name: coin.name, image: coin.image,
+        id: coin.id, symbol: coin.symbol || existing?.symbol || coin.id, name: coin.name || existing?.name || coin.id, image: coin.image || existing?.image,
         price: coin.current_price,
-        change1h: coin.price_change_percentage_1h_in_currency,
-        change24h: coin.price_change_percentage_24h_in_currency,
-        change7d: coin.price_change_percentage_7d_in_currency,
+        change1h: coin.price_change_percentage_1h_in_currency ?? null,
+        change24h: coin.price_change_percentage_24h_in_currency ?? null,
+        change7d: coin.price_change_percentage_7d_in_currency ?? null,
         marketCap: coin.market_cap, volume24h: coin.total_volume,
-        ath: coin.ath, athChange: coin.ath_change_percentage,
-        high24h: coin.high_24h, low24h: coin.low_24h,
-        sparkline: coin.sparkline_in_7d?.price || [],
-        lastUpdated: coin.last_updated
+        ath: coin.ath ?? existing?.ath, athChange: coin.ath_change_percentage ?? existing?.athChange,
+        high24h: coin.high_24h ?? existing?.high24h, low24h: coin.low_24h ?? existing?.low24h,
+        sparkline: coin.sparkline_in_7d?.price || existing?.sparkline || [],
+        lastUpdated: coin.last_updated || new Date().toISOString()
       };
     }
     return result;
@@ -4609,14 +4639,7 @@ async function refreshData() {
     cryptoIds.add('bitcoin');
     cryptoIds.add('ethereum');
     try {
-      let prices;
-      try {
-        prices = await API.fetchCryptoPrices([...cryptoIds]);
-      } catch (e1) {
-        debugLog(`Cripto: 1ª tentativa falhou (${e1.message}), tentando de novo em 3s...`);
-        await new Promise(r => setTimeout(r, 3000));
-        prices = await API.fetchCryptoPrices([...cryptoIds]);
-      }
+      const prices = await API.fetchCryptoPrices([...cryptoIds]);
       const prev = { ...state.prices.crypto };
       state.prices.crypto = prices;
       for (const id of Object.keys(prices)) {
