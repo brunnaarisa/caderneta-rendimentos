@@ -1510,10 +1510,10 @@
 
   // Update this date every time BANK_CATALOG below is re-researched/verified —
   // it drives the staleness badge, since this static site can't check it live.
-  const CATALOG_VERIFIED_DATE = '2026-09-01';
+  const CATALOG_VERIFIED_DATE = '2026-10-01';
 
   // Catálogo de referência: banco/corretora -> investimentos típicos disponíveis lá.
-  // Taxas verificadas em 01/09/2026 (ver rodapé). `note`, quando presente, é uma
+  // Taxas verificadas em 01/10/2026 (ver rodapé). `note`, quando presente, é uma
   // ressalva ESPECÍFICA sobre o que conferir antes de aplicar — não é enfeite.
   const BANK_CATALOG = {
     'Nubank': [
@@ -1561,9 +1561,12 @@
       { name: 'Saldo da conta 105% do CDI (até R$20 mil)', mode: 'cdi', rate: 105, exempt: false,
         cap: 20000, excessMode: 'cdi', excessRate: 100,
         note: 'Acima de R$20 mil de saldo, o excedente rende só 100% do CDI.' },
-      { name: 'Cofrinho 120% do CDI (Meli+ ou depósito de R$1.000+/mês, até R$10 mil bonificados)', mode: 'cdi', rate: 120, exempt: false,
+      { name: 'Cofrinho 120% do CDI (assinantes Meli+, até R$10 mil)', mode: 'cdi', rate: 120, exempt: false,
         cap: 10000, excessMode: 'cdi', excessRate: 100,
-        note: 'Precisa ser assinante Meli+ ou manter aportes de pelo menos R$1.000/mês no Cofrinho pra continuar valendo a taxa bonificada; acima de R$10 mil, o excedente rende 100% do CDI.' },
+        note: 'Essa taxa de 120% vale só pra assinantes Meli+. Acima de R$10 mil, o excedente rende 100% do CDI.' },
+      { name: 'Cofrinho 115% do CDI (sem Meli+, depósito de R$1.000+/mês, até R$5 mil)', mode: 'cdi', rate: 115, exempt: false,
+        cap: 5000, excessMode: 'cdi', excessRate: 100,
+        note: 'Pra quem não assina Meli+: precisa manter aportes de pelo menos R$1.000/mês no Cofrinho pra valer essa taxa. O teto bonificado aqui é R$5 mil — os R$10 mil/120% só valem com Meli+. Acima de R$5 mil, o excedente rende 100% do CDI.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'Banco do Brasil': [
@@ -1615,7 +1618,7 @@
       { name: 'CDB (prateleira Rico) ~100% do CDI', mode: 'cdi', rate: 100, exempt: false,
         note: 'Rico é uma plataforma que revende títulos de vários bancos emissores — a taxa exata varia por prazo e emissor disponível no momento; confira a ficha do título antes de aplicar.' },
       { name: 'LCI/LCA (prateleira Rico) ~93% do CDI', mode: 'cdi', rate: 93, exempt: true,
-        note: 'É uma prateleira com dezenas de títulos de bancos emissores diferentes, cada um com sua própria taxa — por isso não existe "a" taxa da corretora, só uma faixa observada no mercado (a média do mercado caiu ao longo de 2026, então vale conferir se 93% ainda reflete o que está disponível). Carência mínima legal: 180 dias (6 meses, Resolução CMN 5.215/2025), mas títulos específicos costumam ser mais longos.' },
+        note: 'É uma prateleira com dezenas de títulos de bancos emissores diferentes, cada um com sua própria taxa — por isso não existe "a" taxa da corretora, só uma faixa observada no mercado. A média geral do mercado de LCI/LCA caiu ao longo de 2026 (de ~94% do CDI em 2025 pra ~86-88% do CDI em set/2026) — então os 93% aqui provavelmente estão otimistas hoje; confira a ficha do título antes de aplicar. Carência mínima legal: 180 dias (6 meses, Resolução CMN 5.215/2025), mas títulos específicos costumam ser mais longos.' },
       { name: 'Tesouro Selic 100% do CDI', mode: 'cdi', rate: 100, exempt: false }
     ],
     'BTG Pactual': [
