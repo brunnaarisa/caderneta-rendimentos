@@ -1,17 +1,21 @@
-const CACHE_NAME = 'radar-v14';
+const CACHE_NAME = 'radar-v15';
 const SHELL_URLS = [
   './',
   './index.html',
   './manifest.json',
-  './icons/icon-192.png',
-  './icons/icon-512.png'
+  './icon-192.png',
+  './icon-512.png'
 ];
 
-// Instala: guarda o shell no cache
+// Instala: cacheia o que conseguir (não bloqueia se ícone falhar)
 self.addEventListener('install', function(event) {
   event.waitUntil(
     caches.open(CACHE_NAME).then(function(cache) {
-      return cache.addAll(SHELL_URLS);
+      return Promise.allSettled(
+        SHELL_URLS.map(function(url) {
+          return cache.add(url).catch(function() {});
+        })
+      );
     }).then(function() {
       return self.skipWaiting();
     })

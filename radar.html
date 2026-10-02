@@ -1,8 +1,8 @@
 <title>Radar de Oportunidades</title>
 <script>
-// Cache-buster v14: fix Android proíbe new Notification, só SW funciona
+// Cache-buster v15: fix SW falhava ao instalar (ícones caminho errado)
 (function(){
-  var V = 'radar-v14';
+  var V = 'radar-v15';
   try {
     if (localStorage.getItem('_radar_ver') === V) return;
     // Limpa histórico de sinais antigos (gerados com regras menos rigorosas)
@@ -1046,7 +1046,7 @@ if ('serviceWorker' in navigator) {
     if (!swRegistration) swRegistration = reg;
     debugLog('SW ready: ' + (reg.active ? 'ativo' : 'aguardando'));
   });
-  navigator.serviceWorker.register('sw.js?v=14', { updateViaCache: 'none' }).then(reg => {
+  navigator.serviceWorker.register('sw.js?v=15', { updateViaCache: 'none' }).then(reg => {
     swRegistration = reg;
     // Se tem SW esperando ativar, força ativação imediata
     if (reg.waiting) {
