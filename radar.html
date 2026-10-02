@@ -1,8 +1,8 @@
 <title>Radar de Oportunidades</title>
 <script>
-// Cache-buster v17: registra sinais ativos na acurácia mesmo já notificados
+// Cache-buster v18: cotação de ações uma por vez (limite do plano grátis brapi)
 (function(){
-  var V = 'radar-v17';
+  var V = 'radar-v18';
   try {
     if (localStorage.getItem('_radar_ver') === V) return;
     // Limpa caches do Service Worker
@@ -1044,7 +1044,7 @@ if ('serviceWorker' in navigator) {
     if (!swRegistration) swRegistration = reg;
     debugLog('SW ready: ' + (reg.active ? 'ativo' : 'aguardando'));
   });
-  navigator.serviceWorker.register('sw.js?v=17', { updateViaCache: 'none' }).then(reg => {
+  navigator.serviceWorker.register('sw.js?v=18', { updateViaCache: 'none' }).then(reg => {
     swRegistration = reg;
     // Se tem SW esperando ativar, força ativação imediata
     if (reg.waiting) {
@@ -1394,24 +1394,39 @@ const API = {
     return data;
   },
 
+  // Plano grátis da brapi aceita 1 ticker por requisição e entrega cotação com atraso,
+  // então busca um por vez e no máximo a cada 5 min por ticker.
   async fetchStockPrices(tickers) {
     if (!tickers.length || !state.settings.brapiToken) return {};
-    const url = `https://brapi.dev/api/quote/${tickers.join(',')}?token=${state.settings.brapiToken}`;
-    debugLog(`Ações: buscando ${tickers.length} tickers...`);
-    const data = await fetchJSON(url);
-    debugLog(`Ações: recebeu dados`);
+    const now = Date.now();
+    const prev = state.prices.stocks || {};
+    const stale = tickers.filter(t => !prev[t] || !prev[t].fetchedAt || now - prev[t].fetchedAt > 5 * 60 * 1000);
     const result = {};
-    if (data.results) {
-      for (const s of data.results) {
-        result[s.symbol] = {
-          symbol: s.symbol, name: s.shortName || s.longName || s.symbol,
-          price: s.regularMarketPrice, change: s.regularMarketChange,
-          changePct: s.regularMarketChangePercent,
-          high: s.regularMarketDayHigh, low: s.regularMarketDayLow,
-          volume: s.regularMarketVolume, previousClose: s.regularMarketPreviousClose,
-          marketCap: s.marketCap, lastUpdated: s.regularMarketTime
-        };
+    for (const t of tickers) if (prev[t]) result[t] = prev[t];
+    if (!stale.length) return result;
+    debugLog(`Ações: buscando ${stale.length} tickers...`);
+    const settled = await Promise.allSettled(stale.map(t =>
+      fetchJSON(`https://brapi.dev/api/quote/${encodeURIComponent(t)}?token=${encodeURIComponent(state.settings.brapiToken)}`)
+    ));
+    let failures = 0;
+    settled.forEach((r, i) => {
+      const s = r.status === 'fulfilled' && r.value && r.value.results && r.value.results[0];
+      if (!s || s.regularMarketPrice == null) {
+        failures++;
+        debugLog(`  ${stale[i]} cotação ERRO: ${r.status === 'rejected' ? r.reason.message : 'sem dados'}`);
+        return;
       }
+      result[stale[i]] = {
+        symbol: s.symbol, name: s.shortName || s.longName || s.symbol,
+        price: s.regularMarketPrice, change: s.regularMarketChange,
+        changePct: s.regularMarketChangePercent,
+        high: s.regularMarketDayHigh, low: s.regularMarketDayLow,
+        volume: s.regularMarketVolume, previousClose: s.regularMarketPreviousClose,
+        marketCap: s.marketCap, lastUpdated: s.regularMarketTime, fetchedAt: now
+      };
+    });
+    if (failures === stale.length && !Object.keys(result).length) {
+      throw new Error('nenhuma cotação recebida (token inválido ou limite da brapi)');
     }
     return result;
   },
