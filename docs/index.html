@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Radar de Oportunidades</title>
 <script>
-// Cache-buster v18: cotação de ações uma por vez (limite do plano grátis brapi)
+// Cache-buster v19: acurácia separada pra cripto e ações
 (function(){
-  var V = 'radar-v18';
+  var V = 'radar-v19';
   try {
     if (localStorage.getItem('_radar_ver') === V) return;
     // Limpa caches do Service Worker
@@ -548,9 +548,14 @@ select.form-input{-webkit-appearance:none;appearance:none;background-image:url("
       <div class="fg-hint" id="fg-hint"></div>
     </div>
 
-    <div class="fg-card" id="accuracy-card" hidden>
-      <h3>🎯 Acurácia dos Sinais</h3>
-      <div id="accuracy-content"></div>
+    <div class="fg-card" id="accuracy-card-crypto">
+      <h3>🎯 Acurácia — Cripto</h3>
+      <div id="accuracy-content-crypto"></div>
+    </div>
+
+    <div class="fg-card" id="accuracy-card-stock">
+      <h3>🎯 Acurácia — Ações B3</h3>
+      <div id="accuracy-content-stock"></div>
     </div>
 
     <div class="cards-header">
@@ -1051,7 +1056,7 @@ if ('serviceWorker' in navigator) {
     if (!swRegistration) swRegistration = reg;
     debugLog('SW ready: ' + (reg.active ? 'ativo' : 'aguardando'));
   });
-  navigator.serviceWorker.register('sw.js?v=18', { updateViaCache: 'none' }).then(reg => {
+  navigator.serviceWorker.register('sw.js?v=19', { updateViaCache: 'none' }).then(reg => {
     swRegistration = reg;
     // Se tem SW esperando ativar, força ativação imediata
     if (reg.waiting) {
@@ -1628,16 +1633,35 @@ function renderFearGreed() {
 }
 
 function renderAccuracy() {
-  const card = document.getElementById('accuracy-card');
-  const content = document.getElementById('accuracy-content');
-  const acc = getSignalAccuracy();
+  renderAccuracyFor('crypto');
+  renderAccuracyFor('stock');
+}
+
+function resetAccuracy(market) {
+  const label = market === 'crypto' ? 'cripto' : 'ações';
+  if (!confirm(`Zerar histórico de acurácia de ${label}?`)) return;
+  state.signalTracker = state.signalTracker.filter(s => signalMarketOf(s) !== market);
+  saveSignalTracker();
+  renderAccuracy();
+}
+
+function renderAccuracyFor(market) {
+  const content = document.getElementById(`accuracy-content-${market}`);
+  if (!content) return;
+  const signals = state.signalTracker.filter(s => signalMarketOf(s) === market);
+  const acc = getSignalAccuracy(market);
   if (!acc) {
-    card.hidden = false;
-    const pendingSigs = state.signalTracker.filter(s => s.result === null);
-    const resolvedCount = state.signalTracker.length - pendingSigs.length;
+    const pendingSigs = signals.filter(s => s.result === null);
+    const resolvedCount = signals.length - pendingSigs.length;
     let html = '<div style="text-align:center;padding:8px 0;color:var(--text-muted);font-size:.82rem;line-height:1.6">';
-    if (!state.signalTracker.length) {
-      html += '📡 Nenhum sinal registrado ainda.<br>Cada sinal de compra/venda ≥55% é guardado e avaliado 72h depois.';
+    if (!signals.length) {
+      if (market === 'stock' && !state.settings.brapiToken) {
+        html += '🔑 Configure o token brapi.dev em Config → Ações B3 pra acompanhar sinais de ações.';
+      } else if (market === 'stock' && !state.watchlist.stocks.length) {
+        html += '📈 Adicione ações no Painel pra começar a acompanhar sinais.';
+      } else {
+        html += '📡 Nenhum sinal registrado ainda.<br>Cada sinal de compra/venda ≥55% é guardado e avaliado 72h depois.';
+      }
     } else {
       html += `✅ ${resolvedCount} de 3 sinais avaliados (mínimo pra mostrar a taxa de acerto)`;
       if (pendingSigs.length) {
@@ -1650,7 +1674,6 @@ function renderAccuracy() {
     content.innerHTML = html + '</div>';
     return;
   }
-  card.hidden = false;
   const hitColor = acc.hitRate >= 65 ? 'var(--gain)' : acc.hitRate >= 45 ? 'var(--warn)' : 'var(--loss)';
   const recentColor = acc.recentHit >= 65 ? 'var(--gain)' : acc.recentHit >= 45 ? 'var(--warn)' : 'var(--loss)';
   let statsHtml = `
@@ -1691,13 +1714,12 @@ function renderAccuracy() {
     }
     statsHtml += `</div>`;
   }
-  const pending = state.signalTracker.filter(s => s.result === null).length;
+  const pending = acc.pending;
   if (pending > 0) {
     statsHtml += `<div style="text-align:center;margin-top:6px;font-size:.68rem;color:var(--text-muted)">⏳ ${pending} sinal${pending > 1 ? 'is' : ''} pendente${pending > 1 ? 's' : ''} (aguardando 72h)</div>`;
   }
-  // Botão para resetar acurácia (limpar histórico antigo com regras ruins)
   statsHtml += `<div style="text-align:center;margin-top:12px">
-    <button onclick="if(confirm('Zerar histórico de acurácia?\\n\\nOs sinais antigos foram gerados com regras menos rigorosas. Recomendado após atualizações.')){state.signalTracker=[];saveSignalTracker();renderAccuracy();}"
+    <button onclick="resetAccuracy('${market}')"
       style="background:var(--bg-inset);border:1px solid var(--border);color:var(--text-body);font-size:.78rem;padding:8px 18px;border-radius:8px;cursor:pointer;font-weight:500">
       🗑️ Zerar histórico de acurácia
     </button>
@@ -3021,6 +3043,7 @@ function trackSignal(opp) {
   state.signalTracker.push({
     date: today,
     ts: Date.now(),
+    market: state.prices.crypto[assetId] ? 'crypto' : 'stock',
     asset: assetId,
     symbol: p.symbol?.toUpperCase() || assetId,
     type,
@@ -3035,6 +3058,11 @@ function trackSignal(opp) {
 
 function signalTimeOf(sig) {
   return sig.ts || new Date(sig.date).getTime();
+}
+
+// Sinais antigos não têm `market`: tickers B3 são tipo WEGE3/ITUB4, IDs de cripto são minúsculos
+function signalMarketOf(sig) {
+  return sig.market || (/^[A-Z]{4}\d{1,2}F?$/.test(sig.asset) ? 'stock' : 'crypto');
 }
 
 function updateSignalTracker() {
@@ -3065,8 +3093,9 @@ function updateSignalTracker() {
   if (changed) saveSignalTracker();
 }
 
-function getSignalAccuracy() {
-  const resolved = state.signalTracker.filter(s => s.result !== null);
+function getSignalAccuracy(market) {
+  const signals = market ? state.signalTracker.filter(s => signalMarketOf(s) === market) : state.signalTracker;
+  const resolved = signals.filter(s => s.result !== null);
   if (resolved.length < 3) return null; // precisa de pelo menos 3 sinais pra mostrar stats
   const correct = resolved.filter(s => s.result === true);
   const hitRate = (correct.length / resolved.length) * 100;
@@ -3081,7 +3110,7 @@ function getSignalAccuracy() {
   const recent = resolved.slice(-10);
   const recentHit = (recent.filter(s => s.result).length / recent.length * 100);
   return {
-    total: resolved.length, pending: state.signalTracker.filter(s => s.result === null).length,
+    total: resolved.length, pending: signals.filter(s => s.result === null).length,
     hitRate: Math.round(hitRate), buyHit: buyHit !== null ? Math.round(buyHit) : null,
     sellHit: sellHit !== null ? Math.round(sellHit) : null,
     avgReturn: Math.round(avgReturn * 10) / 10, recentHit: Math.round(recentHit),
