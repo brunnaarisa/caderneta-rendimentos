@@ -1,12 +1,10 @@
 <title>Radar de Oportunidades</title>
 <script>
-// Cache-buster v15: fix SW falhava ao instalar (ícones caminho errado)
+// Cache-buster v16: preserva histórico de acurácia entre versões
 (function(){
-  var V = 'radar-v15';
+  var V = 'radar-v16';
   try {
     if (localStorage.getItem('_radar_ver') === V) return;
-    // Limpa histórico de sinais antigos (gerados com regras menos rigorosas)
-    localStorage.removeItem('radar_signal_tracker');
     // Limpa caches do Service Worker
     if ('caches' in window) {
       caches.keys().then(function(names) {
@@ -1046,7 +1044,7 @@ if ('serviceWorker' in navigator) {
     if (!swRegistration) swRegistration = reg;
     debugLog('SW ready: ' + (reg.active ? 'ativo' : 'aguardando'));
   });
-  navigator.serviceWorker.register('sw.js?v=15', { updateViaCache: 'none' }).then(reg => {
+  navigator.serviceWorker.register('sw.js?v=16', { updateViaCache: 'none' }).then(reg => {
     swRegistration = reg;
     // Se tem SW esperando ativar, força ativação imediata
     if (reg.waiting) {
@@ -1612,14 +1610,22 @@ function renderAccuracy() {
   const content = document.getElementById('accuracy-content');
   const acc = getSignalAccuracy();
   if (!acc) {
-    // Mostra quantos sinais estão pendentes
-    const pending = state.signalTracker.filter(s => s.result === null).length;
-    if (pending > 0) {
-      card.hidden = false;
-      content.innerHTML = `<div style="text-align:center;padding:8px 0;color:var(--text-muted);font-size:.82rem">
-        ⏳ ${pending} sinal${pending > 1 ? 'is' : ''} em observação — resultados em 72h
-      </div>`;
-    } else { card.hidden = true; }
+    card.hidden = false;
+    const pendingSigs = state.signalTracker.filter(s => s.result === null);
+    const resolvedCount = state.signalTracker.length - pendingSigs.length;
+    let html = '<div style="text-align:center;padding:8px 0;color:var(--text-muted);font-size:.82rem;line-height:1.6">';
+    if (!state.signalTracker.length) {
+      html += '📡 Nenhum sinal registrado ainda.<br>Cada sinal de compra/venda ≥55% é guardado e avaliado 72h depois.';
+    } else {
+      html += `✅ ${resolvedCount} de 3 sinais avaliados (mínimo pra mostrar a taxa de acerto)`;
+      if (pendingSigs.length) {
+        const nextMs = Math.min(...pendingSigs.map(s => signalTimeOf(s) + 72 * 3600 * 1000));
+        const hoursLeft = Math.max(0, Math.ceil((nextMs - Date.now()) / 3600000));
+        const when = hoursLeft === 0 ? 'na próxima atualização' : hoursLeft < 24 ? `em ~${hoursLeft}h` : `em ~${Math.ceil(hoursLeft / 24)} dia${hoursLeft > 24 ? 's' : ''}`;
+        html += `<br>⏳ ${pendingSigs.length} em observação — próximo resultado ${when}`;
+      }
+    }
+    content.innerHTML = html + '</div>';
     return;
   }
   card.hidden = false;
@@ -2992,6 +2998,7 @@ function trackSignal(opp) {
   if (exists) return;
   state.signalTracker.push({
     date: today,
+    ts: Date.now(),
     asset: assetId,
     symbol: p.symbol?.toUpperCase() || assetId,
     type,
@@ -3004,6 +3011,10 @@ function trackSignal(opp) {
   saveSignalTracker();
 }
 
+function signalTimeOf(sig) {
+  return sig.ts || new Date(sig.date).getTime();
+}
+
 function updateSignalTracker() {
   const now = Date.now();
   let changed = false;
@@ -3011,8 +3022,7 @@ function updateSignalTracker() {
     // Só verifica sinais pendentes com pelo menos 72h (3 dias)
     // Sinais técnicos precisam de tempo pra se concretizar
     if (sig.result !== null) continue;
-    const signalTime = new Date(sig.date).getTime();
-    const hoursSince = (now - signalTime) / (1000 * 60 * 60);
+    const hoursSince = (now - signalTimeOf(sig)) / (1000 * 60 * 60);
     if (hoursSince < 72) continue;
     // Busca preço atual
     const p = state.prices.crypto[sig.asset] || state.prices.stocks[sig.asset];

@@ -27,9 +27,8 @@ p{color:#8899aa;font-size:.9rem}
   var steps = [];
 
   try {
-    // 1. Limpa TODO o localStorage relacionado ao radar
+    // 1. Limpa marcadores de versão (preserva histórico de acurácia)
     el.textContent = '1/4 — Limpando dados antigos...';
-    localStorage.removeItem('radar_signal_tracker');
     localStorage.removeItem('_radar_ver');
     localStorage.removeItem('radar_debug');
     steps.push('dados');
@@ -70,11 +69,11 @@ p{color:#8899aa;font-size:.9rem}
 
     // 4. Seta a versão correta ANTES de redirecionar
     // Assim o cache-buster no index.html não vai tentar rodar de novo
-    localStorage.setItem('_radar_ver', 'radar-v15');
+    localStorage.setItem('_radar_ver', 'radar-v16');
 
     el.textContent = '4/4 — Redirecionando...';
     el.className = 'done';
-    steps.push('versão v15 definida');
+    steps.push('versão v16 definida');
 
     // 5. Redireciona com timestamp forte pra burlar qualquer cache
     // Usa fetch com no-cache primeiro pra forçar o servidor a entregar o arquivo novo
