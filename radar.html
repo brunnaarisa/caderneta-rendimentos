@@ -1,8 +1,8 @@
 <title>Radar de Oportunidades</title>
 <script>
-// Cache-buster v19: acurácia separada pra cripto e ações
+// Cache-buster v20: resposta vazia de cripto conta como falha; erro de sinais visível
 (function(){
-  var V = 'radar-v19';
+  var V = 'radar-v20';
   try {
     if (localStorage.getItem('_radar_ver') === V) return;
     // Limpa caches do Service Worker
@@ -1049,7 +1049,7 @@ if ('serviceWorker' in navigator) {
     if (!swRegistration) swRegistration = reg;
     debugLog('SW ready: ' + (reg.active ? 'ativo' : 'aguardando'));
   });
-  navigator.serviceWorker.register('sw.js?v=19', { updateViaCache: 'none' }).then(reg => {
+  navigator.serviceWorker.register('sw.js?v=20', { updateViaCache: 'none' }).then(reg => {
     swRegistration = reg;
     // Se tem SW esperando ativar, força ativação imediata
     if (reg.waiting) {
@@ -1313,38 +1313,46 @@ const BINANCE_MAP = {
 const API = {
   async fetchCryptoPrices(ids) {
     if (!ids.length) return {};
+    // CoinGecko às vezes responde 200 com objeto de erro ou lista vazia quando limita acessos:
+    // isso conta como falha pra cair na próxima fonte em vez de zerar os preços.
+    const usable = d => {
+      const list = Array.isArray(d) ? d.filter(c => c && c.id && typeof c.current_price === 'number') : [];
+      if (!list.length) throw new Error(Array.isArray(d) ? 'resposta vazia' : 'resposta inesperada');
+      return list;
+    };
     // Tenta CoinGecko primeiro (3 níveis), depois Binance como último recurso
     let data;
     let source = 'coingecko';
     try {
       const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=brl&ids=${ids.join(',')}&order=market_cap_desc&sparkline=true&price_change_percentage=1h,24h,7d`;
       debugLog(`Cripto: CoinGecko com sparkline (${ids.length} moedas)...`);
-      data = await fetchJSON(url);
+      data = usable(await fetchJSON(url));
     } catch (e1) {
       debugLog(`Cripto: CoinGecko sparkline falhou (${e1.message})`);
       try {
         const url2 = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=brl&ids=${ids.join(',')}&order=market_cap_desc&sparkline=false&price_change_percentage=1h,24h,7d`;
-        data = await fetchJSON(url2);
+        data = usable(await fetchJSON(url2));
         debugLog(`Cripto: CoinGecko sem sparkline OK`);
       } catch (e2) {
         debugLog(`Cripto: CoinGecko sem sparkline falhou (${e2.message})`);
         try {
           const url3 = `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=brl&include_24hr_change=true&include_24hr_vol=true&include_market_cap=true`;
           const simple = await fetchJSON(url3);
-          data = [];
-          for (const [id, d] of Object.entries(simple)) {
+          const list = [];
+          for (const [id, d] of Object.entries(simple || {})) {
             const meta = BINANCE_MAP[id] || {};
-            data.push({
-              id, current_price: d.brl, price_change_percentage_24h_in_currency: d.brl_24h_change,
-              total_volume: d.brl_24h_vol, market_cap: d.brl_market_cap,
+            list.push({
+              id, current_price: d?.brl, price_change_percentage_24h_in_currency: d?.brl_24h_change,
+              total_volume: d?.brl_24h_vol, market_cap: d?.brl_market_cap,
               symbol: meta.symbol || id.slice(0, 4), name: meta.name || id
             });
           }
+          data = usable(list);
           debugLog(`Cripto: CoinGecko simples OK — ${data.length} moedas`);
         } catch (e3) {
-          debugLog(`Cripto: CoinGecko totalmente offline (${e3.message}), usando Binance...`);
+          debugLog(`Cripto: CoinGecko indisponível (${e3.message}), usando Binance...`);
           source = 'binance';
-          data = await API._fetchFromBinance(ids);
+          data = usable(await API._fetchFromBinance(ids));
         }
       }
     }
@@ -2887,7 +2895,9 @@ const UI = {
       const hasPrices = Object.keys(state.prices.crypto).length > 0;
       const hasToken = !!state.settings.brapiToken;
       let msg = '';
-      if (!hasPrices) {
+      if (!hasPrices && state.cryptoFetchFailed) {
+        msg = '<p>Não consegui buscar os preços de cripto</p><p style="font-size:.78rem">CoinGecko e Binance não responderam. Tentando de novo automaticamente.</p>';
+      } else if (!hasPrices) {
         msg = '<p>Carregando dados do mercado...</p><p style="font-size:.78rem">Primeira atualização pode demorar alguns segundos.</p>';
       } else {
         msg = `<p>Mercado calmo — sem sinais fortes agora</p><p style="font-size:.78rem">Monitorando ${nCrypto} criptos${nStocks ? ' e ' + nStocks + ' ações' : ''}. Oportunidades aparecem aqui quando os indicadores se alinham.</p>`;
@@ -4810,6 +4820,7 @@ async function refreshData() {
       const prices = await API.fetchCryptoPrices([...cryptoIds]);
       const prev = { ...state.prices.crypto };
       state.prices.crypto = prices;
+      state.cryptoFetchFailed = false;
       for (const id of Object.keys(prices)) {
         if (prev[id] && prev[id].price !== prices[id].price) {
           const card = document.getElementById(`card-${id}`);
@@ -4822,6 +4833,7 @@ async function refreshData() {
       }
     } catch (e) {
       errors.push('Cripto');
+      state.cryptoFetchFailed = true;
       debugLog(`Cripto ERRO: ${e.name}: ${e.message}`);
     }
     if (state.watchlist.stocks.length && state.settings.brapiToken) {
@@ -4860,7 +4872,12 @@ async function refreshData() {
     try { renderAccuracy(); } catch (e) { debugLog(`render accuracy ERRO: ${e.message}`); }
     try { detectMarketRegime(); } catch (e) { debugLog(`regime ERRO: ${e.message}`); }
     try { renderPortfolio(); } catch (e) { debugLog(`portfolio ERRO: ${e.message}`); }
-    try { detectOpportunities(); } catch (e) { debugLog(`detectOpps ERRO: ${e.message}`); }
+    try { detectOpportunities(); } catch (e) {
+      errors.push('Sinais');
+      debugLog(`detectOpps ERRO: ${e.message}`);
+      const list = document.getElementById('opps-list');
+      if (list) list.innerHTML = `<div class="opp-empty"><div class="emoji">⚠️</div><p>Erro ao analisar os sinais</p><p style="font-size:.78rem">${String(e.message).replace(/[<>&"]/g, '')} — toque em 🔧 no rodapé e mande um print.</p></div>`;
+    }
     try { checkAlerts(); } catch (e) { debugLog(`checkAlerts ERRO: ${e.message}`); }
     try { renderHistory(); } catch (e) { debugLog(`render history ERRO: ${e.message}`); }
     if (errors.length) {
