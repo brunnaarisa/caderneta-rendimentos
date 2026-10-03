@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Radar de Oportunidades</title>
 <script>
-// Cache-buster v20: resposta vazia de cripto conta como falha; erro de sinais visível
+// Cache-buster v21: corrige crash do Kelly em sinal de compra; cotações sequenciais
 (function(){
-  var V = 'radar-v20';
+  var V = 'radar-v21';
   try {
     if (localStorage.getItem('_radar_ver') === V) return;
     // Limpa caches do Service Worker
@@ -1056,7 +1056,7 @@ if ('serviceWorker' in navigator) {
     if (!swRegistration) swRegistration = reg;
     debugLog('SW ready: ' + (reg.active ? 'ativo' : 'aguardando'));
   });
-  navigator.serviceWorker.register('sw.js?v=20', { updateViaCache: 'none' }).then(reg => {
+  navigator.serviceWorker.register('sw.js?v=21', { updateViaCache: 'none' }).then(reg => {
     swRegistration = reg;
     // Se tem SW esperando ativar, força ativação imediata
     if (reg.waiting) {
@@ -1425,9 +1425,15 @@ const API = {
     for (const t of tickers) if (prev[t]) result[t] = prev[t];
     if (!stale.length) return result;
     debugLog(`Ações: buscando ${stale.length} tickers...`);
-    const settled = await Promise.allSettled(stale.map(t =>
-      fetchJSON(`https://brapi.dev/api/quote/${encodeURIComponent(t)}?token=${encodeURIComponent(state.settings.brapiToken)}`)
-    ));
+    // Sequencial: requisições em paralelo são bloqueadas pela brapi ("Failed to fetch")
+    const settled = [];
+    for (const t of stale) {
+      try {
+        settled.push({ status: 'fulfilled', value: await fetchJSON(`https://brapi.dev/api/quote/${encodeURIComponent(t)}?token=${encodeURIComponent(state.settings.brapiToken)}`) });
+      } catch (reason) {
+        settled.push({ status: 'rejected', reason });
+      }
+    }
     let failures = 0;
     settled.forEach((r, i) => {
       const s = r.status === 'fulfilled' && r.value && r.value.results && r.value.results[0];
@@ -3177,8 +3183,8 @@ function detectOpportunities() {
       }
       if (tier === 'satellite') title += ' · posição pequena';
       // Kelly Criterion: sugere tamanho ideal da posição
-      const kelly = calcKellyPosition(prob / 100);
-      const kellyInfo = kelly.suggestedPct > 0 ? ` · 📐 Kelly sugere ${kelly.suggestedPct.toFixed(1)}% do capital` : '';
+      const kelly = calcKellyPosition(prob);
+      const kellyInfo = kelly?.suggestedPct > 0 ? ` · 📐 Kelly sugere ${kelly.suggestedPct.toFixed(1)}% do capital` : '';
       const opp = {
         key, type: 'buy', probability: prob, conviction: tier,
         title, reasons: buyScore.reasons,
@@ -3304,8 +3310,8 @@ function detectOpportunities() {
         notif = `👀 ${ticker} ${fmtBRL(p.price)} — movimento fraco (${prob}%), só acompanhar`;
       }
       // Kelly Criterion: sugere tamanho ideal da posição
-      const kellyStock = calcKellyPosition(prob / 100);
-      const kellyStockInfo = kellyStock.suggestedPct > 0 ? ` · 📐 Kelly sugere ${kellyStock.suggestedPct.toFixed(1)}% do capital` : '';
+      const kellyStock = calcKellyPosition(prob);
+      const kellyStockInfo = kellyStock?.suggestedPct > 0 ? ` · 📐 Kelly sugere ${kellyStock.suggestedPct.toFixed(1)}% do capital` : '';
       const opp = {
         key, type: 'buy', probability: prob, conviction: tier,
         title, reasons: buyScore.reasons,
