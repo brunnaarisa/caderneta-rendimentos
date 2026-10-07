@@ -1,8 +1,8 @@
 <title>Radar de Oportunidades</title>
 <script>
-// Cache-buster v21: corrige crash do Kelly em sinal de compra; cotações sequenciais
+// Cache-buster v22: acurácia sem sinais repetidos; ações julgadas por pregão
 (function(){
-  var V = 'radar-v21';
+  var V = 'radar-v22';
   try {
     if (localStorage.getItem('_radar_ver') === V) return;
     // Limpa caches do Service Worker
@@ -1049,7 +1049,7 @@ if ('serviceWorker' in navigator) {
     if (!swRegistration) swRegistration = reg;
     debugLog('SW ready: ' + (reg.active ? 'ativo' : 'aguardando'));
   });
-  navigator.serviceWorker.register('sw.js?v=21', { updateViaCache: 'none' }).then(reg => {
+  navigator.serviceWorker.register('sw.js?v=22', { updateViaCache: 'none' }).then(reg => {
     swRegistration = reg;
     // Se tem SW esperando ativar, força ativação imediata
     if (reg.waiting) {
@@ -1652,6 +1652,35 @@ function resetAccuracy(market) {
   renderAccuracy();
 }
 
+function signalReadyAt(sig) {
+  const t0 = signalTimeOf(sig);
+  if (signalMarketOf(sig) !== 'stock') return t0 + 72 * 3600000;
+  let t = t0;
+  while (b3SessionsSince(t0, t) < 3) t += 86400000;
+  return t;
+}
+
+// Últimos sinais avaliados, mais recente primeiro: ativo, direção, data e quanto o preço andou
+function resolvedSignalsHtml(resolved) {
+  if (!resolved.length) return '';
+  const rows = resolved.slice(-6).reverse().map(s => {
+    const pct = s.resultPct ?? 0;
+    const day = new Date(signalTimeOf(s)).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    return `<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-top:1px solid var(--border)">
+      <span>${s.result ? '✅' : '❌'} <b>${s.symbol}</b> ${s.type === 'buy' ? 'compra' : 'venda'} · ${day}</span>
+      <span style="font-family:var(--mono);color:${pct >= 0 ? 'var(--gain)' : 'var(--loss)'}">${pct > 0 ? '+' : ''}${String(pct).replace('.', ',')}%</span>
+    </div>`;
+  }).join('');
+  return `<div style="margin-top:10px;font-size:.75rem;color:var(--text-secondary)">${rows}</div>`;
+}
+
+function accuracyRuleHtml(market) {
+  const rule = market === 'stock'
+    ? 'Acerto: depois de 3 pregões, o preço andou ≥1,5% na direção do sinal (≥1% em sinais de 70%+).'
+    : 'Acerto: depois de 72h, compra subiu ≥2% ou venda caiu ≥3% (≥1,5% / ≥2% em sinais de 70%+).';
+  return `<div style="margin-top:8px;font-size:.68rem;color:var(--text-muted);text-align:center;line-height:1.4">${rule}</div>`;
+}
+
 function renderAccuracyFor(market) {
   const content = document.getElementById(`accuracy-content-${market}`);
   if (!content) return;
@@ -1667,18 +1696,22 @@ function renderAccuracyFor(market) {
       } else if (market === 'stock' && !state.watchlist.stocks.length) {
         html += '📈 Adicione ações no Painel pra começar a acompanhar sinais.';
       } else {
-        html += '📡 Nenhum sinal registrado ainda.<br>Cada sinal de compra/venda ≥55% é guardado e avaliado 72h depois.';
+        html += `📡 Nenhum sinal registrado ainda.<br>Cada sinal de compra/venda ≥55% é guardado e avaliado ${market === 'stock' ? '3 pregões' : '72h'} depois.`;
       }
     } else {
       html += `✅ ${resolvedCount} de 3 sinais avaliados (mínimo pra mostrar a taxa de acerto)`;
       if (pendingSigs.length) {
-        const nextMs = Math.min(...pendingSigs.map(s => signalTimeOf(s) + 72 * 3600 * 1000));
+        const nextMs = Math.min(...pendingSigs.map(signalReadyAt));
         const hoursLeft = Math.max(0, Math.ceil((nextMs - Date.now()) / 3600000));
         const when = hoursLeft === 0 ? 'na próxima atualização' : hoursLeft < 24 ? `em ~${hoursLeft}h` : `em ~${Math.ceil(hoursLeft / 24)} dia${hoursLeft > 24 ? 's' : ''}`;
         html += `<br>⏳ ${pendingSigs.length} em observação — próximo resultado ${when}`;
       }
     }
-    content.innerHTML = html + '</div>';
+    html += '</div>';
+    if (signals.length) {
+      html += resolvedSignalsHtml(signals.filter(s => s.result !== null)) + accuracyRuleHtml(market);
+    }
+    content.innerHTML = html;
     return;
   }
   const hitColor = acc.hitRate >= 65 ? 'var(--gain)' : acc.hitRate >= 45 ? 'var(--warn)' : 'var(--loss)';
@@ -1711,20 +1744,12 @@ function renderAccuracyFor(market) {
     if (acc.sellHit !== null) statsHtml += `<span style="color:var(--loss)">🔴 Venda: ${acc.sellHit}%</span>`;
     statsHtml += `</div>`;
   }
-  // Últimos sinais como mini timeline
-  if (acc.recent.length > 0) {
-    statsHtml += `<div style="display:flex;gap:3px;justify-content:center;margin-top:8px" title="Últimos ${acc.recent.length} sinais">`;
-    for (const sig of acc.recent) {
-      const emoji = sig.result ? '✅' : '❌';
-      const tip = `${sig.symbol} ${sig.type === 'buy' ? '↑' : '↓'} ${sig.resultPct > 0 ? '+' : ''}${sig.resultPct}%`;
-      statsHtml += `<span title="${tip}" style="font-size:.85rem;cursor:help">${emoji}</span>`;
-    }
-    statsHtml += `</div>`;
-  }
+  statsHtml += resolvedSignalsHtml(acc.recent);
   const pending = acc.pending;
   if (pending > 0) {
-    statsHtml += `<div style="text-align:center;margin-top:6px;font-size:.68rem;color:var(--text-muted)">⏳ ${pending} sinal${pending > 1 ? 'is' : ''} pendente${pending > 1 ? 's' : ''} (aguardando 72h)</div>`;
+    statsHtml += `<div style="text-align:center;margin-top:6px;font-size:.68rem;color:var(--text-muted)">⏳ ${pending} sinal${pending > 1 ? 'is' : ''} pendente${pending > 1 ? 's' : ''} (${market === 'stock' ? 'aguardando 3 pregões' : 'aguardando 72h'})</div>`;
   }
+  statsHtml += accuracyRuleHtml(market);
   statsHtml += `<div style="text-align:center;margin-top:12px">
     <button onclick="resetAccuracy('${market}')"
       style="background:var(--bg-inset);border:1px solid var(--border);color:var(--text-body);font-size:.78rem;padding:8px 18px;border-radius:8px;cursor:pointer;font-weight:500">
@@ -3045,14 +3070,17 @@ function trackSignal(opp) {
   // Busca preço atual do ativo
   const p = state.prices.crypto[assetId] || state.prices.stocks[assetId];
   if (!p || !p.price) return;
-  // Evita duplicatas (mesmo ativo + tipo no mesmo dia)
+  const market = state.prices.crypto[assetId] ? 'crypto' : 'stock';
+  // Fora do pregão a cotação está parada: o sinal seria só o fechamento anterior repetido
+  if (market === 'stock' && !isB3Open()) return;
+  // Um sinal por janela de observação: enquanto o anterior do mesmo ativo/tipo
+  // está pendente, o mesmo movimento não conta de novo
+  if (state.signalTracker.some(s => s.asset === assetId && s.type === type && s.result === null)) return;
   const today = new Date().toISOString().slice(0, 10);
-  const exists = state.signalTracker.some(s => s.asset === assetId && s.type === type && s.date === today);
-  if (exists) return;
   state.signalTracker.push({
     date: today,
     ts: Date.now(),
-    market: state.prices.crypto[assetId] ? 'crypto' : 'stock',
+    market,
     asset: assetId,
     symbol: p.symbol?.toUpperCase() || assetId,
     type,
@@ -3074,29 +3102,88 @@ function signalMarketOf(sig) {
   return sig.market || (/^[A-Z]{4}\d{1,2}F?$/.test(sig.asset) ? 'stock' : 'crypto');
 }
 
+function spTimeParts(ms) {
+  const f = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', weekday: 'short', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' });
+  const o = {};
+  for (const { type, value } of f.formatToParts(new Date(ms))) o[type] = value;
+  return o;
+}
+
+// Pregão da B3: seg–sex, 10h–17h55 (horário de Brasília). Feriados não são considerados.
+function isB3Open(ms = Date.now()) {
+  const o = spTimeParts(ms);
+  if (o.weekday === 'Sat' || o.weekday === 'Sun') return false;
+  const mins = Number(o.hour) * 60 + Number(o.minute);
+  return mins >= 600 && mins < 1075;
+}
+
+function b3SessionsSince(ms, now) {
+  let n = 0;
+  for (let t = ms + 86400000; t <= now; t += 86400000) {
+    const wd = spTimeParts(t).weekday;
+    if (wd !== 'Sat' && wd !== 'Sun') n++;
+  }
+  return n;
+}
+
+// Cripto: 72h corridas. Ações: 3 pregões (fim de semana não conta).
+function signalReadyToJudge(sig, now) {
+  return signalMarketOf(sig) === 'stock'
+    ? b3SessionsSince(signalTimeOf(sig), now) >= 3
+    : now - signalTimeOf(sig) >= 72 * 3600000;
+}
+
+// Acerto = preço andou na direção do sinal além do ruído normal do mercado.
+// Ações grandes da B3 oscilam bem menos que cripto, então o limite é menor.
+function signalThreshold(sig) {
+  const high = sig.probability >= 70;
+  if (signalMarketOf(sig) === 'stock') return high ? 1 : 1.5;
+  if (sig.type === 'buy') return high ? 1.5 : 2;
+  return high ? 2 : 3;
+}
+
+function judgeSignal(sig, pct) {
+  const t = signalThreshold(sig);
+  return sig.type === 'buy' ? pct >= t : pct <= -t;
+}
+
+// Ajuste único do histórico já gravado: tira repetições do mesmo sinal e
+// rejulga ações pelas regras de pregão/limite acima.
+function migrateSignalTracker() {
+  try { if (localStorage.getItem('radar_tracker_mig') === '2') return; } catch (e) { return; }
+  const sorted = state.signalTracker.slice().sort((a, b) => signalTimeOf(a) - signalTimeOf(b));
+  const kept = [];
+  for (const s of sorted) {
+    const repeated = kept.some(k => k.asset === s.asset && k.type === s.type && !signalReadyToJudge(k, signalTimeOf(s)));
+    if (repeated) continue;
+    if (signalMarketOf(s) === 'stock' && s.result !== null) {
+      const checkedMs = s.checkedAt ? new Date(s.checkedAt + 'T23:59:00-03:00').getTime() : Date.now();
+      if (!signalReadyToJudge(s, checkedMs)) {
+        s.result = null; s.resultPct = null; s.checkedAt = null;
+      } else {
+        s.result = judgeSignal(s, s.resultPct);
+      }
+    }
+    kept.push(s);
+  }
+  debugLog(`Acurácia: histórico ajustado (${state.signalTracker.length} → ${kept.length} sinais)`);
+  state.signalTracker = kept;
+  saveSignalTracker();
+  try { localStorage.setItem('radar_tracker_mig', '2'); } catch (e) {}
+}
+
 function updateSignalTracker() {
   const now = Date.now();
   let changed = false;
   for (const sig of state.signalTracker) {
-    // Só verifica sinais pendentes com pelo menos 72h (3 dias)
-    // Sinais técnicos precisam de tempo pra se concretizar
     if (sig.result !== null) continue;
-    const hoursSince = (now - signalTimeOf(sig)) / (1000 * 60 * 60);
-    if (hoursSince < 72) continue;
-    // Busca preço atual
+    if (!signalReadyToJudge(sig, now)) continue;
     const p = state.prices.crypto[sig.asset] || state.prices.stocks[sig.asset];
     if (!p || !p.price) continue;
     const pctChange = ((p.price - sig.priceAtSignal) / sig.priceAtSignal) * 100;
     sig.resultPct = Math.round(pctChange * 10) / 10;
     sig.checkedAt = new Date().toISOString().slice(0, 10);
-    // Acertou se:
-    // - Sinal de COMPRA e preço subiu ≥2% (ruído em crypto é ~1-2%, então 2% é real)
-    // - Sinal de VENDA e preço caiu ≥3% (venda precisa de queda mais forte pra confirmar)
-    // Para sinais de alta confiança (≥70%), thresholds menores
-    const buyThreshold = sig.probability >= 70 ? 1.5 : 2;
-    const sellThreshold = sig.probability >= 70 ? 2 : 3;
-    if (sig.type === 'buy') sig.result = pctChange >= buyThreshold;
-    else sig.result = pctChange <= -sellThreshold;
+    sig.result = judgeSignal(sig, pctChange);
     changed = true;
   }
   if (changed) saveSignalTracker();
@@ -5356,6 +5443,7 @@ window.addEventListener('error', e => {
   loadState();
   loadNotifiedOpps();
   loadSignalTracker();
+  migrateSignalTracker();
   applyTheme();
   loadSettings();
   renderPopular();
