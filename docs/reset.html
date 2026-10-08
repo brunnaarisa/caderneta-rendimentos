@@ -38,6 +38,8 @@ p{color:#8899aa;font-size:.9rem}
     if ('caches' in window) {
       var names = await caches.keys();
       for (var i = 0; i < names.length; i++) {
+        // Registro de notificações enviadas: mantém o limite diário anti-spam
+        if (names[i] === 'radar-notify-log') continue;
         await caches.delete(names[i]);
       }
       steps.push(names.length + ' caches');
@@ -69,11 +71,11 @@ p{color:#8899aa;font-size:.9rem}
 
     // 4. Seta a versão correta ANTES de redirecionar
     // Assim o cache-buster no index.html não vai tentar rodar de novo
-    localStorage.setItem('_radar_ver', 'radar-v22');
+    localStorage.setItem('_radar_ver', 'radar-v23');
 
     el.textContent = '4/4 — Redirecionando...';
     el.className = 'done';
-    steps.push('versão v22 definida');
+    steps.push('versão v23 definida');
 
     // 5. Redireciona com timestamp forte pra burlar qualquer cache
     // Usa fetch com no-cache primeiro pra forçar o servidor a entregar o arquivo novo

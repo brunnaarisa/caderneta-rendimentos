@@ -1,4 +1,4 @@
-const CACHE_NAME = 'radar-v22';
+const CACHE_NAME = 'radar-v23';
 const SHELL_URLS = [
   './',
   './index.html',
@@ -34,7 +34,7 @@ self.addEventListener('activate', function(event) {
   event.waitUntil(
     caches.keys().then(function(names) {
       return Promise.all(
-        names.filter(function(n) { return n !== CACHE_NAME; })
+        names.filter(function(n) { return n !== CACHE_NAME && n !== NOTIFY_LOG_CACHE; })
              .map(function(n) { return caches.delete(n); })
       );
     }).then(function() {
@@ -190,6 +190,34 @@ function bgCalcMomentum(prices) {
   return ((avgRecent - avgOlder) / avgOlder) * 100;
 }
 
+// Mesmas regras anti-spam da página (radar.html → claimNotification), no mesmo registro:
+// 1 aviso por ativo/tipo por dia, até 6 por dia, 30 min entre avisos, silêncio 22h–8h.
+var NOTIFY_LOG_CACHE = 'radar-notify-log';
+var NOTIFY_LOG_URL = './__notify-log';
+
+function brtDayHour(ms) {
+  var o = {};
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit', hour: 'numeric', hourCycle: 'h23' })
+    .formatToParts(new Date(ms)).forEach(function(p) { o[p.type] = p.value; });
+  return { day: o.year + '-' + o.month + '-' + o.day, hour: Number(o.hour) };
+}
+
+async function claimNotification(keys) {
+  var now = Date.now();
+  var t = brtDayHour(now);
+  if (t.hour >= 22 || t.hour < 8) return [];
+  var log = null;
+  try { var r = await (await caches.open(NOTIFY_LOG_CACHE)).match(NOTIFY_LOG_URL); if (r) log = await r.json(); } catch (e) {}
+  if (!log || log.day !== t.day) log = { day: t.day, keys: [], times: [] };
+  var fresh = keys.filter(function(k) { return log.keys.indexOf(k) === -1; });
+  if (!fresh.length || log.times.length >= 6) return [];
+  if (log.times.length && now - log.times[log.times.length - 1] < 30 * 60000) return [];
+  log.keys = log.keys.concat(fresh);
+  log.times.push(now);
+  try { await (await caches.open(NOTIFY_LOG_CACHE)).put(NOTIFY_LOG_URL, new Response(JSON.stringify(log), { headers: { 'Content-Type': 'application/json' } })); } catch (e) {}
+  return fresh;
+}
+
 async function checkPricesInBackground() {
   try {
     // Busca com sparkline para RSI/Bollinger/MACD/EMA/Estocástico
@@ -334,9 +362,8 @@ async function checkPricesInBackground() {
         if (stoch && stoch.k < 20) buyReasons.push('Estocástico ' + Math.round(stoch.k));
         if (fgVal <= 30) buyReasons.push('Fear ' + fgVal);
         alerts.push({
-          title: '🚨 COMPRA ' + sym + ' (' + buyScore + '%) — ' + buySignals + ' indicadores',
-          body: sym + ' a ' + priceStr + ' — ' + (buyReasons.join(', ') || 'múltiplos sinais convergentes') + '. Abra o Radar.',
-          tag: 'bg-buy-' + coin.id + '-' + new Date().toISOString().slice(0, 13)
+          key: 'buy:' + coin.id, sym: sym, type: 'compra', score: buyScore,
+          detail: sym + ' a ' + priceStr + (buyReasons.length ? ' · ' + buyReasons.join(', ') : '')
         });
       }
 
@@ -422,25 +449,28 @@ async function checkPricesInBackground() {
 
       if (sellScore >= 65) {
         alerts.push({
-          title: '🔴 VENDA ' + sym + ' (' + sellScore + '%) — ' + sellSignals + ' indicadores',
-          body: sym + ' subiu ' + change24h.toFixed(1) + '% — ' + sellSignals + ' indicadores confirmam. Abra o Radar.',
-          tag: 'bg-sell-' + coin.id + '-' + new Date().toISOString().slice(0, 13)
+          key: 'sell:' + coin.id, sym: sym, type: 'venda', score: sellScore,
+          detail: sym + ' subiu ' + change24h.toFixed(1).replace('.', ',') + '% em 24h'
         });
       }
     }
 
-    // Máximo 3 notificações, priorizando os scores mais altos
-    alerts.sort(function(a, b) { return parseInt(b.title.match(/\d+/)) - parseInt(a.title.match(/\d+/)); });
-    for (var j = 0; j < Math.min(3, alerts.length); j++) {
-      await self.registration.showNotification(alerts[j].title, {
-        body: alerts[j].body,
-        tag: alerts[j].tag,
-        icon: './icon-192.png',
-        badge: './icon-192.png',
-        requireInteraction: true,
-        silent: false
-      });
+    if (!alerts.length) return;
+    alerts.sort(function(a, b) { return b.score - a.score; });
+    var fresh = await claimNotification(alerts.map(function(a) { return a.key; }));
+    var list = alerts.filter(function(a) { return fresh.indexOf(a.key) !== -1; });
+    if (!list.length) return;
+    var title, body;
+    if (list.length === 1) {
+      title = 'Sinal de ' + list[0].type + ' · ' + list[0].sym;
+      body = 'Confiança ' + list[0].score + '%. ' + list[0].detail + '. Abra o Radar para ver os detalhes.';
+    } else {
+      title = 'Radar: ' + list.length + ' novos sinais';
+      body = list.slice(0, 4).map(function(a) { return a.sym + ' ' + a.type + ' ' + a.score + '%'; }).join(' · ');
     }
+    await self.registration.showNotification(title, {
+      body: body, tag: 'radar-sinais', icon: './icon-192.png', badge: './icon-192.png'
+    });
   } catch (e) {
     // Silently fail — background sync will retry
   }

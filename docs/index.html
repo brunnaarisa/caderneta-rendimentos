@@ -5,15 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Radar de Oportunidades</title>
 <script>
-// Cache-buster v22: acurácia sem sinais repetidos; ações julgadas por pregão
+// Cache-buster v23: notificações com limites anti-spam e texto neutro
 (function(){
-  var V = 'radar-v22';
+  var V = 'radar-v23';
   try {
     if (localStorage.getItem('_radar_ver') === V) return;
     // Limpa caches do Service Worker
     if ('caches' in window) {
       caches.keys().then(function(names) {
-        names.forEach(function(n) { caches.delete(n); });
+        names.forEach(function(n) { if (n !== 'radar-notify-log') caches.delete(n); });
       });
     }
     if ('serviceWorker' in navigator) {
@@ -1056,7 +1056,7 @@ if ('serviceWorker' in navigator) {
     if (!swRegistration) swRegistration = reg;
     debugLog('SW ready: ' + (reg.active ? 'ativo' : 'aguardando'));
   });
-  navigator.serviceWorker.register('sw.js?v=22', { updateViaCache: 'none' }).then(reg => {
+  navigator.serviceWorker.register('sw.js?v=23', { updateViaCache: 'none' }).then(reg => {
     swRegistration = reg;
     // Se tem SW esperando ativar, força ativação imediata
     if (reg.waiting) {
@@ -1096,6 +1096,86 @@ if ('serviceWorker' in navigator) {
       }).catch(() => debugLog('Background Sync: API indisponível'));
     }
   }).catch(e => debugLog('SW falhou: ' + e.message));
+}
+
+/* ===== POLÍTICA DE NOTIFICAÇÕES =====
+   O Chrome marca como spam sites que notificam demais ou com texto alarmista.
+   Página e service worker dividem o mesmo registro (Cache Storage) e as mesmas regras:
+   1 aviso por ativo/tipo por dia, até 6 por dia, 30 min entre avisos, silêncio 22h–8h.
+   Alertas da sua posição (stop/lucro) ignoram limite diário e intervalo. */
+const NOTIFY_LOG_CACHE = 'radar-notify-log';
+const NOTIFY_LOG_URL = './__notify-log';
+
+function brtDayHour(ms) {
+  const o = {};
+  for (const { type, value } of new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit', hour: 'numeric', hourCycle: 'h23' }).formatToParts(new Date(ms))) o[type] = value;
+  return { day: `${o.year}-${o.month}-${o.day}`, hour: Number(o.hour) };
+}
+
+async function claimNotification(keys, urgent) {
+  const now = Date.now();
+  const { day, hour } = brtDayHour(now);
+  if (hour >= 22 || hour < 8) return [];
+  let log = null;
+  try { const r = await (await caches.open(NOTIFY_LOG_CACHE)).match(NOTIFY_LOG_URL); if (r) log = await r.json(); } catch (e) {}
+  if (!log || log.day !== day) log = { day, keys: [], times: [] };
+  const fresh = keys.filter(k => !log.keys.includes(k));
+  if (!fresh.length) return [];
+  if (!urgent) {
+    if (log.times.length >= 6) return [];
+    if (log.times.length && now - log.times[log.times.length - 1] < 30 * 60000) return [];
+  }
+  log.keys.push(...fresh);
+  log.times.push(now);
+  try { await (await caches.open(NOTIFY_LOG_CACHE)).put(NOTIFY_LOG_URL, new Response(JSON.stringify(log), { headers: { 'Content-Type': 'application/json' } })); } catch (e) {}
+  return fresh;
+}
+
+// Sinais: 1 aviso por ativo/tipo no dia. Posição: cada nível (ex.: -3%, -6%) avisa uma vez.
+function oppNotifyKey(opp) {
+  const parts = opp.key.split(':');
+  return /:(loss|profit|recover):/.test(opp.key) ? parts.slice(1).join(':') : `${parts[1]}:${parts[2]}`;
+}
+
+function oppSymbol(opp) {
+  const id = opp.key.split(':')[2];
+  return (state.prices.crypto[id]?.symbol || id).toUpperCase();
+}
+
+async function pushOpportunities(opps) {
+  const isPosition = o => /:(loss|profit|recover):/.test(o.key);
+  const urgent = opps.filter(isPosition);
+  const regular = opps.filter(o => !isPosition(o)).sort((a, b) => b.probability - a.probability);
+  const sent = [];
+  for (const o of urgent) {
+    if ((await claimNotification([oppNotifyKey(o)], true)).length) {
+      await sendNotification(`Sua posição em ${oppSymbol(o)}`, {
+        body: o.notification.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '').trim(),
+        tag: oppNotifyKey(o), icon: 'icon-192.png', badge: 'icon-192.png'
+      });
+      sent.push(o);
+    }
+  }
+  if (regular.length) {
+    const fresh = await claimNotification(regular.map(oppNotifyKey), false);
+    const list = regular.filter(o => fresh.includes(oppNotifyKey(o)));
+    const label = o => `${oppSymbol(o)} ${o.type === 'buy' ? 'compra' : 'venda'} ${o.probability}%`;
+    if (list.length === 1) {
+      const o = list[0];
+      await sendNotification(`Sinal de ${o.type === 'buy' ? 'compra' : 'venda'} · ${oppSymbol(o)}`, {
+        body: `Confiança ${o.probability}%. Abra o Radar para ver os detalhes.`,
+        tag: 'radar-sinais', icon: 'icon-192.png', badge: 'icon-192.png'
+      });
+    } else if (list.length > 1) {
+      await sendNotification(`Radar: ${list.length} novos sinais`, {
+        body: list.slice(0, 4).map(label).join(' · ') + (list.length > 4 ? ` e mais ${list.length - 4}` : ''),
+        tag: 'radar-sinais', icon: 'icon-192.png', badge: 'icon-192.png'
+      });
+    }
+    sent.push(...list);
+  }
+  if (sent.length && state.settings.sound) playBeep();
+  debugLog(`Notificações: ${sent.length} de ${opps.length} enviadas (limites anti-spam)`);
 }
 
 // Wrapper: SEMPRE usa SW.showNotification (Android proíbe new Notification)
@@ -3493,26 +3573,18 @@ function detectOpportunities() {
     try { renderAccuracy(); } catch (e) {}
   }
 
+  const toPush = [];
   for (const opp of newSignals) {
     notifiedOpps.add(opp.key);
     addToHistory(opp);
     showToast({ type: opp.type, title: opp.title, msg: opp.desc });
 
-    // Notificação push: só sinais com confluência real (≥65%).
-    const isPositionAlert = opp.key.includes(':loss:') || opp.key.includes(':profit:');
-    const minPushThreshold = isPositionAlert ? 55 : 65;
-    const shouldPush = opp.probability >= minPushThreshold;
-
-    if (shouldPush && state.settings.notifications && 'Notification' in window && Notification.permission === 'granted') {
-      sendNotification(`${opp.probability}% — ${opp.title.replace(/[\u{1F300}-\u{1FAFF}]/gu, '').trim()}`, {
-        body: opp.notification, tag: opp.key,
-        requireInteraction: opp.probability >= 70, silent: false
-      });
-    }
-    if (shouldPush && state.settings.sound) {
-      if (opp.probability >= 75) playUrgentBeep();
-      else playBeep();
-    }
+    // Notificação push: só sinais com confluência real (≥65%); alertas da sua posição a partir de 55%
+    const isPositionAlert = /:(loss|profit|recover):/.test(opp.key);
+    if (opp.probability >= (isPositionAlert ? 55 : 65)) toPush.push(opp);
+  }
+  if (toPush.length && state.settings.notifications && 'Notification' in window && Notification.permission === 'granted') {
+    pushOpportunities(toPush).catch(e => debugLog(`Notificação ERRO: ${e.message}`));
   }
 
   // Atualiza tracker com preços atuais
