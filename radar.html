@@ -1,8 +1,8 @@
 <title>Radar de Oportunidades</title>
 <script>
-// Cache-buster v24: sinais só com confirmação de virada; acurácia por regra
+// Cache-buster v25: teste no histórico
 (function(){
-  var V = 'radar-v24';
+  var V = 'radar-v25';
   try {
     if (localStorage.getItem('_radar_ver') === V) return;
     // Limpa caches do Service Worker
@@ -551,6 +551,11 @@ select.form-input{-webkit-appearance:none;appearance:none;background-image:url("
       <div id="accuracy-content-stock"></div>
     </div>
 
+    <div class="fg-card" id="backtest-card">
+      <h3>🧪 Teste no histórico</h3>
+      <div id="backtest-content"></div>
+    </div>
+
     <div class="cards-header">
       <h2>🔔 Oportunidades Detectadas</h2>
       <span style="font-size:.78rem;color:var(--text-muted)">Modo curto prazo · alvo/stop em cada sinal · atualiza a cada 15s</span>
@@ -1049,7 +1054,7 @@ if ('serviceWorker' in navigator) {
     if (!swRegistration) swRegistration = reg;
     debugLog('SW ready: ' + (reg.active ? 'ativo' : 'aguardando'));
   });
-  navigator.serviceWorker.register('sw.js?v=24', { updateViaCache: 'none' }).then(reg => {
+  navigator.serviceWorker.register('sw.js?v=25', { updateViaCache: 'none' }).then(reg => {
     swRegistration = reg;
     // Se tem SW esperando ativar, força ativação imediata
     if (reg.waiting) {
@@ -1844,6 +1849,284 @@ function renderAccuracyFor(market) {
     </button>
   </div>`;
   content.innerHTML = statsHtml;
+}
+
+/* ===== TESTE NO HISTÓRICO =====
+   Roda as MESMAS funções de pontuação sobre preços passados, hora a hora (cripto, 90 dias)
+   e dia a dia (ações, ~60 pregões), e mede o que teria acontecido 72h / 3 pregões depois.
+   Compara a regra antiga (sem confirmação de virada) com a atual. */
+let backtestRunning = false;
+
+async function fetchCryptoHistory(id) {
+  const toSeries = rows => {
+    const byHour = new Map();
+    for (const r of rows) byHour.set(r.h, r);
+    return [...byHour.values()].sort((a, b) => a.h - b.h);
+  };
+  try {
+    const d = await fetchJSON(`https://api.coingecko.com/api/v3/coins/${encodeURIComponent(id)}/market_chart?vs_currency=brl&days=90`, 20000);
+    if (!Array.isArray(d?.prices) || d.prices.length < 500) throw new Error('histórico vazio');
+    const vol = new Map((d.total_volumes || []).map(([t, v]) => [Math.round(t / 3600000), v]));
+    const mc = new Map((d.market_caps || []).map(([t, v]) => [Math.round(t / 3600000), v]));
+    return toSeries(d.prices.map(([t, p]) => { const h = Math.round(t / 3600000); return { h, p, v: vol.get(h) ?? null, mc: mc.get(h) ?? null }; }));
+  } catch (e) {
+    const meta = BINANCE_MAP[id];
+    if (!meta) throw e;
+    const rate = state.usdBrl || 5.2;
+    let end = Date.now(), kl = [];
+    for (let k = 0; k < 3; k++) {
+      const page = await fetchJSON(`https://api.binance.com/api/v3/klines?symbol=${meta.pair}&interval=1h&limit=1000&endTime=${end}`, 20000);
+      if (!Array.isArray(page) || !page.length) break;
+      kl = page.concat(kl);
+      end = page[0][0] - 1;
+    }
+    if (kl.length < 500) throw e;
+    let vol24 = 0;
+    return toSeries(kl.map((k, i) => {
+      vol24 += parseFloat(k[7]) - (i >= 24 ? parseFloat(kl[i - 24][7]) : 0);
+      return { h: Math.round(k[6] / 3600000), p: parseFloat(k[4]) * rate, v: vol24 * rate, mc: null };
+    }));
+  }
+}
+
+async function fetchFearGreedHistory() {
+  const d = await fetchJSON('https://api.alternative.me/fng/?limit=120', 15000);
+  const m = new Map();
+  for (const x of d?.data || []) m.set(new Date(Number(x.timestamp) * 1000).toISOString().slice(0, 10), Number(x.value));
+  return m;
+}
+
+function fgAt(fgMap, ms) {
+  for (let back = 0; back < 4; back++) {
+    const v = fgMap.get(new Date(ms - back * 86400000).toISOString().slice(0, 10));
+    if (v != null) return { value: v };
+  }
+  return null;
+}
+
+// Monta o "p" que o radar veria naquela hora, a partir da série horária
+function cryptoPointAt(rows, i, id, symbol, athNow, runMax, windowMax) {
+  const price = rows[i].p;
+  const sparkline = rows.slice(i - 167, i + 1).map(r => r.p);
+  const last24 = sparkline.slice(-24);
+  const ath = athNow && athNow > windowMax ? athNow : runMax[i];
+  return {
+    id, symbol, price, sparkline,
+    change1h: (price / rows[i - 1].p - 1) * 100,
+    change24h: (price / rows[i - 24].p - 1) * 100,
+    change7d: (price / rows[i - 167].p - 1) * 100,
+    high24h: Math.max(...last24), low24h: Math.min(...last24),
+    volume24h: rows[i].v, marketCap: rows[i].mc, ath, athChange: (price / ath - 1) * 100
+  };
+}
+
+// Pontuação sem efeitos colaterais: troca temporariamente o estado global que as funções leem
+function withBacktestState(overrides, fn) {
+  const saved = { fearGreed: state.fearGreed, btcDominance: state.btcDominance, signalTracker: state.signalTracker,
+    crypto: state.prices.crypto, stockHistory: state.prices.stockHistory, ibov: state.ibovHistory };
+  try {
+    state.btcDominance = null;
+    state.signalTracker = [];
+    if ('crypto' in overrides) state.prices.crypto = overrides.crypto;
+    if ('stockHistory' in overrides) state.prices.stockHistory = overrides.stockHistory;
+    if ('ibov' in overrides) state.ibovHistory = overrides.ibov;
+    if ('fearGreed' in overrides) state.fearGreed = overrides.fearGreed;
+    return fn();
+  } finally {
+    state.fearGreed = saved.fearGreed; state.btcDominance = saved.btcDominance; state.signalTracker = saved.signalTracker;
+    state.prices.crypto = saved.crypto; state.prices.stockHistory = saved.stockHistory; state.ibovHistory = saved.ibov;
+  }
+}
+
+function scoreCryptoSeries(id, symbol, rows, btcByHour, fgMap) {
+  const athNow = state.prices.crypto[id]?.ath;
+  const runMax = [];
+  rows.forEach((r, i) => runMax.push(Math.max(r.p, i ? runMax[i - 1] : 0)));
+  const windowMax = runMax[runMax.length - 1];
+  const out = [];
+  for (let i = 168; i < rows.length; i++) {
+    const p = cryptoPointAt(rows, i, id, symbol, athNow, runMax, windowMax);
+    const btc = btcByHour.get(rows[i].h);
+    const later = rows[i + BT_CRYPTO_HORIZON];
+    withBacktestState({ crypto: btc ? { bitcoin: btc } : {}, fearGreed: fgAt(fgMap, rows[i].h * 3600000) }, () => {
+      out.push({
+        t: rows[i].h, asset: id, symbol,
+        buy: calcBuyScore(p, state.settings.dropThreshold, null).total,
+        sell: calcSellScore(p, state.settings.riseThreshold, null).total,
+        okBuy: turnConfirmed(p, 'crypto', 'buy'), okSell: turnConfirmed(p, 'crypto', 'sell'),
+        pct: later && later.h - rows[i].h <= BT_CRYPTO_HORIZON + 6 ? (later.p / p.price - 1) * 100 : null
+      });
+    });
+  }
+  return out;
+}
+
+function scoreStockSeries(ticker, hist, fgMap) {
+  const n = hist.closes.length;
+  const ibov = state.ibovHistory?.closes;
+  const out = [];
+  for (let i = 35; i < n; i++) {
+    const sl = arr => arr ? arr.slice(0, i + 1) : arr;
+    const h = { closes: sl(hist.closes), highs: sl(hist.highs), lows: sl(hist.lows), opens: sl(hist.opens), volumes: sl(hist.volumes), dates: sl(hist.dates) };
+    const p = { symbol: ticker, name: ticker, price: hist.closes[i], previousClose: hist.closes[i - 1], high: hist.highs[i], low: hist.lows[i],
+      changePct: (hist.closes[i] / hist.closes[i - 1] - 1) * 100, volume: hist.volumes[i] };
+    const ibovSlice = ibov ? { closes: ibov.slice(0, Math.max(0, ibov.length - (n - 1 - i))) } : null;
+    const ms = hist.dates?.[i] ? hist.dates[i] * 1000 : Date.now() - (n - 1 - i) * 86400000;
+    withBacktestState({ stockHistory: { [ticker]: h }, ibov: ibovSlice, fearGreed: fgAt(fgMap, ms) }, () => {
+      out.push({
+        t: i, ms, asset: ticker, symbol: ticker,
+        buy: calcStockBuyScore(p, state.settings.dropThreshold, null).total,
+        sell: calcStockSellScore(p, state.settings.riseThreshold, null).total,
+        okBuy: turnConfirmed(p, 'stock', 'buy'), okSell: turnConfirmed(p, 'stock', 'sell'),
+        pct: i + 3 < n ? (hist.closes[i + 3] / hist.closes[i] - 1) * 100 : null
+      });
+    });
+  }
+  return out;
+}
+
+const BT_CRYPTO_HORIZON = 72;
+
+// Aplica uma regra sobre os pontos pontuados: mesmo limite de 55%, um sinal por ativo/tipo
+// até ele ser avaliado, e (regra atual) confirmação de virada + agrupamento de mercado em cripto
+function backtestSignals(points, market, rule) {
+  const horizon = market === 'crypto' ? BT_CRYPTO_HORIZON : 3;
+  const byTime = new Map();
+  for (const x of points) { if (!byTime.has(x.t)) byTime.set(x.t, []); byTime.get(x.t).push(x); }
+  const pendingUntil = {};
+  const signals = [];
+  for (const t of [...byTime.keys()].sort((a, b) => a - b)) {
+    const pts = byTime.get(t);
+    for (const type of ['buy', 'sell']) {
+      let cands = pts.map(x => ({ x, prob: rule === 'new' && !(type === 'buy' ? x.okBuy : x.okSell) ? 0 : x[type] })).filter(c => c.prob > 0);
+      let track = cands.filter(c => c.prob >= 55 && c.x.pct != null);
+      if (rule === 'new' && market === 'crypto' && cands.length >= 4 && track.length) {
+        track = [track.reduce((a, b) => (b.prob > a.prob ? b : a))];
+      }
+      for (const c of track) {
+        const key = `${c.x.asset}:${type}`;
+        if ((pendingUntil[key] ?? -Infinity) > t) continue;
+        pendingUntil[key] = t + horizon;
+        const sig = { market, type, probability: c.prob, asset: c.x.asset, symbol: c.x.symbol };
+        signals.push({ ...sig, pct: c.x.pct, hit: judgeSignal(sig, c.x.pct), fav: type === 'buy' ? c.x.pct : -c.x.pct });
+      }
+    }
+  }
+  return signals;
+}
+
+function backtestStats(sigs) {
+  if (!sigs.length) return null;
+  const hit = Math.round(sigs.filter(s => s.hit).length / sigs.length * 100);
+  const avg = sigs.reduce((s, x) => s + x.fav, 0) / sigs.length;
+  return { n: sigs.length, hit, avg };
+}
+
+function backtestRowHtml(label, st) {
+  if (!st) return `<tr><td>${label}</td><td colspan="3" style="color:var(--text-muted)">nenhum sinal</td></tr>`;
+  const color = v => v >= 0 ? 'var(--gain)' : 'var(--loss)';
+  return `<tr><td>${label}</td><td style="text-align:right">${st.n}</td><td style="text-align:right">${st.hit}%</td>
+    <td style="text-align:right;color:${color(st.avg)}">${st.avg >= 0 ? '+' : ''}${st.avg.toFixed(2).replace('.', ',')}%</td></tr>`;
+}
+
+function backtestMarketHtml(title, period, points, market) {
+  if (!points.length) return '';
+  const old = backtestSignals(points, market, 'old');
+  const neu = backtestSignals(points, market, 'new');
+  const band = (lo, hi) => neu.filter(s => s.probability >= lo && s.probability < hi);
+  const head = '<tr style="color:var(--text-muted);font-size:.68rem"><td></td><td style="text-align:right">sinais</td><td style="text-align:right">acerto</td><td style="text-align:right">média/sinal</td></tr>';
+  return `<div style="margin-top:12px">
+    <div style="font-weight:600;font-size:.85rem">${title}</div>
+    <div style="font-size:.68rem;color:var(--text-muted)">${period}</div>
+    <table style="width:100%;font-size:.78rem;font-variant-numeric:tabular-nums;border-collapse:collapse;margin-top:4px">
+      ${head}
+      ${backtestRowHtml('Regra anterior', backtestStats(old))}
+      ${backtestRowHtml('<b>Regra atual</b>', backtestStats(neu))}
+      ${backtestRowHtml('&nbsp;&nbsp;só compras', backtestStats(neu.filter(s => s.type === 'buy')))}
+      ${backtestRowHtml('&nbsp;&nbsp;só vendas', backtestStats(neu.filter(s => s.type === 'sell')))}
+      ${backtestRowHtml('&nbsp;&nbsp;confiança 55–64%', backtestStats(band(55, 65)))}
+      ${backtestRowHtml('&nbsp;&nbsp;confiança 65–74%', backtestStats(band(65, 75)))}
+      ${backtestRowHtml('&nbsp;&nbsp;confiança 75%+', backtestStats(band(75, 101)))}
+    </table>
+  </div>`;
+}
+
+function renderBacktestIntro(extra = '') {
+  const el = document.getElementById('backtest-content');
+  if (!el) return;
+  el.innerHTML = `${extra}<p style="font-size:.78rem;color:var(--text-secondary);line-height:1.5;margin:6px 0 10px">
+      Roda as regras do radar sobre os preços reais dos últimos 90 dias (cripto) e ~60 pregões (ações) e mostra quanto
+      teria acertado. "Média/sinal" é quanto o preço andou a favor do sinal, em média, incluindo os erros. Leva cerca de 1 minuto.</p>
+    <button onclick="runBacktest()" ${backtestRunning ? 'disabled' : ''} style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 18px;font-size:.8rem;font-weight:600;cursor:pointer">
+      ${backtestRunning ? 'Rodando…' : '🧪 Rodar teste'}</button>`;
+}
+
+async function runBacktest() {
+  if (backtestRunning) return;
+  backtestRunning = true;
+  const el = document.getElementById('backtest-content');
+  const status = msg => { el.innerHTML = `<div style="font-size:.8rem;color:var(--text-secondary);padding:6px 0">⏳ ${msg}</div>`; };
+  try {
+    status('Buscando histórico do índice de medo…');
+    const fgMap = await fetchFearGreedHistory().catch(() => new Map());
+    const coins = (state.watchlist.crypto || []).filter(c => state.prices.crypto[c.id]);
+    const series = {};
+    for (const [k, c] of coins.entries()) {
+      status(`Baixando 90 dias de ${(state.prices.crypto[c.id].symbol || c.id).toUpperCase()} (${k + 1}/${coins.length})…`);
+      try { series[c.id] = await fetchCryptoHistory(c.id); } catch (e) { debugLog(`Teste: ${c.id} sem histórico (${e.message})`); }
+      await new Promise(r => setTimeout(r, 1500)); // respeita o limite de acessos do CoinGecko
+    }
+    const btcByHour = new Map();
+    if (series.bitcoin) {
+      const rows = series.bitcoin, runMax = [];
+      rows.forEach((r, i) => runMax.push(Math.max(r.p, i ? runMax[i - 1] : 0)));
+      for (let i = 168; i < rows.length; i++) btcByHour.set(rows[i].h, cryptoPointAt(rows, i, 'bitcoin', 'btc', state.prices.crypto.bitcoin?.ath, runMax, runMax[runMax.length - 1]));
+    }
+    const cryptoPoints = [];
+    let firstH = Infinity, lastH = 0;
+    for (const c of coins) {
+      const rows = series[c.id];
+      if (!rows || rows.length < 168 + BT_CRYPTO_HORIZON) continue;
+      status(`Simulando ${(state.prices.crypto[c.id].symbol || c.id).toUpperCase()}…`);
+      await new Promise(r => setTimeout(r, 0));
+      cryptoPoints.push(...scoreCryptoSeries(c.id, (state.prices.crypto[c.id].symbol || c.id).toUpperCase(), rows, btcByHour, fgMap));
+      firstH = Math.min(firstH, rows[168].h); lastH = Math.max(lastH, rows[rows.length - 1].h);
+    }
+    const stockPoints = [];
+    let stockDays = 0, stockFirst = null, stockLast = null;
+    for (const t of state.watchlist.stocks || []) {
+      const hist = state.prices.stockHistory[t];
+      if (!hist || !hist.closes || hist.closes.length < 40) continue;
+      status(`Simulando ${t}…`);
+      await new Promise(r => setTimeout(r, 0));
+      const pts = scoreStockSeries(t, hist, fgMap);
+      stockPoints.push(...pts);
+      stockDays = Math.max(stockDays, pts.length);
+      if (pts.length) { stockFirst = pts[0].ms; stockLast = pts[pts.length - 1].ms; }
+    }
+    const day = ms => new Date(ms).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    let html = '';
+    if (cryptoPoints.length) html += backtestMarketHtml(`Cripto · ${Object.keys(series).length} moedas`, `${day(firstH * 3600000)} a ${day(lastH * 3600000)} · avaliado 72h depois de cada sinal`, cryptoPoints, 'crypto');
+    if (stockPoints.length) html += backtestMarketHtml(`Ações B3 · ${new Set(stockPoints.map(p => p.asset)).size} ações`, `${day(stockFirst)} a ${day(stockLast)} (${stockDays} pregões) · avaliado 3 pregões depois`, stockPoints, 'stock');
+    if (!html) html = '<p style="font-size:.8rem;color:var(--loss)">Não consegui baixar o histórico agora. Tente de novo em alguns minutos.</p>';
+    html += `<p style="font-size:.68rem;color:var(--text-muted);line-height:1.4;margin-top:10px">Não inclui taxas nem imposto. Usa preços de hora em hora
+      (o radar ao vivo vê mais detalhes) e não tem o histórico de dominância do BTC. Resultado passado não garante resultado futuro, e poucos sinais
+      (menos de ~30) ainda podem ser sorte.</p>`;
+    try { localStorage.setItem('radar_backtest', JSON.stringify({ at: Date.now(), html })); } catch (e) {}
+    backtestRunning = false;
+    renderBacktestIntro(`<div style="font-size:.68rem;color:var(--text-muted)">Teste de ${new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>${html}<div style="height:10px"></div>`);
+  } catch (e) {
+    debugLog(`Teste ERRO: ${e.message}`);
+    backtestRunning = false;
+    renderBacktestIntro(`<p style="font-size:.8rem;color:var(--loss)">Erro no teste: ${String(e.message).replace(/[<>&"]/g, '')}</p>`);
+  }
+}
+
+function renderBacktest() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('radar_backtest') || 'null'); } catch (e) {}
+  if (backtestRunning) return;
+  renderBacktestIntro(saved ? `<div style="font-size:.68rem;color:var(--text-muted)">Último teste: ${new Date(saved.at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>${saved.html}<div style="height:10px"></div>` : '');
 }
 
 /* ===== WHATSAPP SHARE ===== */
@@ -5568,6 +5851,7 @@ window.addEventListener('error', e => {
   loadNotifiedOpps();
   loadSignalTracker();
   migrateSignalTracker();
+  renderBacktest();
   applyTheme();
   loadSettings();
   renderPopular();
