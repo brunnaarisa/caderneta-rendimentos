@@ -1,4 +1,4 @@
-const CACHE_NAME = 'radar-v26';
+const CACHE_NAME = 'radar-v27';
 const SHELL_URLS = [
   './',
   './index.html',
@@ -73,125 +73,40 @@ self.addEventListener('periodicsync', function(event) {
   }
 });
 
-// Volatilidade por ativo: thresholds mais altos para moedas mais voláteis
-var VOL_MULT = {
-  bitcoin: 1.0, ethereum: 1.1, solana: 1.4, binancecoin: 1.2,
-  ripple: 1.3, cardano: 1.4, dogecoin: 1.8, 'avalanche-2': 1.5,
-  sui: 1.6, chainlink: 1.4, pepe: 2.0
+// Estratégia de tendência (a mesma de radar.html → TREND), em candles diários:
+// entra ao fechar acima da máxima de 20 dias com média de 20 > média de 50;
+// sai ao fechar abaixo da mínima de 10 dias. Só avisa eventos do último candle fechado.
+var TREND = { breakout: 20, exit: 10, fast: 20, slow: 50 };
+var BG_PAIRS = {
+  bitcoin: ['BTC', 'BTCUSDT'], ethereum: ['ETH', 'ETHUSDT'], solana: ['SOL', 'SOLUSDT'], ripple: ['XRP', 'XRPUSDT'],
+  dogecoin: ['DOGE', 'DOGEUSDT'], 'avalanche-2': ['AVAX', 'AVAXUSDT'], sui: ['SUI', 'SUIUSDT'], pepe: ['PEPE', 'PEPEUSDT'],
+  binancecoin: ['BNB', 'BNBUSDT'], cardano: ['ADA', 'ADAUSDT'], chainlink: ['LINK', 'LINKUSDT']
 };
 
-// RSI simplificado para background (Wilder smoothing)
-function bgCalcRSI(prices, period) {
-  if (!prices || prices.length < period + 1) return null;
-  var data = prices.slice(-(period * 3));
-  if (data.length < period + 1) return null;
-  var avgGain = 0, avgLoss = 0;
-  for (var i = 1; i <= period; i++) {
-    var diff = data[i] - data[i - 1];
-    if (diff > 0) avgGain += diff; else avgLoss -= diff;
+function emaSeries(values, n) {
+  var k = 2 / (n + 1), out = [], e = null;
+  for (var i = 0; i < values.length; i++) {
+    if (i < n - 1) { out.push(null); continue; }
+    if (e === null) { e = 0; for (var j = i - n + 1; j <= i; j++) e += values[j]; e /= n; }
+    else e = values[i] * k + e * (1 - k);
+    out.push(e);
   }
-  avgGain /= period; avgLoss /= period;
-  for (var j = period + 1; j < data.length; j++) {
-    var d = data[j] - data[j - 1];
-    if (d > 0) { avgGain = (avgGain * (period - 1) + d) / period; avgLoss = (avgLoss * (period - 1)) / period; }
-    else { avgGain = (avgGain * (period - 1)) / period; avgLoss = (avgLoss * (period - 1) - d) / period; }
-  }
-  if (avgLoss === 0) return 100;
-  return 100 - (100 / (1 + avgGain / avgLoss));
+  return out;
 }
 
-// Bollinger %B simplificado para background
-function bgCalcBollingerB(prices) {
-  if (!prices || prices.length < 20) return null;
-  var data = prices.slice(-20);
-  var mean = 0; for (var i = 0; i < data.length; i++) mean += data[i]; mean /= data.length;
-  var variance = 0; for (var j = 0; j < data.length; j++) variance += (data[j] - mean) * (data[j] - mean); variance /= data.length;
-  var stdDev = Math.sqrt(variance);
-  if (stdDev === 0) return 0.5;
-  var upper = mean + 2 * stdDev, lower = mean - 2 * stdDev;
-  return (prices[prices.length - 1] - lower) / (upper - lower);
-}
-
-// EMA Crossover simplificado para background (EMA 9 vs EMA 21)
-function bgCalcEMACrossover(prices) {
-  if (!prices || prices.length < 25) return null;
-  function ema(data, period) {
-    var k = 2 / (period + 1);
-    var val = 0;
-    for (var i = 0; i < period; i++) val += data[i];
-    val /= period;
-    for (var j = period; j < data.length; j++) { val = data[j] * k + val * (1 - k); }
-    return val;
+// Retorna o evento do último candle fechado: 'buy', 'sell' ou null
+function lastTrendEvent(c) {
+  var ef = emaSeries(c, TREND.fast), es = emaSeries(c, TREND.slow), inPos = false, ev = null;
+  for (var i = TREND.slow; i < c.length; i++) {
+    ev = null;
+    if (inPos && c[i] < Math.min.apply(null, c.slice(i - TREND.exit, i))) { inPos = false; ev = 'sell'; }
+    else if (!inPos && ef[i] > es[i] && c[i] > Math.max.apply(null, c.slice(i - TREND.breakout, i))) { inPos = true; ev = 'buy'; }
   }
-  // Calcula EMA atual e anterior (usando dados até penúltimo ponto)
-  var lastShort = ema(prices, 9);
-  var lastLong = ema(prices, 21);
-  var prevShort = ema(prices.slice(0, -1), 9);
-  var prevLong = ema(prices.slice(0, -1), 21);
-  var goldenCross = prevShort <= prevLong && lastShort > lastLong;
-  var deathCross = prevShort >= prevLong && lastShort < lastLong;
-  var trend = lastShort > lastLong ? 'bull' : 'bear';
-  return { goldenCross: goldenCross, deathCross: deathCross, trend: trend };
-}
-
-// Estocástico simplificado para background
-function bgCalcStochastic(prices, period) {
-  if (!prices || prices.length < (period || 14)) return null;
-  period = period || 14;
-  var data = prices.slice(-period);
-  var highest = data[0], lowest = data[0];
-  for (var i = 1; i < data.length; i++) {
-    if (data[i] > highest) highest = data[i];
-    if (data[i] < lowest) lowest = data[i];
-  }
-  if (highest === lowest) return null;
-  var current = prices[prices.length - 1];
-  return { k: ((current - lowest) / (highest - lowest)) * 100 };
-}
-
-// MACD simplificado para background
-function bgCalcMACD(prices) {
-  if (!prices || prices.length < 30) return null;
-  function ema(data, period) {
-    var k = 2 / (period + 1);
-    var val = 0;
-    for (var i = 0; i < period; i++) val += data[i];
-    val /= period;
-    var result = [val];
-    for (var j = period; j < data.length; j++) { val = data[j] * k + val * (1 - k); result.push(val); }
-    return result;
-  }
-  var fast = ema(prices, 12);
-  var slow = ema(prices, 26);
-  var offset = fast.length - slow.length;
-  if (offset < 0 || slow.length < 2) return null;
-  var macdLine = [];
-  for (var i = 0; i < slow.length; i++) macdLine.push(fast[i + offset] - slow[i]);
-  if (macdLine.length < 9) return null;
-  var signal = ema(macdLine, 9);
-  var lastMACD = macdLine[macdLine.length - 1];
-  var lastSignal = signal[signal.length - 1];
-  var prevMACD = macdLine[macdLine.length - 2];
-  var prevSignal = signal[signal.length - 2];
-  var bullishCross = prevMACD <= prevSignal && lastMACD > lastSignal;
-  var bearishCross = prevMACD >= prevSignal && lastMACD < lastSignal;
-  return { bullishCross: bullishCross, bearishCross: bearishCross, trend: lastMACD > lastSignal ? 'bull' : 'bear' };
-}
-
-// Momentum simplificado
-function bgCalcMomentum(prices) {
-  if (!prices || prices.length < 10) return 0;
-  var recent = prices.slice(-5);
-  var older = prices.slice(-10, -5);
-  var avgRecent = 0, avgOlder = 0;
-  for (var i = 0; i < recent.length; i++) avgRecent += recent[i];
-  for (var j = 0; j < older.length; j++) avgOlder += older[j];
-  avgRecent /= recent.length; avgOlder /= older.length;
-  return ((avgRecent - avgOlder) / avgOlder) * 100;
+  return ev;
 }
 
 // Mesmas regras anti-spam da página (radar.html → claimNotification), no mesmo registro:
-// 1 aviso por ativo/tipo por dia, até 6 por dia, 30 min entre avisos, silêncio 22h–8h.
+// até 6 avisos por dia, 30 min entre avisos, silêncio 22h–8h; uma chave já avisada hoje ou ontem não repete.
 var NOTIFY_LOG_CACHE = 'radar-notify-log';
 var NOTIFY_LOG_URL = './__notify-log';
 
@@ -208,8 +123,9 @@ async function claimNotification(keys) {
   if (t.hour >= 22 || t.hour < 8) return [];
   var log = null;
   try { var r = await (await caches.open(NOTIFY_LOG_CACHE)).match(NOTIFY_LOG_URL); if (r) log = await r.json(); } catch (e) {}
-  if (!log || log.day !== t.day) log = { day: t.day, keys: [], times: [] };
-  var fresh = keys.filter(function(k) { return log.keys.indexOf(k) === -1; });
+  if (!log || log.day !== t.day) log = { day: t.day, keys: [], times: [], prev: log && log.day === brtDayHour(now - 86400000).day ? log.keys : [] };
+  var seen = log.keys.concat(log.prev || []);
+  var fresh = keys.filter(function(k) { return seen.indexOf(k) === -1; });
   if (!fresh.length || log.times.length >= 6) return [];
   if (log.times.length && now - log.times[log.times.length - 1] < 30 * 60000) return [];
   log.keys = log.keys.concat(fresh);
@@ -218,271 +134,34 @@ async function claimNotification(keys) {
   return fresh;
 }
 
-// Confirmação de virada (mesma regra de radar.html → turnConfirmed): compra só se o preço
-// subiu na última hora e nas últimas 3h; venda só se caiu nas duas
-function bgTurnConfirmed(sp, price, type) {
-  if (!price || !sp || sp.length < 4) return false;
-  var dir = type === 'buy' ? 1 : -1;
-  var h1 = (price - sp[sp.length - 2]) / sp[sp.length - 2];
-  var h3 = (price - sp[sp.length - 4]) / sp[sp.length - 4];
-  return h1 * dir > 0 && h3 * dir > 0;
-}
-
 async function checkPricesInBackground() {
   try {
-    // Busca com sparkline para RSI/Bollinger/MACD/EMA/Estocástico
-    var ids = 'bitcoin,ethereum,solana,binancecoin,ripple,cardano,dogecoin,avalanche-2,sui,chainlink';
-    var url = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=brl&ids=' + ids + '&order=market_cap_desc&sparkline=true&price_change_percentage=1h,24h,7d';
-
-    var response = await fetch(url);
-    if (!response.ok) return;
-    var coins = await response.json();
-
-    // Fear & Greed
-    var fgVal = 50;
-    try {
-      var fgResp = await fetch('https://api.alternative.me/fng/?limit=1');
-      var fgData = await fgResp.json();
-      if (fgData && fgData.data && fgData.data[0]) fgVal = parseInt(fgData.data[0].value);
-    } catch(e) {}
-
-    var alerts = [];
-
-    for (var i = 0; i < coins.length; i++) {
-      var coin = coins[i];
-      var sym = coin.symbol.toUpperCase();
-      var change24h = coin.price_change_percentage_24h_in_currency || 0;
-      var change1h = coin.price_change_percentage_1h_in_currency || 0;
-      var change7d = coin.price_change_percentage_7d_in_currency || 0;
-      var price = coin.current_price;
-      var athChange = coin.ath_change_percentage || 0;
-      var sparkline = (coin.sparkline_in_7d && coin.sparkline_in_7d.price) || [];
-      var mult = VOL_MULT[coin.id] || 1.3;
-
-      // ===== SCORE DE COMPRA =====
-      var buyScore = 0;
-      var buySignals = 0; // confluência
-
-      // Queda 24h (threshold ajustado por volatilidade)
-      if (change24h <= -(4 * mult)) {
-        buyScore += Math.min(25, 8 + (Math.abs(change24h) - 4 * mult) * 2);
-        buySignals++;
-      }
-      // Queda 1h
-      if (change1h < -(2 * mult)) { buyScore += Math.min(18, 8 + Math.abs(change1h) * 1.2); buySignals++; }
-
-      // Perto da mínima
-      if (coin.low_24h && price) {
-        var dist = ((price - coin.low_24h) / coin.low_24h) * 100;
-        if (dist < 1) { buyScore += 12; buySignals++; }
-        else if (dist < 3) buyScore += 6;
-      }
-
-      // ATH
-      if (athChange < -70) buyScore += 8;
-      else if (athChange > -10) { buyScore -= 10; buySignals--; }
-
-      // Volume na queda
-      if (coin.total_volume && coin.market_cap && coin.market_cap > 0 && change24h < 0) {
-        if (coin.total_volume / coin.market_cap > 0.15) { buyScore += 8; buySignals++; }
-      }
-
-      // RSI
-      if (sparkline.length > 15) {
-        var rsi = bgCalcRSI(sparkline, 14);
-        if (rsi !== null) {
-          if (rsi < 25) { buyScore += 12; buySignals++; }
-          else if (rsi < 35) { buyScore += 7; buySignals++; }
-          else if (rsi > 70) { buyScore -= 8; buySignals--; }
-        }
-      }
-
-      // Bollinger
-      if (sparkline.length >= 20) {
-        var bb = bgCalcBollingerB(sparkline);
-        if (bb !== null) {
-          if (bb < 0) { buyScore += 10; buySignals++; }
-          else if (bb < 0.1) { buyScore += 6; buySignals++; }
-          else if (bb > 0.95) { buyScore -= 6; buySignals--; }
-        }
-      }
-
-      // EMA Crossover
-      if (sparkline.length >= 25) {
-        var emaCross = bgCalcEMACrossover(sparkline);
-        if (emaCross) {
-          if (emaCross.goldenCross) { buyScore += 12; buySignals++; }
-          else if (emaCross.trend === 'bull') { buyScore += 4; buySignals++; }
-          else if (emaCross.deathCross) { buyScore -= 8; buySignals--; }
-        }
-      }
-
-      // Estocástico
-      if (sparkline.length >= 14) {
-        var stoch = bgCalcStochastic(sparkline, 14);
-        if (stoch) {
-          if (stoch.k < 15) { buyScore += 8; buySignals++; }
-          else if (stoch.k < 25) { buyScore += 5; buySignals++; }
-          else if (stoch.k > 85) { buyScore -= 5; buySignals--; }
-        }
-      }
-
-      // MACD
-      if (sparkline.length >= 30) {
-        var macd = bgCalcMACD(sparkline);
-        if (macd) {
-          if (macd.bullishCross) { buyScore += 10; buySignals++; }
-          else if (macd.trend === 'bear' && !macd.bearishCross) { buyScore += 4; }
-          else if (macd.bearishCross) { buyScore -= 6; buySignals--; }
-        }
-      }
-
-      // Momentum
-      if (sparkline.length >= 10) {
-        var mom = bgCalcMomentum(sparkline);
-        if (mom < -3) { buyScore += 4; }
-        else if (mom > 3 && change24h < -(4 * mult)) { buyScore += 5; buySignals++; }
-      }
-
-      // Fear & Greed
-      if (fgVal <= 20) { buyScore += 10; buySignals++; }
-      else if (fgVal <= 35) { buyScore += 5; }
-      else if (fgVal >= 80) { buyScore -= 10; buySignals--; }
-      else if (fgVal >= 65) { buyScore -= 4; }
-
-      // Confluência: bônus quando múltiplos indicadores concordam
-      if (buySignals >= 5) buyScore += 10;
-      else if (buySignals >= 4) buyScore += 8;
-      else if (buySignals >= 3) buyScore += 5;
-      else if (buySignals <= -2) buyScore -= 6;
-
-      buyScore = Math.max(0, Math.min(95, buyScore));
-
-      // Só notifica se ≥65% (sinal realmente forte)
-      if (buyScore >= 65 && bgTurnConfirmed(sparkline, price, 'buy')) {
-        var priceStr = price >= 1000
-          ? 'R$ ' + price.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})
-          : 'R$ ' + price.toFixed(2);
-        var buyReasons = [];
-        if (change24h <= -5) buyReasons.push('queda de ' + Math.abs(change24h).toFixed(1) + '%');
-        if (rsi !== null && rsi < 30) buyReasons.push('RSI ' + Math.round(rsi));
-        if (bb !== null && bb < 0.1) buyReasons.push('Bollinger sobrevendido');
-        if (emaCross && emaCross.goldenCross) buyReasons.push('Golden Cross');
-        if (macd && macd.bullishCross) buyReasons.push('MACD cruzou');
-        if (stoch && stoch.k < 20) buyReasons.push('Estocástico ' + Math.round(stoch.k));
-        if (fgVal <= 30) buyReasons.push('Fear ' + fgVal);
-        alerts.push({
-          key: 'buy:' + coin.id, sym: sym, type: 'compra', score: buyScore,
-          detail: sym + ' a ' + priceStr + (buyReasons.length ? ' · ' + buyReasons.join(', ') : '')
-        });
-      }
-
-      // ===== SCORE DE VENDA =====
-      var sellScore = 0;
-      var sellSignals = 0;
-
-      if (change24h >= (5 * mult)) { sellScore += Math.min(25, 8 + (change24h - 5 * mult) * 2); sellSignals++; }
-      if (change1h > 3 * mult) { sellScore += Math.min(18, 8 + change1h * 1.2); sellSignals++; }
-
-      // Perto da máxima
-      if (coin.high_24h && price) {
-        var distH = ((coin.high_24h - price) / coin.high_24h) * 100;
-        if (distH < 1) { sellScore += 12; sellSignals++; }
-        else if (distH < 3) sellScore += 6;
-      }
-
-      // ATH
-      if (athChange > -2) { sellScore += 15; sellSignals++; }
-      else if (athChange > -5) { sellScore += 10; sellSignals++; }
-
-      // RSI sobrecomprado
-      if (sparkline.length > 15) {
-        var rsiS = bgCalcRSI(sparkline, 14);
-        if (rsiS !== null) {
-          if (rsiS > 80) { sellScore += 12; sellSignals++; }
-          else if (rsiS > 70) { sellScore += 6; sellSignals++; }
-          else if (rsiS < 30) { sellScore -= 8; sellSignals--; }
-        }
-      }
-
-      // Bollinger
-      if (sparkline.length >= 20) {
-        var bbS = bgCalcBollingerB(sparkline);
-        if (bbS !== null) {
-          if (bbS > 1) { sellScore += 10; sellSignals++; }
-          else if (bbS > 0.9) { sellScore += 6; sellSignals++; }
-          else if (bbS < 0.1) { sellScore -= 6; sellSignals--; }
-        }
-      }
-
-      // EMA Crossover (venda)
-      if (sparkline.length >= 25) {
-        var emaCrossS = bgCalcEMACrossover(sparkline);
-        if (emaCrossS) {
-          if (emaCrossS.deathCross) { sellScore += 12; sellSignals++; }
-          else if (emaCrossS.trend === 'bear') { sellScore += 4; sellSignals++; }
-          else if (emaCrossS.goldenCross) { sellScore -= 8; sellSignals--; }
-        }
-      }
-
-      // Estocástico (venda)
-      if (sparkline.length >= 14) {
-        var stochS = bgCalcStochastic(sparkline, 14);
-        if (stochS) {
-          if (stochS.k > 90) { sellScore += 8; sellSignals++; }
-          else if (stochS.k > 80) { sellScore += 5; sellSignals++; }
-          else if (stochS.k < 20) { sellScore -= 5; sellSignals--; }
-        }
-      }
-
-      // MACD (venda)
-      if (sparkline.length >= 30) {
-        var macdS = bgCalcMACD(sparkline);
-        if (macdS) {
-          if (macdS.bearishCross) { sellScore += 10; sellSignals++; }
-          else if (macdS.trend === 'bull' && !macdS.bullishCross) { sellScore += 4; }
-          else if (macdS.bullishCross) { sellScore -= 6; sellSignals--; }
-        }
-      }
-
-      // Fear & Greed
-      if (fgVal >= 80) { sellScore += 8; sellSignals++; }
-      else if (fgVal >= 65) sellScore += 4;
-      else if (fgVal <= 20) { sellScore -= 8; sellSignals--; }
-
-      // Confluência
-      if (sellSignals >= 5) sellScore += 10;
-      else if (sellSignals >= 4) sellScore += 8;
-      else if (sellSignals >= 3) sellScore += 5;
-
-      sellScore = Math.max(0, Math.min(95, sellScore));
-
-      if (sellScore >= 65 && bgTurnConfirmed(sparkline, price, 'sell')) {
-        alerts.push({
-          key: 'sell:' + coin.id, sym: sym, type: 'venda', score: sellScore,
-          detail: sym + ' subiu ' + change24h.toFixed(1).replace('.', ',') + '% em 24h'
-        });
-      }
+    var events = [];
+    var ids = Object.keys(BG_PAIRS);
+    for (var i = 0; i < ids.length; i++) {
+      try {
+        var resp = await fetch('https://api.binance.com/api/v3/klines?symbol=' + BG_PAIRS[ids[i]][1] + '&interval=1d&limit=90');
+        if (!resp.ok) continue;
+        var kl = await resp.json();
+        kl = kl.slice(0, -1); // candle de hoje ainda não fechou
+        if (kl.length <= TREND.slow) continue;
+        var ev = lastTrendEvent(kl.map(function(k) { return parseFloat(k[4]); }));
+        var day = new Date(kl[kl.length - 1][0]).toISOString().slice(0, 10);
+        if (ev) events.push({ key: 'trend-' + ev + ':' + ids[i] + ':' + day, sym: BG_PAIRS[ids[i]][0], type: ev });
+      } catch (e) {}
     }
-
-    if (!alerts.length) return;
-    alerts.sort(function(a, b) { return b.score - a.score; });
-    var fresh = await claimNotification(alerts.map(function(a) { return a.key; }));
-    var list = alerts.filter(function(a) { return fresh.indexOf(a.key) !== -1; });
+    if (!events.length) return;
+    var fresh = await claimNotification(events.map(function(e) { return e.key; }));
+    var list = events.filter(function(e) { return fresh.indexOf(e.key) !== -1; });
     if (!list.length) return;
-    var title, body;
-    if (list.length === 1) {
-      title = 'Sinal de ' + list[0].type + ' · ' + list[0].sym;
-      body = 'Confiança ' + list[0].score + '%. ' + list[0].detail + '. Abra o Radar para ver os detalhes.';
-    } else {
-      title = 'Radar: ' + list.length + ' novos sinais';
-      body = list.slice(0, 4).map(function(a) { return a.sym + ' ' + a.type + ' ' + a.score + '%'; }).join(' · ');
-    }
-    await self.registration.showNotification(title, {
-      body: body, tag: 'radar-sinais', icon: './icon-192.png', badge: './icon-192.png'
-    });
+    var word = function(e) { return e.type === 'buy' ? 'entrar em ' + e.sym : 'sair de ' + e.sym; };
+    var title = list.length === 1 ? 'Tendência: ' + word(list[0]) : 'Tendência: ' + list.length + ' sinais novos';
+    var body = list.length === 1
+      ? (list[0].type === 'buy' ? list[0].sym + ' rompeu a máxima de 20 dias em tendência de alta.' : list[0].sym + ' perdeu a mínima de 10 dias.') + ' Abra o Radar para ver os detalhes.'
+      : list.map(word).join(' · ');
+    await self.registration.showNotification(title, { body: body, tag: 'radar-tendencia', icon: './icon-192.png', badge: './icon-192.png' });
   } catch (e) {
-    // Silently fail — background sync will retry
+    // Falha silenciosa: o próximo periodic sync tenta de novo
   }
 }
 

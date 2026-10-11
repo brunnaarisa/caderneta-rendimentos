@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Radar de Oportunidades</title>
 <script>
-// Cache-buster v26: teste da estratégia de tendência
+// Cache-buster v27: radar movido pela estratégia de tendência
 (function(){
-  var V = 'radar-v26';
+  var V = 'radar-v27';
   try {
     if (localStorage.getItem('_radar_ver') === V) return;
     // Limpa caches do Service Worker
@@ -417,7 +417,7 @@ select.form-input{-webkit-appearance:none;appearance:none;background-image:url("
   <header class="header">
     <div class="header-left">
       <div class="logo">📡</div>
-      <h1>Radar de Oportunidades <span>Modo curto prazo · atualiza a cada 15s</span></h1>
+      <h1>Radar de Oportunidades <span>Estratégia de tendência · sinais no fechamento diário</span></h1>
     </div>
     <div class="header-actions">
       <button class="btn-icon" onclick="toggleTheme()" title="Alternar tema" aria-label="Alternar tema">🌓</button>
@@ -430,8 +430,8 @@ select.form-input{-webkit-appearance:none;appearance:none;background-image:url("
     <span class="disclaimer-icon">⚠️</span>
     <div>
       <strong>Isso não é recomendação de investimento — é opinião pessoal.</strong>
-      <strong>Modo curto prazo:</strong> atualiza a cada 15s, sinais mais sensíveis (a partir de 2% de queda / 5% de alta) e cada alerta de compra já traz alvo e stop sugeridos pra operação rápida. Os ícones <strong>🎯 = ativo sólido</strong>, <strong>🛰️ = satélite</strong>, <strong>⚠️ = arriscado</strong> são minha opinião sobre a <em>qualidade do negócio</em>, não sobre a entrada agora — inclusive ativos ⚠️ tendem a gerar mais sinais de curto prazo por serem mais voláteis. A % de probabilidade combina <em>score técnico</em> (RSI, momentum, volume, preço vs mínima/ATH) + <em>sentimento do mercado</em> (Índice de Medo e Ganância) — <strong>não é previsão do futuro</strong>. Toda decisão é sua, e operação de curto prazo tem risco real de perda rápida.
-      Ative as notificações: alertas de compra em ativos 🎯/🛰️ chegam sempre; em ⚠️ arriscados só quando o sinal é muito forte.
+      Os sinais seguem a <strong>estratégia de tendência</strong>: <strong>ENTRAR</strong> quando o preço fecha acima da máxima de 20 dias em tendência de alta, <strong>SAIR</strong> quando fecha abaixo da mínima de 10 dias. Em cripto ela foi testada nos preços reais dos seus ativos (rode o 🧪 Teste no histórico pra ver); em ações ainda não, por falta de histórico. Ela erra mais do que acerta e ganha nas tendências longas, então respeite as saídas e use só dinheiro que você aceita perder. Resultado passado não garante o futuro, e toda decisão é sua.
+      Os ícones <strong>🎯 = ativo sólido</strong>, <strong>🛰️ = satélite</strong>, <strong>⚠️ = arriscado</strong> são minha opinião sobre a qualidade do negócio, não um sinal de entrada.
     </div>
     <button class="disclaimer-close" onclick="dismissDisclaimer()">✕</button>
   </div>
@@ -466,10 +466,6 @@ select.form-input{-webkit-appearance:none;appearance:none;background-image:url("
       <span class="ticker-label">₿ BTC Dom</span>
       <span class="ticker-value" id="tick-dom">--</span>
       <span class="ticker-change" id="tick-dom-mcap">--</span>
-    </div>
-    <div class="ticker-item" id="tick-accuracy-wrap" hidden>
-      <span class="ticker-label">🎯 Acurácia</span>
-      <span class="ticker-value" id="tick-accuracy">--</span>
     </div>
     <div class="ticker-item">
       <span class="ticker-label">Atualizado</span>
@@ -548,14 +544,9 @@ select.form-input{-webkit-appearance:none;appearance:none;background-image:url("
       <div class="fg-hint" id="fg-hint"></div>
     </div>
 
-    <div class="fg-card" id="accuracy-card-crypto">
-      <h3>🎯 Acurácia — Cripto</h3>
-      <div id="accuracy-content-crypto"></div>
-    </div>
-
-    <div class="fg-card" id="accuracy-card-stock">
-      <h3>🎯 Acurácia — Ações B3</h3>
-      <div id="accuracy-content-stock"></div>
+    <div class="fg-card" id="trend-card">
+      <h3>📈 Tendência</h3>
+      <div id="trend-content"></div>
     </div>
 
     <div class="fg-card" id="backtest-card">
@@ -565,7 +556,7 @@ select.form-input{-webkit-appearance:none;appearance:none;background-image:url("
 
     <div class="cards-header">
       <h2>🔔 Oportunidades Detectadas</h2>
-      <span style="font-size:.78rem;color:var(--text-muted)">Modo curto prazo · alvo/stop em cada sinal · atualiza a cada 15s</span>
+      <span style="font-size:.78rem;color:var(--text-muted)">ENTRAR/SAIR da tendência e alertas das suas posições</span>
     </div>
     <div class="opps-list" id="opps-list">
       <div class="opp-empty" id="opps-empty">
@@ -951,104 +942,6 @@ function convictionBadge(assetId, type) {
 
 /* Alvos dinâmicos baseados na volatilidade real do ativo e condições de mercado.
    Quanto maior a volatilidade, maior o alvo e o stop (proporcionalmente). */
-function suggestTargets(assetClass, coinId) {
-  if (assetClass === 'crypto') {
-    const mult = coinId ? getVolatilityMultiplier(coinId) : 1.3;
-    const p = coinId ? state.prices.crypto[coinId] : null;
-    if (p && p.sparkline && p.sparkline.length > 20 && p.price) {
-      // 1ª prioridade: ATR (stop/target baseado na volatilidade REAL do ativo)
-      const atrData = calcATR(p.sparkline, 14);
-      const rr = calcRiskReward(p.sparkline, p.price);
-      const fib = calcFibonacciLevels(p.sparkline);
-      if (atrData && atrData.stopPct > 0) {
-        // Usa ATR pra stop, mas ajusta com S/R real se disponível
-        let stopPct = atrData.stopPct;
-        let targetPct = atrData.targetPct;
-        let supportPrice = atrData.stopPrice;
-        let resistancePrice = atrData.targetPrice;
-        // Se tem S/R real e é mais apertado que o ATR, usa ele
-        if (rr && rr.risk !== null && rr.risk > 0 && rr.risk < stopPct) {
-          stopPct = rr.risk;
-          supportPrice = rr.supportPrice;
-        }
-        if (rr && rr.reward !== null && rr.reward > 0) {
-          targetPct = rr.reward;
-          resistancePrice = rr.resistancePrice;
-        }
-        // Se tem Fibonacci, adiciona como referência extra
-        if (fib && fib.fibResistance && !resistancePrice) {
-          resistancePrice = fib.fibResistance.price;
-        }
-        if (fib && fib.fibSupport && !supportPrice) {
-          supportPrice = fib.fibSupport.price;
-        }
-        const targetHigh = Math.round(targetPct * 1.4 * 10) / 10;
-        return {
-          target: `${Math.round(targetPct * 10) / 10}–${targetHigh}%`,
-          stop: `${Math.round(stopPct * 10) / 10}%`,
-          supportPrice, resistancePrice,
-          method: 'ATR'
-        };
-      }
-      // 2ª prioridade: S/R direto
-      if (rr && rr.reward !== null && rr.risk !== null && rr.reward > 0 && rr.risk > 0) {
-        const targetHigh = Math.round(rr.reward * 1.5 * 10) / 10;
-        return {
-          target: `${Math.round(rr.reward * 10) / 10}–${targetHigh}%`,
-          stop: `${Math.round(rr.risk * 10) / 10}%`,
-          supportPrice: rr.supportPrice,
-          resistancePrice: rr.resistancePrice,
-          method: 'S/R'
-        };
-      }
-    }
-    // Fallback: estimativa baseada em volatilidade
-    const baseTarget = 5, baseStop = 3;
-    const target = Math.round(baseTarget * mult);
-    const targetHigh = Math.round(target * 1.6);
-    const stop = Math.round(baseStop * mult);
-    return { target: `${target}–${targetHigh}%`, stop: `${stop}%` };
-  }
-  // Ações: usa dados históricos se disponíveis
-  if (assetClass === 'stock' && coinId) {
-    const hist = state.prices.stockHistory[coinId];
-    if (hist && hist.closes && hist.closes.length > 20) {
-      const atrData = calcStockATR(hist.highs, hist.lows, hist.closes, 14);
-      const rr = calcRiskReward(hist.closes, hist.closes[hist.closes.length - 1]);
-      const fib = calcFibonacciLevels(hist.closes);
-      if (atrData && atrData.stopPct > 0) {
-        let stopPct = atrData.stopPct;
-        let targetPct = atrData.targetPct;
-        let supportPrice = atrData.stopPrice;
-        let resistancePrice = atrData.targetPrice;
-        if (rr && rr.risk !== null && rr.risk > 0 && rr.risk < stopPct) {
-          stopPct = rr.risk; supportPrice = rr.supportPrice;
-        }
-        if (rr && rr.reward !== null && rr.reward > 0) {
-          targetPct = rr.reward; resistancePrice = rr.resistancePrice;
-        }
-        if (fib && fib.fibResistance && !resistancePrice) resistancePrice = fib.fibResistance.price;
-        if (fib && fib.fibSupport && !supportPrice) supportPrice = fib.fibSupport.price;
-        const targetHigh = Math.round(targetPct * 1.4 * 10) / 10;
-        return {
-          target: `${Math.round(targetPct * 10) / 10}–${targetHigh}%`,
-          stop: `${Math.round(stopPct * 10) / 10}%`,
-          supportPrice, resistancePrice, method: 'ATR'
-        };
-      }
-      if (rr && rr.reward !== null && rr.risk !== null && rr.reward > 0 && rr.risk > 0) {
-        const targetHigh = Math.round(rr.reward * 1.5 * 10) / 10;
-        return {
-          target: `${Math.round(rr.reward * 10) / 10}–${targetHigh}%`,
-          stop: `${Math.round(rr.risk * 10) / 10}%`,
-          supportPrice: rr.supportPrice, resistancePrice: rr.resistancePrice, method: 'S/R'
-        };
-      }
-    }
-  }
-  return { target: '3–5%', stop: '2,5%' };
-}
-
 // Service Worker pra notificações funcionarem no celular
 let swRegistration = null;
 if ('serviceWorker' in navigator) {
@@ -1061,7 +954,7 @@ if ('serviceWorker' in navigator) {
     if (!swRegistration) swRegistration = reg;
     debugLog('SW ready: ' + (reg.active ? 'ativo' : 'aguardando'));
   });
-  navigator.serviceWorker.register('sw.js?v=26', { updateViaCache: 'none' }).then(reg => {
+  navigator.serviceWorker.register('sw.js?v=27', { updateViaCache: 'none' }).then(reg => {
     swRegistration = reg;
     // Se tem SW esperando ativar, força ativação imediata
     if (reg.waiting) {
@@ -1123,8 +1016,9 @@ async function claimNotification(keys, urgent) {
   if (hour >= 22 || hour < 8) return [];
   let log = null;
   try { const r = await (await caches.open(NOTIFY_LOG_CACHE)).match(NOTIFY_LOG_URL); if (r) log = await r.json(); } catch (e) {}
-  if (!log || log.day !== day) log = { day, keys: [], times: [] };
-  const fresh = keys.filter(k => !log.keys.includes(k));
+  // Uma chave avisada ontem também não repete (ex.: sinal das 21h não volta às 8h do dia seguinte)
+  if (!log || log.day !== day) log = { day, keys: [], times: [], prev: log && log.day === brtDayHour(now - 86400000).day ? log.keys : [] };
+  const fresh = keys.filter(k => !log.keys.includes(k) && !(log.prev || []).includes(k));
   if (!fresh.length) return [];
   if (!urgent) {
     if (log.times.length >= 6) return [];
@@ -1138,6 +1032,7 @@ async function claimNotification(keys, urgent) {
 
 // Sinais: 1 aviso por ativo/tipo no dia. Posição: cada nível (ex.: -3%, -6%) avisa uma vez.
 function oppNotifyKey(opp) {
+  if (opp.notifyKey) return opp.notifyKey;
   const parts = opp.key.split(':');
   return /:(loss|profit|recover):/.test(opp.key) ? parts.slice(1).join(':') : `${parts[1]}:${parts[2]}`;
 }
@@ -1162,19 +1057,20 @@ async function pushOpportunities(opps) {
     }
   }
   if (regular.length) {
+    // Mesmo texto e mesma tag do service worker (docs/sw.js), pra um aviso substituir o outro
     const fresh = await claimNotification(regular.map(oppNotifyKey), false);
     const list = regular.filter(o => fresh.includes(oppNotifyKey(o)));
-    const label = o => `${oppSymbol(o)} ${o.type === 'buy' ? 'compra' : 'venda'} ${o.probability}%`;
+    const word = o => `${o.type === 'buy' ? 'entrar em' : 'sair de'} ${oppSymbol(o)}`;
     if (list.length === 1) {
       const o = list[0];
-      await sendNotification(`Sinal de ${o.type === 'buy' ? 'compra' : 'venda'} · ${oppSymbol(o)}`, {
-        body: `Confiança ${o.probability}%. Abra o Radar para ver os detalhes.`,
-        tag: 'radar-sinais', icon: 'icon-192.png', badge: 'icon-192.png'
+      await sendNotification(`Tendência: ${word(o)}`, {
+        body: `${o.type === 'buy' ? `${oppSymbol(o)} rompeu a máxima de 20 dias em tendência de alta.` : `${oppSymbol(o)} perdeu a mínima de 10 dias.`} Abra o Radar para ver os detalhes.`,
+        tag: 'radar-tendencia', icon: 'icon-192.png', badge: 'icon-192.png'
       });
     } else if (list.length > 1) {
-      await sendNotification(`Radar: ${list.length} novos sinais`, {
-        body: list.slice(0, 4).map(label).join(' · ') + (list.length > 4 ? ` e mais ${list.length - 4}` : ''),
-        tag: 'radar-sinais', icon: 'icon-192.png', badge: 'icon-192.png'
+      await sendNotification(`Tendência: ${list.length} sinais novos`, {
+        body: list.slice(0, 4).map(word).join(' · ') + (list.length > 4 ? ` e mais ${list.length - 4}` : ''),
+        tag: 'radar-tendencia', icon: 'icon-192.png', badge: 'icon-192.png'
       });
     }
     sent.push(...list);
@@ -1236,7 +1132,8 @@ let state = {
   fearGreed: null,
   btcDominance: null,
   ibovHistory: null,
-  signalTracker: [], // rastreia acurácia dos sinais passados
+  trendDaily: {},    // candles diários por cripto (estratégia de tendência)
+  trendLog: [],      // ENTRAR/SAIR mostrados ao vivo
   settings: {
     refreshInterval: 30,
     notifications: false,
@@ -1721,141 +1618,6 @@ function renderFearGreed() {
       mcapEl.className = 'ticker-change ' + (dom.totalMcapChange >= 0 ? 'change-up' : 'change-down');
     }
   }
-
-  // Accuracy ticker
-  const acc = getSignalAccuracy();
-  if (acc) {
-    document.getElementById('tick-accuracy-wrap').hidden = false;
-    document.getElementById('tick-accuracy').textContent = acc.hitRate + '%';
-    document.getElementById('tick-accuracy').style.color = acc.hitRate >= 65 ? 'var(--gain)' : acc.hitRate >= 45 ? 'var(--warn)' : 'var(--loss)';
-  }
-}
-
-function renderAccuracy() {
-  renderAccuracyFor('crypto');
-  renderAccuracyFor('stock');
-}
-
-function resetAccuracy(market) {
-  const label = market === 'crypto' ? 'cripto' : 'ações';
-  if (!confirm(`Zerar histórico de acurácia de ${label}?`)) return;
-  state.signalTracker = state.signalTracker.filter(s => signalMarketOf(s) !== market);
-  saveSignalTracker();
-  renderAccuracy();
-}
-
-function signalReadyAt(sig) {
-  const t0 = signalTimeOf(sig);
-  if (signalMarketOf(sig) !== 'stock') return t0 + 72 * 3600000;
-  let t = t0;
-  while (b3SessionsSince(t0, t) < 3) t += 86400000;
-  return t;
-}
-
-// Últimos sinais avaliados, mais recente primeiro: ativo, direção, data e quanto o preço andou
-function resolvedSignalsHtml(resolved) {
-  if (!resolved.length) return '';
-  const rows = resolved.slice(-6).reverse().map(s => {
-    const pct = s.resultPct ?? 0;
-    const day = new Date(signalTimeOf(s)).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-    return `<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-top:1px solid var(--border)">
-      <span>${s.result ? '✅' : '❌'} <b>${s.symbol}</b> ${s.type === 'buy' ? 'compra' : 'venda'} · ${day}</span>
-      <span style="font-family:var(--mono);color:${pct >= 0 ? 'var(--gain)' : 'var(--loss)'}">${pct > 0 ? '+' : ''}${String(pct).replace('.', ',')}%</span>
-    </div>`;
-  }).join('');
-  return `<div style="margin-top:10px;font-size:.75rem;color:var(--text-secondary)">${rows}</div>`;
-}
-
-function accuracyRuleHtml(market) {
-  const rule = market === 'stock'
-    ? 'Acerto: depois de 3 pregões, o preço andou ≥1,5% na direção do sinal (≥1% em sinais de 70%+).'
-    : 'Acerto: depois de 72h, compra subiu ≥2% ou venda caiu ≥3% (≥1,5% / ≥2% em sinais de 70%+).';
-  return `<div style="margin-top:8px;font-size:.68rem;color:var(--text-muted);text-align:center;line-height:1.4">${rule}</div>`;
-}
-
-function legacyAccuracyHtml(market) {
-  const old = state.signalTracker.filter(s => !isCurrentStrategy(s) && signalMarketOf(s) === market && s.result !== null);
-  if (!old.length) return '';
-  const hit = Math.round(old.filter(s => s.result).length / old.length * 100);
-  return `<div style="margin-top:6px;font-size:.68rem;color:var(--text-muted);text-align:center">Regra anterior (sem confirmação de virada): ${hit}% em ${old.length} sina${old.length > 1 ? 'is' : 'l'}</div>`;
-}
-
-function renderAccuracyFor(market) {
-  const content = document.getElementById(`accuracy-content-${market}`);
-  if (!content) return;
-  const signals = state.signalTracker.filter(s => isCurrentStrategy(s) && signalMarketOf(s) === market);
-  const acc = getSignalAccuracy(market);
-  if (!acc) {
-    const pendingSigs = signals.filter(s => s.result === null);
-    const resolvedCount = signals.length - pendingSigs.length;
-    let html = '<div style="text-align:center;padding:8px 0;color:var(--text-muted);font-size:.82rem;line-height:1.6">';
-    if (!signals.length) {
-      if (market === 'stock' && !state.settings.brapiToken) {
-        html += '🔑 Configure o token brapi.dev em Config → Ações B3 pra acompanhar sinais de ações.';
-      } else if (market === 'stock' && !state.watchlist.stocks.length) {
-        html += '📈 Adicione ações no Painel pra começar a acompanhar sinais.';
-      } else {
-        html += `📡 Nenhum sinal da regra nova ainda.<br>Cada sinal de compra/venda ≥55% com virada confirmada é guardado e avaliado ${market === 'stock' ? '3 pregões' : '72h'} depois.`;
-      }
-    } else {
-      html += `✅ ${resolvedCount} de 3 sinais avaliados (mínimo pra mostrar a taxa de acerto)`;
-      if (pendingSigs.length) {
-        const nextMs = Math.min(...pendingSigs.map(signalReadyAt));
-        const hoursLeft = Math.max(0, Math.ceil((nextMs - Date.now()) / 3600000));
-        const when = hoursLeft === 0 ? 'na próxima atualização' : hoursLeft < 24 ? `em ~${hoursLeft}h` : `em ~${Math.ceil(hoursLeft / 24)} dia${hoursLeft > 24 ? 's' : ''}`;
-        html += `<br>⏳ ${pendingSigs.length} em observação — próximo resultado ${when}`;
-      }
-    }
-    html += '</div>';
-    if (signals.length) {
-      html += resolvedSignalsHtml(signals.filter(s => s.result !== null)) + accuracyRuleHtml(market);
-    }
-    content.innerHTML = html + legacyAccuracyHtml(market);
-    return;
-  }
-  const hitColor = acc.hitRate >= 65 ? 'var(--gain)' : acc.hitRate >= 45 ? 'var(--warn)' : 'var(--loss)';
-  const recentColor = acc.recentHit >= 65 ? 'var(--gain)' : acc.recentHit >= 45 ? 'var(--warn)' : 'var(--loss)';
-  let statsHtml = `
-    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px">
-      <div style="flex:1;min-width:90px;text-align:center">
-        <div style="font-size:1.8rem;font-weight:700;color:${hitColor}">${acc.hitRate}%</div>
-        <div style="font-size:.7rem;color:var(--text-muted)">TAXA DE ACERTO</div>
-        <div style="font-size:.65rem;color:var(--text-muted)">${acc.total} sinais verificados</div>
-      </div>
-      <div style="flex:1;min-width:90px;text-align:center">
-        <div style="font-size:1.8rem;font-weight:700;color:${recentColor}">${acc.recentHit}%</div>
-        <div style="font-size:.7rem;color:var(--text-muted)">ÚLTIMOS 10</div>
-        <div style="font-size:.65rem;color:var(--text-muted)">Tendência recente</div>
-      </div>`;
-  if (acc.avgReturn > 0) {
-    statsHtml += `
-      <div style="flex:1;min-width:90px;text-align:center">
-        <div style="font-size:1.8rem;font-weight:700;color:var(--gain)">+${acc.avgReturn}%</div>
-        <div style="font-size:.7rem;color:var(--text-muted)">RETORNO MÉDIO</div>
-        <div style="font-size:.65rem;color:var(--text-muted)">Dos sinais que acertaram</div>
-      </div>`;
-  }
-  statsHtml += `</div>`;
-  // Buy vs Sell breakdown
-  if (acc.buyHit !== null || acc.sellHit !== null) {
-    statsHtml += `<div style="display:flex;gap:8px;font-size:.75rem;justify-content:center">`;
-    if (acc.buyHit !== null) statsHtml += `<span style="color:var(--gain)">🟢 Compra: ${acc.buyHit}%</span>`;
-    if (acc.sellHit !== null) statsHtml += `<span style="color:var(--loss)">🔴 Venda: ${acc.sellHit}%</span>`;
-    statsHtml += `</div>`;
-  }
-  statsHtml += resolvedSignalsHtml(acc.recent);
-  const pending = acc.pending;
-  if (pending > 0) {
-    statsHtml += `<div style="text-align:center;margin-top:6px;font-size:.68rem;color:var(--text-muted)">⏳ ${pending} sinal${pending > 1 ? 'is' : ''} pendente${pending > 1 ? 's' : ''} (${market === 'stock' ? 'aguardando 3 pregões' : 'aguardando 72h'})</div>`;
-  }
-  statsHtml += accuracyRuleHtml(market) + legacyAccuracyHtml(market);
-  statsHtml += `<div style="text-align:center;margin-top:12px">
-    <button onclick="resetAccuracy('${market}')"
-      style="background:var(--bg-inset);border:1px solid var(--border);color:var(--text-body);font-size:.78rem;padding:8px 18px;border-radius:8px;cursor:pointer;font-weight:500">
-      🗑️ Zerar histórico de acurácia
-    </button>
-  </div>`;
-  content.innerHTML = statsHtml;
 }
 
 /* ===== TESTE NO HISTÓRICO =====
@@ -1929,18 +1691,17 @@ function cryptoPointAt(rows, i, id, symbol, athNow, runMax, windowMax) {
 
 // Pontuação sem efeitos colaterais: troca temporariamente o estado global que as funções leem
 function withBacktestState(overrides, fn) {
-  const saved = { fearGreed: state.fearGreed, btcDominance: state.btcDominance, signalTracker: state.signalTracker,
+  const saved = { fearGreed: state.fearGreed, btcDominance: state.btcDominance,
     crypto: state.prices.crypto, stockHistory: state.prices.stockHistory, ibov: state.ibovHistory };
   try {
     state.btcDominance = null;
-    state.signalTracker = [];
     if ('crypto' in overrides) state.prices.crypto = overrides.crypto;
     if ('stockHistory' in overrides) state.prices.stockHistory = overrides.stockHistory;
     if ('ibov' in overrides) state.ibovHistory = overrides.ibov;
     if ('fearGreed' in overrides) state.fearGreed = overrides.fearGreed;
     return fn();
   } finally {
-    state.fearGreed = saved.fearGreed; state.btcDominance = saved.btcDominance; state.signalTracker = saved.signalTracker;
+    state.fearGreed = saved.fearGreed; state.btcDominance = saved.btcDominance;
     state.prices.crypto = saved.crypto; state.prices.stockHistory = saved.stockHistory; state.ibovHistory = saved.ibov;
   }
 }
@@ -2083,17 +1844,24 @@ function trendExitAt(c, i) {
   return i >= TREND.exit && c[i] < Math.min(...c.slice(i - TREND.exit, i));
 }
 
-async function fetchCryptoDaily(id) {
+// Candles diários já fechados. `series.currency` diz se os preços estão em dólar (Binance) ou real (CoinGecko).
+async function fetchCryptoDaily(id, limit = 1000) {
   const meta = BINANCE_MAP[id];
   if (meta) {
     try {
-      const kl = await fetchJSON(`https://api.binance.com/api/v3/klines?symbol=${meta.pair}&interval=1d&limit=1000`, 20000);
+      const kl = await fetchJSON(`https://api.binance.com/api/v3/klines?symbol=${meta.pair}&interval=1d&limit=${limit}`, 20000);
       // Descarta o candle de hoje, que ainda não fechou
-      if (Array.isArray(kl) && kl.length > 120) return kl.slice(0, -1).map(k => ({ t: k[0], c: parseFloat(k[4]) }));
+      if (Array.isArray(kl) && kl.length > TREND.slow + 1) {
+        const s = kl.slice(0, -1).map(k => ({ t: k[0], c: parseFloat(k[4]) }));
+        s.currency = 'usd';
+        return s;
+      }
     } catch (e) {}
   }
-  const d = await fetchJSON(`https://api.coingecko.com/api/v3/coins/${encodeURIComponent(id)}/market_chart?vs_currency=brl&days=365&interval=daily`, 20000);
-  return (d?.prices || []).slice(0, -1).map(([t, c]) => ({ t, c }));
+  const d = await fetchJSON(`https://api.coingecko.com/api/v3/coins/${encodeURIComponent(id)}/market_chart?vs_currency=brl&days=${Math.min(365, Math.max(limit, 90))}&interval=daily`, 20000);
+  const s = (d?.prices || []).slice(0, -1).map(([t, c]) => ({ t, c }));
+  s.currency = 'brl';
+  return s;
 }
 
 let stockRangeOk = null;
@@ -2145,7 +1913,7 @@ function maxDrawdown(vals) {
   return dd;
 }
 
-function trendBacktestHtml(title, seriesByAsset) {
+function trendBacktestHtml(title, seriesByAsset, market) {
   const assets = Object.entries(seriesByAsset).filter(([, s]) => s && s.length > TREND.slow + 30);
   if (!assets.length) return '';
   // Começo comum: todos os ativos já com 50 dias de histórico. Ativo com histórico bem mais curto fica de fora.
@@ -2165,6 +1933,12 @@ function trendBacktestHtml(title, seriesByAsset) {
   const day = ms => new Date(ms).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
   const wins = trades.filter(r => r > 0).length;
   const left = assets.length - used.length;
+  // Resumo pro card de Tendência mostrar o resultado do teste da própria usuária
+  try {
+    const all = JSON.parse(localStorage.getItem('radar_trend_bt') || '{}');
+    all[market] = { ret: ret(strat), hold: ret(hold), from: day(days[0]), to: day(days[days.length - 1]) };
+    localStorage.setItem('radar_trend_bt', JSON.stringify(all));
+  } catch (e) {}
   return `<div style="margin-top:12px">
     <div style="font-weight:600;font-size:.85rem">${title} · ${used.length} ativo${used.length > 1 ? 's' : ''}</div>
     <div style="font-size:.68rem;color:var(--text-muted)">${day(days[0])} a ${day(days[days.length - 1])} · mesmo valor em cada ativo${left ? ` · ${left} com pouco histórico ficou de fora` : ''}</div>
@@ -2190,7 +1964,200 @@ async function runTrendBacktest(status) {
       stockSeries[t] = await fetchStockDaily(t);
     }
   }
-  return trendBacktestHtml('Cripto', cryptoSeries) + trendBacktestHtml('Ações B3', stockSeries);
+  const stockLen = Math.max(0, ...Object.values(stockSeries).map(s => s?.length || 0));
+  const stockNote = state.settings.brapiToken && stockLen && stockLen <= TREND.slow + 30
+    ? `<div style="margin-top:12px;font-size:.75rem;color:var(--warn);line-height:1.4">⚠️ Ações B3: a brapi só liberou ${stockLen} pregões de histórico no seu plano, e a regra precisa de 50 só pra começar. Não dá pra testar ações por enquanto.</div>`
+    : '';
+  return trendBacktestHtml('Cripto', cryptoSeries, 'crypto') + (trendBacktestHtml('Ações B3', stockSeries, 'stock') || stockNote);
+}
+
+/* ===== TENDÊNCIA AO VIVO =====
+   Mesma regra do teste (TREND), aplicada aos candles diários já fechados de cada ativo.
+   Cripto fecha às 21h (meia-noite UTC); ações, no fim do pregão. */
+
+// Repassa a estratégia pelo histórico pra saber a situação de hoje e o que dispara no próximo fechamento
+function trendState(series) {
+  const c = series.map(x => x.c);
+  if (c.length <= TREND.slow + 1) return null;
+  const ef = emaSeries(c, TREND.fast), es = emaSeries(c, TREND.slow);
+  let inPos = false, entry = null, entryT = null, lastEvent = null;
+  for (let i = TREND.slow; i < c.length; i++) {
+    if (inPos && trendExitAt(c, i)) {
+      lastEvent = { type: 'sell', t: series[i].t, price: c[i], entry, entryT };
+      inPos = false; entry = entryT = null;
+    } else if (!inPos && trendEntryAt(c, i, ef, es)) {
+      inPos = true; entry = c[i]; entryT = series[i].t;
+      lastEvent = { type: 'buy', t: series[i].t, price: c[i] };
+    }
+  }
+  const n = c.length - 1;
+  return {
+    inPos, entry, entryT, lastEvent, lastT: series[n].t,
+    fresh: !!lastEvent && lastEvent.t === series[n].t,
+    entryLevel: Math.max(...c.slice(n - TREND.breakout + 1, n + 1)),
+    exitLevel: Math.min(...c.slice(n - TREND.exit + 1, n + 1)),
+    upTrend: ef[n] > es[n]
+  };
+}
+
+// A brapi marca cada pregão com a meia-noite UTC daquele dia: a data certa é a UTC, não a de Brasília
+function stockCandleDay(t) {
+  return new Date(t).toISOString().slice(0, 10);
+}
+
+// Ações: o candle do dia só conta depois do fechamento do pregão
+function stockClosedSeries(hist) {
+  if (!hist?.closes?.length || !hist.dates) return null;
+  const s = hist.closes.map((c, i) => ({ t: hist.dates[i] * 1000, c }));
+  const now = brtDayHour(Date.now());
+  if (stockCandleDay(s[s.length - 1].t) === now.day && now.hour < 18) s.pop();
+  s.currency = 'brl';
+  return s;
+}
+
+async function refreshTrendDaily() {
+  const todayUtc = Math.floor(Date.now() / 864e5);
+  for (const c of state.watchlist.crypto || []) {
+    const cur = state.trendDaily[c.id];
+    const lastDay = cur ? Math.floor(cur.series[cur.series.length - 1].t / 864e5) : -1;
+    // Já tem o candle de ontem (o último fechado): só rebusca a cada 6h por segurança
+    if (cur && lastDay >= todayUtc - 1 && Date.now() - cur.fetchedAt < 6 * 3600e3) continue;
+    try {
+      const series = await fetchCryptoDaily(c.id, 150);
+      if (series.length > TREND.slow + 1) state.trendDaily[c.id] = { series, fetchedAt: Date.now() };
+    } catch (e) { debugLog(`Tendência: ${c.id} sem candles diários (${e.message})`); }
+  }
+}
+
+// Data (em Brasília) do fechamento de um candle: cripto abre 00h UTC e fecha 24h depois
+function trendCloseDay(r, t) {
+  if (r.market === 'stock') return stockCandleDay(t).split('-').reverse().slice(0, 2).join('/');
+  return new Date(t + 864e5 - 1).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' });
+}
+
+function trendRows() {
+  const rows = [];
+  for (const c of state.watchlist.crypto || []) {
+    const d = state.trendDaily[c.id], p = state.prices.crypto[c.id];
+    if (/^(usdt|usdc|dai|busd|tusd|fdusd|pyusd|usde|usdd|gusd)$/i.test(p?.symbol || '')) continue;
+    const st = d && p ? trendState(d.series) : null;
+    if (!st) continue;
+    const fx = d.series.currency === 'usd' ? (state.usdBrl || 5.2) : 1;
+    rows.push({ market: 'crypto', id: c.id, sym: (p.symbol || c.id).toUpperCase(), st, fx, live: p.price, dayKey: new Date(st.lastT).toISOString().slice(0, 10) });
+  }
+  for (const t of state.watchlist.stocks || []) {
+    const s = stockClosedSeries(state.prices.stockHistory[t]), p = state.prices.stocks[t];
+    const st = s && p ? trendState(s) : null;
+    if (!st) continue;
+    rows.push({ market: 'stock', id: t, sym: t, st, fx: 1, live: p.price, dayKey: stockCandleDay(st.lastT) });
+  }
+  return rows;
+}
+
+function trendOpp(r) {
+  const { st, fx } = r;
+  if (!st.fresh) return null;
+  const ev = st.lastEvent, buy = ev.type === 'buy', brl = v => fmtBRL(v * fx);
+  const tested = r.market === 'crypto';
+  return {
+    key: oppKey(ev.type, r.id, 'trend'), type: ev.type, trend: true, untested: !tested,
+    // Ações ficam abaixo do limite de notificação (65): a regra não foi testada nelas
+    probability: tested ? 70 : 50, priority: tested ? 90 : 60,
+    notifyKey: `trend-${ev.type}:${r.id}:${r.dayKey}`,
+    title: buy ? `📈 ${r.sym}: entrar — rompeu a máxima de 20 dias em tendência de alta` : `📉 ${r.sym}: sair — perdeu a mínima de 10 dias`,
+    desc: (buy
+      ? `Fechou a ${brl(ev.price)}. A saída será se fechar abaixo de ${brl(st.exitLevel)}.`
+      : `Fechou a ${brl(ev.price)}.${ev.entry ? ` Entrada da estratégia em ${trendCloseDay(r, ev.entryT)} a ${brl(ev.entry)}: ${fmtPct((ev.price / ev.entry - 1) * 100)}.` : ''}`)
+      + (tested ? '' : ' Regra ainda não testada em ações (a brapi grátis só libera 3 meses de histórico).'),
+    notification: '', time: `fech. ${trendCloseDay(r, ev.t)}`,
+    logEntry: { key: `trend-${ev.type}:${r.id}:${r.dayKey}`, market: r.market, id: r.id, sym: r.sym, type: ev.type, t: ev.t, price: ev.price * fx }
+  };
+}
+
+// Registro ao vivo: cada ENTRAR/SAIR que o radar mostrou, pra conferir se o real bate com o teste
+function loadTrendLog() {
+  try { state.trendLog = JSON.parse(localStorage.getItem('radar_trend_log') || '[]'); } catch (e) { state.trendLog = []; }
+}
+
+function logTrendEvent(entry) {
+  if (state.trendLog.some(e => e.key === entry.key)) return;
+  state.trendLog.push(entry);
+  state.trendLog.sort((a, b) => a.t - b.t);
+  if (state.trendLog.length > 300) state.trendLog = state.trendLog.slice(-300);
+  try { localStorage.setItem('radar_trend_log', JSON.stringify(state.trendLog)); } catch (e) {}
+}
+
+function trendLogStats(market, rows) {
+  const closed = [], open = [];
+  const byAsset = {};
+  for (const e of state.trendLog.filter(e => e.market === market)) (byAsset[e.id] = byAsset[e.id] || []).push(e);
+  for (const [id, evs] of Object.entries(byAsset)) {
+    let buy = null;
+    for (const e of evs) {
+      if (e.type === 'buy') buy = e;
+      else if (buy) { closed.push(e.price / buy.price - 1); buy = null; }
+    }
+    const live = rows.find(r => r.market === market && r.id === id)?.live;
+    if (buy && live) open.push(live / buy.price - 1);
+  }
+  return { closed, open };
+}
+
+function renderTrendCard(rows) {
+  const el = document.getElementById('trend-content');
+  if (!el) return;
+  let summary = {};
+  try { summary = JSON.parse(localStorage.getItem('radar_trend_bt') || '{}'); } catch (e) {}
+  const pct = v => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1).replace('.', ',')}%`;
+  const col = v => v >= 0 ? 'var(--gain)' : 'var(--loss)';
+  const section = (market, title) => {
+    const list = rows.filter(r => r.market === market);
+    if (!list.length) return '';
+    const order = r => r.st.fresh ? 0 : r.st.inPos ? 1 : 2;
+    list.sort((a, b) => order(a) - order(b) || (a.st.entryLevel * a.fx / a.live) - (b.st.entryLevel * b.fx / b.live));
+    const bt = summary[market];
+    const btLine = bt
+      ? `No seu teste (${bt.from} a ${bt.to}): <b style="color:${col(bt.ret)}">${pct(bt.ret)}</b> contra ${pct(bt.hold)} só segurando.`
+      : market === 'crypto' ? 'Rode o 🧪 Teste no histórico pra ver o resultado desta regra nos seus ativos.' : '';
+    const untested = market === 'stock' ? '<div style="font-size:.7rem;color:var(--warn);margin-top:2px">⚠️ Não testada em ações: a brapi grátis só libera 3 meses de histórico. Sem notificações por enquanto.</div>' : '';
+    const items = list.map(r => {
+      const { st, fx, live } = r;
+      let chip, line;
+      if (st.fresh && st.lastEvent.type === 'buy') chip = ['ENTRAR', 'var(--gain)', '#fff'];
+      else if (st.fresh) chip = ['SAIR', 'var(--loss)', '#fff'];
+      else if (st.inPos) chip = ['EM TENDÊNCIA', 'transparent', 'var(--gain)'];
+      else chip = ['FORA', 'transparent', 'var(--text-muted)'];
+      if (st.inPos) {
+        line = `desde ${trendCloseDay(r, st.entryT)} · <span style="color:${col(live / (st.entry * fx) - 1)}">${pct(live / (st.entry * fx) - 1)}</span> · sai se fechar abaixo de ${fmtBRL(st.exitLevel * fx)}`;
+      } else {
+        const dist = st.entryLevel * fx / live - 1;
+        line = `entra se fechar acima de ${fmtBRL(st.entryLevel * fx)} (${pct(dist)})${st.upTrend ? '' : ' · e com a média de 20 dias acima da de 50'}`;
+      }
+      return `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--border)">
+        <b style="min-width:52px;font-size:.8rem">${r.sym}</b>
+        <div style="flex:1;font-size:.72rem;color:var(--text-secondary);line-height:1.35">${line}</div>
+        <span style="flex-shrink:0;font-size:.62rem;font-weight:700;letter-spacing:.04em;padding:3px 8px;border-radius:10px;border:1px solid ${chip[1] === 'transparent' ? chip[2] : chip[1]};background:${chip[1]};color:${chip[2]}">${chip[0]}</span>
+      </div>`;
+    }).join('');
+    const live = trendLogStats(market, rows);
+    const n = live.closed.length;
+    const open = live.open.length ? ` · ${live.open.length} em aberto` : '';
+    const liveLine = n
+      ? `Ao vivo: ${n} operação(ões) fechada(s) · ${Math.round(live.closed.filter(v => v > 0).length / n * 100)}% com lucro · média ${pct(live.closed.reduce((a, b) => a + b, 0) / n)}${open}.`
+      : live.open.length
+        ? `Ao vivo: ${live.open.length} entrada(s) em aberto, nenhuma operação fechada ainda.`
+        : 'Ao vivo: os próximos ENTRAR/SAIR ficam registrados aqui pra comparar com o teste.';
+    return `<div style="margin-top:10px">
+      <div style="font-weight:600;font-size:.85rem">${title}</div>
+      <div style="font-size:.72rem;color:var(--text-secondary);line-height:1.4">${btLine}</div>${untested}
+      <div style="margin-top:6px">${items}</div>
+      <div style="font-size:.68rem;color:var(--text-muted);margin-top:4px">${liveLine}</div>
+    </div>`;
+  };
+  const body = section('crypto', 'Cripto') + section('stock', 'Ações B3');
+  el.innerHTML = body
+    ? `<div style="font-size:.72rem;color:var(--text-secondary);line-height:1.45">Entra quando o preço <b>fecha</b> acima da máxima dos últimos 20 dias com a média de 20 acima da de 50; sai quando fecha abaixo da mínima dos últimos 10 dias. Cripto fecha às 21h. A regra acerta menos da metade das vezes: o lucro vem das poucas tendências longas, então não pule as saídas.</div>${body}`
+    : '<div style="font-size:.78rem;color:var(--text-muted);padding:6px 0">Carregando candles diários…</div>';
 }
 
 function renderBacktestIntro(extra = '') {
@@ -2257,7 +2224,7 @@ async function runBacktest() {
     const section = (t, d) => `<div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--border);font-weight:700;font-size:.9rem">${t}</div><div style="font-size:.7rem;color:var(--text-muted);line-height:1.4">${d}</div>`;
     let html = '';
     if (trendHtml) html += section('📈 Estratégia de tendência', 'Entra quando fecha acima da máxima de 20 dias (média de 20 acima da de 50); sai quando fecha abaixo da mínima de 10 dias. Preços diários, já descontando 0,25% de taxa em cada compra e venda.') + trendHtml;
-    if (radarHtml) html += section('🎯 Sinais atuais do radar', 'Indicadores de curto prazo (RSI, MACD etc.). Preços de hora em hora, sem taxas. "Média/sinal" = quanto o preço andou a favor do sinal, incluindo os erros.') + radarHtml;
+    if (radarHtml) html += section('🎯 Sinais antigos (desligados)', 'Indicadores de curto prazo (RSI, MACD etc.) que o radar usava antes da tendência; ficam aqui só pra comparação. Preços de hora em hora, sem taxas. "Média/sinal" = quanto o preço andou a favor do sinal, incluindo os erros.') + radarHtml;
     if (!html) html = '<p style="font-size:.8rem;color:var(--loss)">Não consegui baixar o histórico agora. Tente de novo em alguns minutos.</p>';
     html += `<p style="font-size:.68rem;color:var(--text-muted);line-height:1.4;margin-top:10px">Não inclui imposto. Resultado passado não garante resultado futuro.
       Uma estratégia só merece confiança se ganhar de "só segurar" nas duas metades do período, e não só no total.</p>`;
@@ -3032,38 +2999,6 @@ function detectCandlePatterns(opens, highs, lows, closes) {
   return patterns.length > 0 ? patterns : null;
 }
 
-// Kelly Criterion: calcula tamanho ótimo de posição baseado na acurácia dos sinais
-function calcKellyPosition(signalProbability) {
-  const acc = getSignalAccuracy();
-  if (!acc || acc.total < 5) return null;
-  // Win rate dos sinais passados
-  const W = acc.hitRate / 100;
-  // Razão ganho médio / perda média
-  const resolved = state.signalTracker.filter(s => s.result !== null);
-  const wins = resolved.filter(s => s.result === true);
-  const losses = resolved.filter(s => s.result === false);
-  const avgWin = wins.length > 0 ? wins.reduce((sum, s) => sum + Math.abs(s.resultPct), 0) / wins.length : 3;
-  const avgLoss = losses.length > 0 ? losses.reduce((sum, s) => sum + Math.abs(s.resultPct), 0) / losses.length : 3;
-  const R = avgLoss > 0 ? avgWin / avgLoss : 1;
-  // Kelly % = W - (1-W)/R
-  let kelly = W - (1 - W) / R;
-  kelly = Math.max(0, Math.min(0.25, kelly)); // Cap em 25% do capital
-  // Ajusta pelo nível de confiança do sinal atual
-  const confMult = signalProbability >= 75 ? 1.0 : signalProbability >= 60 ? 0.7 : signalProbability >= 45 ? 0.4 : 0.2;
-  const suggested = kelly * confMult;
-  // Half-Kelly (mais conservador, comum na prática)
-  const halfKelly = suggested / 2;
-  return {
-    kellyPct: Math.round(kelly * 1000) / 10,
-    suggestedPct: Math.round(suggested * 1000) / 10,
-    halfKellyPct: Math.round(halfKelly * 1000) / 10,
-    winRate: Math.round(W * 100),
-    avgWin: Math.round(avgWin * 10) / 10,
-    avgLoss: Math.round(avgLoss * 10) / 10,
-    ratio: Math.round(R * 100) / 100
-  };
-}
-
 // Trailing Stop dinâmico baseado no ATR
 // Quando o ativo está em lucro, o stop sobe acompanhando o preço
 function calcTrailingStop(buyPrice, currentPrice, atrData) {
@@ -3248,37 +3183,9 @@ function calcBTCCorrelation(coinSparkline, btcSparkline) {
   };
 }
 
-// Pesos adaptativos: aprende quais indicadores estão acertando mais
+// Pesos dos indicadores de curto prazo (usados só pelo teste no histórico dos sinais antigos)
 function getAdaptiveWeights() {
-  const resolved = state.signalTracker.filter(s => s.result !== null);
-  if (resolved.length < 10) {
-    // Sem dados suficientes, usa pesos padrão (1x para tudo)
-    return { rsi: 1, macd: 1, bollinger: 1, ema: 1, stochastic: 1, fearGreed: 1, volume: 1, confluence: 1 };
-  }
-  // Analisa quais tipos de sinais acertaram mais
-  const buySignals = resolved.filter(s => s.type === 'buy');
-  const sellSignals = resolved.filter(s => s.type === 'sell');
-  const buyHitRate = buySignals.length > 0 ? buySignals.filter(s => s.result).length / buySignals.length : 0.5;
-  const sellHitRate = sellSignals.length > 0 ? sellSignals.filter(s => s.result).length / sellSignals.length : 0.5;
-  // Se compras acertam mais, dá mais peso pros indicadores de compra; idem pra venda
-  // Sinais fortes (>70%) acertaram mais que fracos?
-  const strong = resolved.filter(s => s.probability >= 70);
-  const weak = resolved.filter(s => s.probability < 70 && s.probability >= 45);
-  const strongHit = strong.length > 3 ? strong.filter(s => s.result).length / strong.length : 0.5;
-  const weakHit = weak.length > 3 ? weak.filter(s => s.result).length / weak.length : 0.5;
-  // Se sinais fortes acertam muito, aumenta o bônus de confluência
-  const confluenceBoost = strongHit > 0.65 ? 1.3 : strongHit < 0.4 ? 0.7 : 1.0;
-  // Ajuste geral: se acurácia geral é alta, confia mais nos indicadores
-  const overallHit = resolved.filter(s => s.result).length / resolved.length;
-  const generalMult = overallHit > 0.6 ? 1.1 : overallHit < 0.4 ? 0.8 : 1.0;
-  return {
-    rsi: generalMult, macd: generalMult, bollinger: generalMult,
-    ema: generalMult, stochastic: generalMult,
-    fearGreed: generalMult, volume: generalMult,
-    confluence: confluenceBoost,
-    buyBias: buyHitRate > 0.6 ? 1.1 : buyHitRate < 0.35 ? 0.8 : 1.0,
-    sellBias: sellHitRate > 0.6 ? 1.1 : sellHitRate < 0.35 ? 0.8 : 1.0
-  };
+  return { rsi: 1, macd: 1, bollinger: 1, ema: 1, stochastic: 1, fearGreed: 1, volume: 1, confluence: 1 };
 }
 
 const UI = {
@@ -3450,7 +3357,7 @@ const UI = {
       } else if (!hasPrices) {
         msg = '<p>Carregando dados do mercado...</p><p style="font-size:.78rem">Primeira atualização pode demorar alguns segundos.</p>';
       } else {
-        msg = `<p>Mercado calmo — sem sinais fortes agora</p><p style="font-size:.78rem">Monitorando ${nCrypto} criptos${nStocks ? ' e ' + nStocks + ' ações' : ''}. Oportunidades aparecem aqui quando os indicadores se alinham.</p>`;
+        msg = `<p>Nenhum ENTRAR ou SAIR hoje</p><p style="font-size:.78rem">Monitorando ${nCrypto} criptos${nStocks ? ' e ' + nStocks + ' ações' : ''}. Na estratégia de tendência é normal passar dias sem sinal; o card 📈 Tendência mostra quanto falta pra cada ativo disparar.</p>`;
         if (nStocks && !hasToken) {
           msg += '<p style="font-size:.75rem;color:var(--warn);margin-top:8px">⚠️ Token brapi.dev não configurado — ações não carregam. Vá em ⚙️ Config → Ações B3.</p>';
         }
@@ -3503,9 +3410,12 @@ const UI = {
             ${breakdownHtml}
           </div>
           <div class="opp-right">
-            <div class="opp-prob ${probClass}">${prob}%</div>
-            <div class="opp-prob-bar"><div class="opp-prob-fill ${probClass}" style="width:${prob}%"></div></div>
-            <div class="opp-label">${probLabel}</div>
+            ${opp.trend
+              ? `<div class="opp-prob" style="font-size:.85rem;color:${opp.type === 'buy' ? 'var(--gain)' : 'var(--loss)'}">${opp.type === 'buy' ? 'ENTRAR' : 'SAIR'}</div>
+                 <div class="opp-label">${opp.untested ? 'não testado' : 'tendência'}</div>`
+              : `<div class="opp-prob ${probClass}">${prob}%</div>
+                 <div class="opp-prob-bar"><div class="opp-prob-fill ${probClass}" style="width:${prob}%"></div></div>
+                 <div class="opp-label">${probLabel}</div>`}
             <div style="display:flex;gap:4px;align-items:center">
               <button class="opp-share" onclick="shareOpp(${idx})" title="Compartilhar no WhatsApp">📲</button>
               <span class="opp-time">${opp.time || 'agora'}</span>
@@ -3563,94 +3473,11 @@ function oppKey(type, asset, signal) {
   return `${day}:${type}:${asset}:${signal}`;
 }
 
-/* ===== SIGNAL ACCURACY TRACKER =====
-   Registra cada sinal com o preço na hora, depois verifica se o preço
-   foi na direção certa dentro de 24h, 48h e 7d.
-   Isso permite mostrar a taxa de acerto real do sistema. */
-function loadSignalTracker() {
-  try {
-    const raw = localStorage.getItem('radar_signal_tracker');
-    if (raw) state.signalTracker = JSON.parse(raw);
-  } catch(e) { state.signalTracker = []; }
-}
-function saveSignalTracker() {
-  try {
-    // Mantém máximo 200 sinais (últimos ~2 meses)
-    if (state.signalTracker.length > 200) state.signalTracker = state.signalTracker.slice(-200);
-    localStorage.setItem('radar_signal_tracker', JSON.stringify(state.signalTracker));
-  } catch(e) {}
-}
-
-function trackSignal(opp) {
-  // Extrai o asset ID do key (formato: "2026-09-09:buy:bitcoin:score")
-  const parts = opp.key.split(':');
-  const assetId = parts[2];
-  const type = opp.type; // 'buy' ou 'sell'
-  // Busca preço atual do ativo
-  const p = state.prices.crypto[assetId] || state.prices.stocks[assetId];
-  if (!p || !p.price) return;
-  const market = state.prices.crypto[assetId] ? 'crypto' : 'stock';
-  // Fora do pregão a cotação está parada: o sinal seria só o fechamento anterior repetido
-  if (market === 'stock' && !isB3Open()) return;
-  // Um sinal por janela de observação: enquanto o anterior do mesmo ativo/tipo
-  // está pendente, o mesmo movimento não conta de novo
-  if (state.signalTracker.some(s => isCurrentStrategy(s) && s.asset === assetId && s.type === type && s.result === null)) return;
-  const today = new Date().toISOString().slice(0, 10);
-  state.signalTracker.push({
-    date: today,
-    ts: Date.now(),
-    strategy: SIGNAL_STRATEGY,
-    market,
-    asset: assetId,
-    symbol: p.symbol?.toUpperCase() || assetId,
-    type,
-    probability: opp.probability,
-    priceAtSignal: p.price,
-    result: null,    // null = pendente, true = acertou, false = errou
-    resultPct: null, // variação % desde o sinal
-    checkedAt: null
-  });
-  saveSignalTracker();
-}
-
-function signalTimeOf(sig) {
-  return sig.ts || new Date(sig.date).getTime();
-}
-
-// Sinais antigos não têm `market`: tickers B3 são tipo WEGE3/ITUB4, IDs de cripto são minúsculos
+/* ===== CRITÉRIO DE ACERTO DOS SINAIS DE CURTO PRAZO =====
+   Usado pelo teste no histórico pra medir os sinais antigos (RSI, MACD etc.), que saíram do radar ao vivo. */
+// Sem `market`: tickers B3 são tipo WEGE3/ITUB4, IDs de cripto são minúsculos
 function signalMarketOf(sig) {
   return sig.market || (/^[A-Z]{4}\d{1,2}F?$/.test(sig.asset) ? 'stock' : 'crypto');
-}
-
-function spTimeParts(ms) {
-  const f = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', weekday: 'short', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' });
-  const o = {};
-  for (const { type, value } of f.formatToParts(new Date(ms))) o[type] = value;
-  return o;
-}
-
-// Pregão da B3: seg–sex, 10h–17h55 (horário de Brasília). Feriados não são considerados.
-function isB3Open(ms = Date.now()) {
-  const o = spTimeParts(ms);
-  if (o.weekday === 'Sat' || o.weekday === 'Sun') return false;
-  const mins = Number(o.hour) * 60 + Number(o.minute);
-  return mins >= 600 && mins < 1075;
-}
-
-function b3SessionsSince(ms, now) {
-  let n = 0;
-  for (let t = ms + 86400000; t <= now; t += 86400000) {
-    const wd = spTimeParts(t).weekday;
-    if (wd !== 'Sat' && wd !== 'Sun') n++;
-  }
-  return n;
-}
-
-// Cripto: 72h corridas. Ações: 3 pregões (fim de semana não conta).
-function signalReadyToJudge(sig, now) {
-  return signalMarketOf(sig) === 'stock'
-    ? b3SessionsSince(signalTimeOf(sig), now) >= 3
-    : now - signalTimeOf(sig) >= 72 * 3600000;
 }
 
 // Acerto = preço andou na direção do sinal além do ruído normal do mercado.
@@ -3667,84 +3494,11 @@ function judgeSignal(sig, pct) {
   return sig.type === 'buy' ? pct >= t : pct <= -t;
 }
 
-// Ajuste único do histórico já gravado: tira repetições do mesmo sinal e
-// rejulga ações pelas regras de pregão/limite acima.
-function migrateSignalTracker() {
-  try { if (localStorage.getItem('radar_tracker_mig') === '2') return; } catch (e) { return; }
-  const sorted = state.signalTracker.slice().sort((a, b) => signalTimeOf(a) - signalTimeOf(b));
-  const kept = [];
-  for (const s of sorted) {
-    const repeated = kept.some(k => k.asset === s.asset && k.type === s.type && !signalReadyToJudge(k, signalTimeOf(s)));
-    if (repeated) continue;
-    if (signalMarketOf(s) === 'stock' && s.result !== null) {
-      const checkedMs = s.checkedAt ? new Date(s.checkedAt + 'T23:59:00-03:00').getTime() : Date.now();
-      if (!signalReadyToJudge(s, checkedMs)) {
-        s.result = null; s.resultPct = null; s.checkedAt = null;
-      } else {
-        s.result = judgeSignal(s, s.resultPct);
-      }
-    }
-    kept.push(s);
-  }
-  debugLog(`Acurácia: histórico ajustado (${state.signalTracker.length} → ${kept.length} sinais)`);
-  state.signalTracker = kept;
-  saveSignalTracker();
-  try { localStorage.setItem('radar_tracker_mig', '2'); } catch (e) {}
-}
-
-function updateSignalTracker() {
-  const now = Date.now();
-  let changed = false;
-  for (const sig of state.signalTracker) {
-    if (sig.result !== null) continue;
-    if (!signalReadyToJudge(sig, now)) continue;
-    const p = state.prices.crypto[sig.asset] || state.prices.stocks[sig.asset];
-    if (!p || !p.price) continue;
-    const pctChange = ((p.price - sig.priceAtSignal) / sig.priceAtSignal) * 100;
-    sig.resultPct = Math.round(pctChange * 10) / 10;
-    sig.checkedAt = new Date().toISOString().slice(0, 10);
-    sig.result = judgeSignal(sig, pctChange);
-    changed = true;
-  }
-  if (changed) saveSignalTracker();
-}
-
-// A taxa mostrada é só da regra atual; sinais da regra anterior aparecem à parte no painel
-function isCurrentStrategy(sig) {
-  return sig.strategy === SIGNAL_STRATEGY;
-}
-
-function getSignalAccuracy(market) {
-  const signals = state.signalTracker.filter(s => isCurrentStrategy(s) && (!market || signalMarketOf(s) === market));
-  const resolved = signals.filter(s => s.result !== null);
-  if (resolved.length < 3) return null; // precisa de pelo menos 3 sinais pra mostrar stats
-  const correct = resolved.filter(s => s.result === true);
-  const hitRate = (correct.length / resolved.length) * 100;
-  // Stats por tipo
-  const buySignals = resolved.filter(s => s.type === 'buy');
-  const sellSignals = resolved.filter(s => s.type === 'sell');
-  const buyHit = buySignals.length >= 2 ? (buySignals.filter(s => s.result).length / buySignals.length * 100) : null;
-  const sellHit = sellSignals.length >= 2 ? (sellSignals.filter(s => s.result).length / sellSignals.length * 100) : null;
-  // Média de retorno dos acertos
-  const avgReturn = correct.length > 0 ? correct.reduce((sum, s) => sum + Math.abs(s.resultPct), 0) / correct.length : 0;
-  // Últimos 10 sinais
-  const recent = resolved.slice(-10);
-  const recentHit = (recent.filter(s => s.result).length / recent.length * 100);
-  return {
-    total: resolved.length, pending: signals.filter(s => s.result === null).length,
-    hitRate: Math.round(hitRate), buyHit: buyHit !== null ? Math.round(buyHit) : null,
-    sellHit: sellHit !== null ? Math.round(sellHit) : null,
-    avgReturn: Math.round(avgReturn * 10) / 10, recentHit: Math.round(recentHit),
-    recent
-  };
-}
-
 /* ===== CONFIRMAÇÃO DE VIRADA =====
    Comprar só porque caiu (ou vender só porque subiu) errou seguidamente quando a
    tendência continuou. O sinal só sai quando o preço parou de ir contra ele:
    compra = subindo na última hora e nas últimas 3h; venda = caindo nas duas.
    Ações (dados diários): compra = dia no positivo e já fora da mínima; venda = o inverso. */
-const SIGNAL_STRATEGY = 2;
 
 function turnConfirmed(p, market, type) {
   const dir = type === 'buy' ? 1 : -1;
@@ -3762,18 +3516,8 @@ function turnConfirmed(p, market, type) {
   return h1 * dir > 0 && h3 * dir > 0;
 }
 
-// Sem confirmação (ou sem dados pra confirmar) o sinal não sai: melhor perder um sinal que errar contra a tendência
-function applyTurnGate(score, p, market, type) {
-  if (!score.total) return score;
-  if (!turnConfirmed(p, market, type)) return { total: 0, reasons: [] };
-  score.reasons.unshift(type === 'buy' ? '↗️ Virada confirmada: preço parou de cair' : '↘️ Virada confirmada: preço parou de subir');
-  return score;
-}
-
 function detectOpportunities() {
   const opps = [];
-  const dropThresh = state.settings.dropThreshold;
-  const riseThresh = state.settings.riseThreshold;
   const newSignals = [];
 
   // Stablecoins NUNCA geram sinais — são atreladas ao dólar, qualquer sinal é falso
@@ -3786,75 +3530,6 @@ function detectOpportunities() {
     if (STABLECOINS.has(coin.id) || (p.symbol && ['usdt','usdc','dai','busd','tusd','frax','usdd','usdp','fdusd','pyusd','gusd'].includes(p.symbol.toLowerCase()))) continue;
     const sym = p.symbol.toUpperCase();
     const pos = state.positions[coin.id];
-
-    const conv = getConviction(coin.id, 'crypto');
-    const tier = conv ? conv.tier : 'speculative';
-    const isConviction = tier === 'high' || tier === 'satellite';
-
-    const buyScore = applyTurnGate(calcBuyScore(p, dropThresh, pos), p, 'crypto', 'buy');
-    if (buyScore.total > 0) {
-      const prob = buyScore.total;
-      const targets = suggestTargets('crypto', coin.id);
-      const key = oppKey('buy', coin.id, 'score');
-      // Combina qualidade do ativo + timing pra dar uma orientação clara
-      let title, notif;
-      if (isConviction && prob >= 70) {
-        title = `🚨 COMPRA AGORA: ${sym} — ativo sólido + confluência forte (${prob}%)`;
-        notif = `🚨 COMPRA ${sym} ${fmtBRL(p.price)} — ativo sólido E confluência forte! Alvo +${targets.target}`;
-      } else if (isConviction && prob >= 55) {
-        title = `🎯 ${sym} ficando interessante — ativo sólido, sinais se alinhando (${prob}%)`;
-        notif = `🎯 ${sym} ${fmtBRL(p.price)} — ativo sólido, sinais se alinhando (${prob}%)`;
-      } else if (isConviction) {
-        title = `👀 ${sym} no radar — ativo sólido, confluência fraca (${prob}%)`;
-        notif = `👀 ${sym} ${fmtBRL(p.price)} — ativo sólido, mas confluência fraca (${prob}%)`;
-      } else if (prob >= 75) {
-        title = `🚨 SINAL FORTE: ${sym} (${prob}%) — múltiplos indicadores confirmam`;
-        notif = `🚨 Trade ${sym} ${fmtBRL(p.price)} — sinal forte (${prob}%)! Alvo +${targets.target}, stop -${targets.stop}`;
-      } else if (prob >= 60) {
-        title = `🟢 Sinal de trade: ${sym} (${prob}%) — confluência moderada`;
-        notif = `🟢 Trade ${sym} ${fmtBRL(p.price)} — sinal moderado (${prob}%)`;
-      } else {
-        title = `👀 ${sym} no radar (${prob}%) — poucos indicadores confirmam`;
-        notif = `👀 ${sym} ${fmtBRL(p.price)} — sinal fraco (${prob}%), só observar`;
-      }
-      if (tier === 'satellite') title += ' · posição pequena';
-      // Kelly Criterion: sugere tamanho ideal da posição
-      const kelly = calcKellyPosition(prob);
-      const kellyInfo = kelly?.suggestedPct > 0 ? ` · 📐 Kelly sugere ${kelly.suggestedPct.toFixed(1)}% do capital` : '';
-      const opp = {
-        key, type: 'buy', probability: prob, conviction: tier,
-        title, reasons: buyScore.reasons,
-        desc: `${fmtBRL(p.price)} · ${buyScore.reasons.join(' · ')} · Alvo +${targets.target}${targets.resistancePrice ? ' (resist. ' + fmtBRL(targets.resistancePrice) + ')' : ''} | stop -${targets.stop}${targets.supportPrice ? ' (suporte ' + fmtBRL(targets.supportPrice) + ')' : ''}${kellyInfo}`,
-        notification: notif,
-        time: 'agora', priority: prob + (isConviction ? 10 : 0)
-      };
-      opps.push(opp);
-      if (!notifiedOpps.has(key)) newSignals.push(opp);
-    }
-
-    const sellScore = applyTurnGate(calcSellScore(p, riseThresh, pos), p, 'crypto', 'sell');
-    if (sellScore.total > 0) {
-      const prob = sellScore.total;
-      const key = oppKey('sell', coin.id, 'score');
-      let sellTitle;
-      if (prob >= 75) {
-        sellTitle = `🚨 VENDA AGORA: ${sym} — confluência forte (${prob}%)`;
-      } else if (prob >= 60) {
-        sellTitle = `🔴 ${sym} esticado — considere vender (${prob}%)`;
-      } else {
-        sellTitle = `🟡 ${sym} subindo — poucos indicadores (${prob}%)`;
-      }
-      if (tier === 'high') sellTitle += ' · ativo sólido: só pra trade de curto prazo';
-      const opp = {
-        key, type: 'sell', probability: prob, conviction: tier,
-        title: sellTitle, reasons: sellScore.reasons,
-        desc: `${fmtBRL(p.price)} · ${sellScore.reasons.join(' · ')}`,
-        notification: `${prob >= 70 ? '🚨' : '🔴'} ${sym} ${fmtBRL(p.price)} — sinal de venda (${prob}%) ${sellScore.reasons[0]}`,
-        time: 'agora', priority: prob
-      };
-      opps.push(opp);
-      if (!notifiedOpps.has(key)) newSignals.push(opp);
-    }
 
     if (pos && pos.buyPrice && p.price) {
       const pnlPct = ((p.price - pos.buyPrice) / pos.buyPrice) * 100;
@@ -3916,73 +3591,6 @@ function detectOpportunities() {
     if (!p) continue;
     const pos = state.positions[ticker];
 
-    const conv = getConviction(ticker, 'stock');
-    const tier = conv ? conv.tier : 'speculative';
-    const isConviction = tier === 'high' || tier === 'satellite';
-
-    const buyScore = applyTurnGate(calcStockBuyScore(p, dropThresh, pos), p, 'stock', 'buy');
-    if (buyScore.total > 0) {
-      const prob = buyScore.total;
-      const targets = suggestTargets('stock', ticker);
-      const key = oppKey('buy', ticker, 'score');
-      let title, notif;
-      if (isConviction && prob >= 65) {
-        title = `🚨 COMPRA AGORA: ${ticker} — ativo sólido + momento bom (${prob}%)`;
-        notif = `🚨 COMPRA ${ticker} ${fmtBRL(p.price)} — ativo sólido E o momento tá bom! Alvo +${targets.target}`;
-      } else if (isConviction && prob >= 45) {
-        title = `🎯 ${ticker} ficando interessante — ativo sólido, momento se formando (${prob}%)`;
-        notif = `🎯 ${ticker} ${fmtBRL(p.price)} — ativo sólido, momento se formando (${prob}%)`;
-      } else if (isConviction) {
-        title = `👀 ${ticker} no radar — ativo sólido, mas não é hora de comprar (${prob}%)`;
-        notif = `👀 ${ticker} ${fmtBRL(p.price)} — ativo sólido, mas timing fraco (${prob}%)`;
-      } else if (prob >= 70) {
-        title = `🚨 SINAL FORTE de trade: ${ticker} (${prob}%) — arriscado, mas o momento compensa`;
-        notif = `🚨 Trade ${ticker} ${fmtBRL(p.price)} — sinal forte (${prob}%)! Alvo +${targets.target}, stop -${targets.stop}`;
-      } else if (prob >= 45) {
-        title = `🟢 Sinal de trade: ${ticker} (${prob}%) — confluência moderada`;
-        notif = `🟢 Trade ${ticker} ${fmtBRL(p.price)} — sinal razoável (${prob}%)`;
-      } else {
-        title = `👀 ${ticker} no radar (${prob}%) — poucos indicadores, só observar`;
-        notif = `👀 ${ticker} ${fmtBRL(p.price)} — movimento fraco (${prob}%), só acompanhar`;
-      }
-      // Kelly Criterion: sugere tamanho ideal da posição
-      const kellyStock = calcKellyPosition(prob);
-      const kellyStockInfo = kellyStock?.suggestedPct > 0 ? ` · 📐 Kelly sugere ${kellyStock.suggestedPct.toFixed(1)}% do capital` : '';
-      const opp = {
-        key, type: 'buy', probability: prob, conviction: tier,
-        title, reasons: buyScore.reasons,
-        desc: `${p.name} a ${fmtBRL(p.price)} · ${buyScore.reasons.join(' · ')} · Alvo +${targets.target} | stop -${targets.stop}${kellyStockInfo}`,
-        notification: notif,
-        time: 'agora', priority: prob + (isConviction ? 10 : 0)
-      };
-      opps.push(opp);
-      if (!notifiedOpps.has(key)) newSignals.push(opp);
-    }
-
-    const sellScore = applyTurnGate(calcStockSellScore(p, riseThresh, pos), p, 'stock', 'sell');
-    if (sellScore.total > 0) {
-      const prob = sellScore.total;
-      const key = oppKey('sell', ticker, 'score');
-      let sellTitle;
-      if (prob >= 70) {
-        sellTitle = `🚨 VENDA AGORA: ${ticker} — sinal forte (${prob}%)`;
-      } else if (prob >= 45) {
-        sellTitle = `🔴 ${ticker} esticado — considere vender (${prob}%)`;
-      } else {
-        sellTitle = `🟡 ${ticker} subindo — fique atento (${prob}%)`;
-      }
-      if (tier === 'high') sellTitle += ' · ativo sólido: só pra trade de curto prazo';
-      const opp = {
-        key, type: 'sell', probability: prob, conviction: tier,
-        title: sellTitle, reasons: sellScore.reasons,
-        desc: `${p.name} a ${fmtBRL(p.price)} · ${sellScore.reasons.join(' · ')}`,
-        notification: `${prob >= 70 ? '🚨' : '🔴'} ${ticker} ${fmtBRL(p.price)} — sinal de venda (${prob}%)`,
-        time: 'agora', priority: prob
-      };
-      opps.push(opp);
-      if (!notifiedOpps.has(key)) newSignals.push(opp);
-    }
-
     if (pos && pos.buyPrice && p.price) {
       const pnlPct = ((p.price - pos.buyPrice) / pos.buyPrice) * 100;
       if (pnlPct <= -3) {
@@ -4026,29 +3634,20 @@ function detectOpportunities() {
     }
   }
 
+  // Estratégia de tendência: ENTRAR/SAIR no fechamento diário
+  const rowsNow = trendRows();
+  for (const r of rowsNow) {
+    const opp = trendOpp(r);
+    if (!opp) continue;
+    opps.push(opp);
+    logTrendEvent(opp.logEntry);
+    if (!notifiedOpps.has(opp.key)) newSignals.push(opp);
+  }
+  renderTrendCard(rowsNow);
+
   opps.sort((a, b) => (b.probability || 0) - (a.probability || 0));
   state.opportunities = opps;
   UI.renderOpportunities();
-
-  // Registra no tracker de acurácia todo sinal ativo ≥55%, mesmo os já notificados
-  // (trackSignal ignora duplicatas do mesmo ativo/tipo no dia)
-  const trackedBefore = state.signalTracker.length;
-  // 4+ criptos com o mesmo sinal ao mesmo tempo = um movimento do mercado inteiro:
-  // conta só o mais forte, senão uma única aposta vira vários acertos/erros
-  const trackable = opps.filter(o => o.probability >= 55 && (o.type === 'buy' || o.type === 'sell') && o.key.endsWith(':score'));
-  const isCryptoScore = o => o.key.endsWith(':score') && state.prices.crypto[o.key.split(':')[2]];
-  for (const type of ['buy', 'sell']) {
-    // O movimento é do mercado se 4+ criptos têm o sinal, mesmo as que não chegaram a 55%
-    if (opps.filter(o => o.type === type && isCryptoScore(o)).length < 4) continue;
-    const group = trackable.filter(o => o.type === type && isCryptoScore(o));
-    if (!group.length) continue;
-    const keep = group.reduce((a, b) => (b.probability > a.probability ? b : a));
-    for (const o of group) if (o !== keep) trackable.splice(trackable.indexOf(o), 1);
-  }
-  for (const opp of trackable) trackSignal(opp);
-  if (state.signalTracker.length !== trackedBefore) {
-    try { renderAccuracy(); } catch (e) {}
-  }
 
   const toPush = [];
   for (const opp of newSignals) {
@@ -4064,8 +3663,6 @@ function detectOpportunities() {
     pushOpportunities(toPush).catch(e => debugLog(`Notificação ERRO: ${e.message}`));
   }
 
-  // Atualiza tracker com preços atuais
-  updateSignalTracker();
 
   try { localStorage.setItem('radar_notified', JSON.stringify([...notifiedOpps])); } catch(e) {}
 }
@@ -5401,21 +4998,6 @@ function playBeep() {
   } catch (e) {}
 }
 
-function playUrgentBeep() {
-  try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    [1000, 1200, 1400].forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.frequency.value = freq; osc.type = 'sine'; gain.gain.value = 0.2;
-      osc.start(ctx.currentTime + i * 0.25);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.25 + 0.2);
-      osc.stop(ctx.currentTime + i * 0.25 + 0.25);
-    });
-  } catch (e) {}
-}
-
 function showToast({ type, title, msg, duration }) {
   const container = document.getElementById('toasts');
   const toast = document.createElement('div');
@@ -5485,6 +5067,7 @@ async function refreshData() {
       state.cryptoFetchFailed = true;
       debugLog(`Cripto ERRO: ${e.name}: ${e.message}`);
     }
+    try { await refreshTrendDaily(); } catch (e) { debugLog(`Tendência ERRO: ${e.message}`); }
     if (state.watchlist.stocks.length && state.settings.brapiToken) {
       try {
         const prices = await API.fetchStockPrices(state.watchlist.stocks);
@@ -5518,7 +5101,6 @@ async function refreshData() {
     try { UI.renderStockCards(); } catch (e) { debugLog(`render stocks ERRO: ${e.message}`); }
     try { UI.renderTicker(); } catch (e) { debugLog(`render ticker ERRO: ${e.message}`); }
     try { renderFearGreed(); } catch (e) { debugLog(`render F&G ERRO: ${e.message}`); }
-    try { renderAccuracy(); } catch (e) { debugLog(`render accuracy ERRO: ${e.message}`); }
     try { detectMarketRegime(); } catch (e) { debugLog(`regime ERRO: ${e.message}`); }
     try { renderPortfolio(); } catch (e) { debugLog(`portfolio ERRO: ${e.message}`); }
     try { detectOpportunities(); } catch (e) {
@@ -5998,8 +5580,7 @@ window.addEventListener('error', e => {
   debugLog('init: carregando state...');
   loadState();
   loadNotifiedOpps();
-  loadSignalTracker();
-  migrateSignalTracker();
+  loadTrendLog();
   renderBacktest();
   applyTheme();
   loadSettings();
