@@ -1,8 +1,8 @@
 <title>Radar de Oportunidades</title>
 <script>
-// Cache-buster v27: radar movido pela estratégia de tendência
+// Cache-buster v28: risco até a saída no card de tendência
 (function(){
-  var V = 'radar-v27';
+  var V = 'radar-v28';
   try {
     if (localStorage.getItem('_radar_ver') === V) return;
     // Limpa caches do Service Worker
@@ -947,7 +947,7 @@ if ('serviceWorker' in navigator) {
     if (!swRegistration) swRegistration = reg;
     debugLog('SW ready: ' + (reg.active ? 'ativo' : 'aguardando'));
   });
-  navigator.serviceWorker.register('sw.js?v=27', { updateViaCache: 'none' }).then(reg => {
+  navigator.serviceWorker.register('sw.js?v=28', { updateViaCache: 'none' }).then(reg => {
     swRegistration = reg;
     // Se tem SW esperando ativar, força ativação imediata
     if (reg.waiting) {
@@ -2121,7 +2121,11 @@ function renderTrendCard(rows) {
       else if (st.inPos) chip = ['EM TENDÊNCIA', 'transparent', 'var(--gain)'];
       else chip = ['FORA', 'transparent', 'var(--text-muted)'];
       if (st.inPos) {
-        line = `desde ${trendCloseDay(r, st.entryT)} · <span style="color:${col(live / (st.entry * fx) - 1)}">${pct(live / (st.entry * fx) - 1)}</span> · sai se fechar abaixo de ${fmtBRL(st.exitLevel * fx)}`;
+        // Quanto quem comprasse agora perderia até a saída: longe demais = tarde pra entrar
+        const risk = st.exitLevel * fx / live - 1;
+        const late = risk < -0.15 ? ' — tarde pra entrar' : '';
+        line = `desde ${trendCloseDay(r, st.entryT)} · <span style="color:${col(live / (st.entry * fx) - 1)}">${pct(live / (st.entry * fx) - 1)}</span> · sai se fechar abaixo de ${fmtBRL(st.exitLevel * fx)}
+          <br><span style="color:${late ? 'var(--loss)' : 'var(--text-muted)'}${late ? ';font-weight:600' : ''}">risco até a saída se comprar agora: ${pct(risk)}${late}</span>`;
       } else {
         const dist = st.entryLevel * fx / live - 1;
         line = `entra se fechar acima de ${fmtBRL(st.entryLevel * fx)} (${pct(dist)})${st.upTrend ? '' : ' · e com a média de 20 dias acima da de 50'}`;
