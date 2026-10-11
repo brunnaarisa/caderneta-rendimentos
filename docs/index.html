@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Radar de Oportunidades</title>
 <script>
-// Cache-buster v25: teste no histórico
+// Cache-buster v26: teste da estratégia de tendência
 (function(){
-  var V = 'radar-v25';
+  var V = 'radar-v26';
   try {
     if (localStorage.getItem('_radar_ver') === V) return;
     // Limpa caches do Service Worker
@@ -1061,7 +1061,7 @@ if ('serviceWorker' in navigator) {
     if (!swRegistration) swRegistration = reg;
     debugLog('SW ready: ' + (reg.active ? 'ativo' : 'aguardando'));
   });
-  navigator.serviceWorker.register('sw.js?v=25', { updateViaCache: 'none' }).then(reg => {
+  navigator.serviceWorker.register('sw.js?v=26', { updateViaCache: 'none' }).then(reg => {
     swRegistration = reg;
     // Se tem SW esperando ativar, força ativação imediata
     if (reg.waiting) {
@@ -2058,12 +2058,147 @@ function backtestMarketHtml(title, period, points, market) {
   </div>`;
 }
 
+/* ===== ESTRATÉGIA DE TENDÊNCIA (dados diários) =====
+   Regras clássicas e fixas (não ajustadas ao histórico, pra não "decorar o passado"):
+   entra quando fecha acima da máxima dos últimos 20 dias com média de 20 > média de 50;
+   sai quando fecha abaixo da mínima dos últimos 10 dias. Só compra (sem venda a descoberto). */
+const TREND = { breakout: 20, exit: 10, fast: 20, slow: 50, feePerSide: 0.0025 };
+
+function emaSeries(values, n) {
+  const k = 2 / (n + 1), out = new Array(values.length).fill(null);
+  let e = null;
+  for (let i = n - 1; i < values.length; i++) {
+    e = e === null ? values.slice(i - n + 1, i + 1).reduce((a, b) => a + b, 0) / n : values[i] * k + e * (1 - k);
+    out[i] = e;
+  }
+  return out;
+}
+
+function trendEntryAt(c, i, ef, es) {
+  if (i < TREND.slow || ef[i] == null || es[i] == null) return false;
+  return c[i] > Math.max(...c.slice(i - TREND.breakout, i)) && ef[i] > es[i];
+}
+
+function trendExitAt(c, i) {
+  return i >= TREND.exit && c[i] < Math.min(...c.slice(i - TREND.exit, i));
+}
+
+async function fetchCryptoDaily(id) {
+  const meta = BINANCE_MAP[id];
+  if (meta) {
+    try {
+      const kl = await fetchJSON(`https://api.binance.com/api/v3/klines?symbol=${meta.pair}&interval=1d&limit=1000`, 20000);
+      // Descarta o candle de hoje, que ainda não fechou
+      if (Array.isArray(kl) && kl.length > 120) return kl.slice(0, -1).map(k => ({ t: k[0], c: parseFloat(k[4]) }));
+    } catch (e) {}
+  }
+  const d = await fetchJSON(`https://api.coingecko.com/api/v3/coins/${encodeURIComponent(id)}/market_chart?vs_currency=brl&days=365&interval=daily`, 20000);
+  return (d?.prices || []).slice(0, -1).map(([t, c]) => ({ t, c }));
+}
+
+let stockRangeOk = null;
+async function fetchStockDaily(ticker) {
+  // O plano grátis da brapi pode limitar o período: tenta do maior pro menor e lembra o que funcionou
+  for (const range of stockRangeOk ? [stockRangeOk] : ['2y', '1y', '6mo', '3mo']) {
+    try {
+      const d = await fetchJSON(`https://brapi.dev/api/quote/${encodeURIComponent(ticker)}?range=${range}&interval=1d&token=${encodeURIComponent(state.settings.brapiToken)}`, 20000);
+      const h = (d?.results?.[0]?.historicalDataPrice || []).filter(x => x.close != null);
+      if (h.length >= 60) { stockRangeOk = range; return h.map(x => ({ t: x.date * 1000, c: x.close })); }
+    } catch (e) {}
+  }
+  return null;
+}
+
+// Simula um ativo a partir do índice `start`: estratégia de tendência e "só segurar", ambos com taxas
+function simulateTrend(series, start) {
+  const c = series.map(x => x.c), fee = TREND.feePerSide;
+  const ef = emaSeries(c, TREND.fast), es = emaSeries(c, TREND.slow);
+  let inPos = false, entry = 0, eq = 1;
+  const curve = new Map(), hold = new Map(), trades = [];
+  for (let i = start; i < c.length; i++) {
+    if (inPos) eq *= c[i] / c[i - 1];
+    if (inPos && trendExitAt(c, i)) {
+      inPos = false; eq *= 1 - fee;
+      trades.push(c[i] / entry * (1 - fee) ** 2 - 1);
+    } else if (!inPos && trendEntryAt(c, i, ef, es)) {
+      inPos = true; entry = c[i]; eq *= 1 - fee;
+    }
+    curve.set(series[i].t, eq);
+    hold.set(series[i].t, c[i] / c[start] * (1 - fee));
+  }
+  if (inPos) trades.push(c[c.length - 1] / entry * (1 - fee) ** 2 - 1);
+  return { curve, hold, trades, inPos };
+}
+
+// Carteira com o mesmo valor em cada ativo (sem rebalancear): média das curvas, dia a dia
+function portfolioCurve(curves, days) {
+  const last = curves.map(() => 1);
+  return days.map(t => {
+    curves.forEach((cv, k) => { if (cv.has(t)) last[k] = cv.get(t); });
+    return last.reduce((a, b) => a + b, 0) / last.length;
+  });
+}
+
+function maxDrawdown(vals) {
+  let peak = -Infinity, dd = 0;
+  for (const v of vals) { peak = Math.max(peak, v); dd = Math.min(dd, v / peak - 1); }
+  return dd;
+}
+
+function trendBacktestHtml(title, seriesByAsset) {
+  const assets = Object.entries(seriesByAsset).filter(([, s]) => s && s.length > TREND.slow + 30);
+  if (!assets.length) return '';
+  // Começo comum: todos os ativos já com 50 dias de histórico. Ativo com histórico bem mais curto fica de fora.
+  const maxLen = Math.max(...assets.map(([, s]) => s.length));
+  const used = assets.filter(([, s]) => s.length >= maxLen * 0.6);
+  const startT = Math.max(...used.map(([, s]) => s[TREND.slow].t));
+  const sims = used.map(([a, s]) => ({ a, ...simulateTrend(s, s.findIndex(x => x.t >= startT)) }));
+  const days = [...new Set(sims.flatMap(s => [...s.curve.keys()]))].sort((x, y) => x - y);
+  const strat = portfolioCurve(sims.map(s => s.curve), days);
+  const hold = portfolioCurve(sims.map(s => s.hold), days);
+  const mid = Math.floor(days.length / 2);
+  const ret = (v, a = 0, b = v.length - 1) => v[b] / v[a] - 1;
+  const trades = sims.flatMap(s => s.trades);
+  const pct = v => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1).replace('.', ',')}%`;
+  const col = v => v >= 0 ? 'var(--gain)' : 'var(--loss)';
+  const cell = v => `<td style="text-align:right;color:${col(v)}">${pct(v)}</td>`;
+  const day = ms => new Date(ms).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+  const wins = trades.filter(r => r > 0).length;
+  const left = assets.length - used.length;
+  return `<div style="margin-top:12px">
+    <div style="font-weight:600;font-size:.85rem">${title} · ${used.length} ativo${used.length > 1 ? 's' : ''}</div>
+    <div style="font-size:.68rem;color:var(--text-muted)">${day(days[0])} a ${day(days[days.length - 1])} · mesmo valor em cada ativo${left ? ` · ${left} com pouco histórico ficou de fora` : ''}</div>
+    <table style="width:100%;font-size:.78rem;font-variant-numeric:tabular-nums;border-collapse:collapse;margin-top:4px">
+      <tr style="color:var(--text-muted);font-size:.68rem"><td></td><td style="text-align:right">período todo</td><td style="text-align:right">1ª metade</td><td style="text-align:right">2ª metade</td><td style="text-align:right">pior queda</td></tr>
+      <tr><td><b>Seguir tendência</b></td>${cell(ret(strat))}${cell(ret(strat, 0, mid))}${cell(ret(strat, mid))}${cell(maxDrawdown(strat))}</tr>
+      <tr><td>Só segurar</td>${cell(ret(hold))}${cell(ret(hold, 0, mid))}${cell(ret(hold, mid))}${cell(maxDrawdown(hold))}</tr>
+    </table>
+    <div style="font-size:.72rem;color:var(--text-secondary);margin-top:4px">${trades.length} operações · ${trades.length ? Math.round(wins / trades.length * 100) : 0}% com lucro · média ${trades.length ? pct(trades.reduce((a, b) => a + b, 0) / trades.length) : '—'} por operação${sims.some(s => s.inPos) ? ` · ${sims.filter(s => s.inPos).length} posição(ões) aberta(s) hoje` : ''}</div>
+  </div>`;
+}
+
+async function runTrendBacktest(status) {
+  const cryptoSeries = {}, stockSeries = {};
+  const coins = (state.watchlist.crypto || []).filter(c => state.prices.crypto[c.id]);
+  for (const [k, c] of coins.entries()) {
+    status(`Tendência: histórico diário de ${(state.prices.crypto[c.id].symbol || c.id).toUpperCase()} (${k + 1}/${coins.length})…`);
+    try { cryptoSeries[(state.prices.crypto[c.id].symbol || c.id).toUpperCase()] = await fetchCryptoDaily(c.id); } catch (e) { debugLog(`Tendência: ${c.id} sem histórico (${e.message})`); }
+  }
+  if (state.settings.brapiToken) {
+    for (const [k, t] of (state.watchlist.stocks || []).entries()) {
+      status(`Tendência: histórico diário de ${t} (${k + 1}/${state.watchlist.stocks.length})…`);
+      stockSeries[t] = await fetchStockDaily(t);
+    }
+  }
+  return trendBacktestHtml('Cripto', cryptoSeries) + trendBacktestHtml('Ações B3', stockSeries);
+}
+
 function renderBacktestIntro(extra = '') {
   const el = document.getElementById('backtest-content');
   if (!el) return;
   el.innerHTML = `${extra}<p style="font-size:.78rem;color:var(--text-secondary);line-height:1.5;margin:6px 0 10px">
-      Roda as regras do radar sobre os preços reais dos últimos 90 dias (cripto) e ~60 pregões (ações) e mostra quanto
-      teria acertado. "Média/sinal" é quanto o preço andou a favor do sinal, em média, incluindo os erros. Leva cerca de 1 minuto.</p>
+      Roda as estratégias sobre preços reais do passado e mostra quanto teriam rendido, comparando com simplesmente
+      segurar os mesmos ativos. Leva de 1 a 2 minutos.</p>
     <button onclick="runBacktest()" ${backtestRunning ? 'disabled' : ''} style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 18px;font-size:.8rem;font-weight:600;cursor:pointer">
       ${backtestRunning ? 'Rodando…' : '🧪 Rodar teste'}</button>`;
 }
@@ -2112,13 +2247,20 @@ async function runBacktest() {
       if (pts.length) { stockFirst = pts[0].ms; stockLast = pts[pts.length - 1].ms; }
     }
     const day = ms => new Date(ms).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    let radarHtml = '';
+    if (cryptoPoints.length) radarHtml += backtestMarketHtml(`Cripto · ${Object.keys(series).length} moedas`, `${day(firstH * 3600000)} a ${day(lastH * 3600000)} · avaliado 72h depois de cada sinal`, cryptoPoints, 'crypto');
+    if (stockPoints.length) radarHtml += backtestMarketHtml(`Ações B3 · ${new Set(stockPoints.map(p => p.asset)).size} ações`, `${day(stockFirst)} a ${day(stockLast)} (${stockDays} pregões) · avaliado 3 pregões depois`, stockPoints, 'stock');
+
+    let trendHtml = '';
+    try { trendHtml = await runTrendBacktest(status); } catch (e) { debugLog(`Tendência ERRO: ${e.message}`); }
+
+    const section = (t, d) => `<div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--border);font-weight:700;font-size:.9rem">${t}</div><div style="font-size:.7rem;color:var(--text-muted);line-height:1.4">${d}</div>`;
     let html = '';
-    if (cryptoPoints.length) html += backtestMarketHtml(`Cripto · ${Object.keys(series).length} moedas`, `${day(firstH * 3600000)} a ${day(lastH * 3600000)} · avaliado 72h depois de cada sinal`, cryptoPoints, 'crypto');
-    if (stockPoints.length) html += backtestMarketHtml(`Ações B3 · ${new Set(stockPoints.map(p => p.asset)).size} ações`, `${day(stockFirst)} a ${day(stockLast)} (${stockDays} pregões) · avaliado 3 pregões depois`, stockPoints, 'stock');
+    if (trendHtml) html += section('📈 Estratégia de tendência', 'Entra quando fecha acima da máxima de 20 dias (média de 20 acima da de 50); sai quando fecha abaixo da mínima de 10 dias. Preços diários, já descontando 0,25% de taxa em cada compra e venda.') + trendHtml;
+    if (radarHtml) html += section('🎯 Sinais atuais do radar', 'Indicadores de curto prazo (RSI, MACD etc.). Preços de hora em hora, sem taxas. "Média/sinal" = quanto o preço andou a favor do sinal, incluindo os erros.') + radarHtml;
     if (!html) html = '<p style="font-size:.8rem;color:var(--loss)">Não consegui baixar o histórico agora. Tente de novo em alguns minutos.</p>';
-    html += `<p style="font-size:.68rem;color:var(--text-muted);line-height:1.4;margin-top:10px">Não inclui taxas nem imposto. Usa preços de hora em hora
-      (o radar ao vivo vê mais detalhes) e não tem o histórico de dominância do BTC. Resultado passado não garante resultado futuro, e poucos sinais
-      (menos de ~30) ainda podem ser sorte.</p>`;
+    html += `<p style="font-size:.68rem;color:var(--text-muted);line-height:1.4;margin-top:10px">Não inclui imposto. Resultado passado não garante resultado futuro.
+      Uma estratégia só merece confiança se ganhar de "só segurar" nas duas metades do período, e não só no total.</p>`;
     try { localStorage.setItem('radar_backtest', JSON.stringify({ at: Date.now(), html })); } catch (e) {}
     backtestRunning = false;
     renderBacktestIntro(`<div style="font-size:.68rem;color:var(--text-muted)">Teste de ${new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>${html}<div style="height:10px"></div>`);
