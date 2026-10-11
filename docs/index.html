@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Radar de Oportunidades</title>
 <script>
-// Cache-buster v23: notificações com limites anti-spam e texto neutro
+// Cache-buster v24: sinais só com confirmação de virada; acurácia por regra
 (function(){
-  var V = 'radar-v23';
+  var V = 'radar-v24';
   try {
     if (localStorage.getItem('_radar_ver') === V) return;
     // Limpa caches do Service Worker
@@ -1056,7 +1056,7 @@ if ('serviceWorker' in navigator) {
     if (!swRegistration) swRegistration = reg;
     debugLog('SW ready: ' + (reg.active ? 'ativo' : 'aguardando'));
   });
-  navigator.serviceWorker.register('sw.js?v=23', { updateViaCache: 'none' }).then(reg => {
+  navigator.serviceWorker.register('sw.js?v=24', { updateViaCache: 'none' }).then(reg => {
     swRegistration = reg;
     // Se tem SW esperando ativar, força ativação imediata
     if (reg.waiting) {
@@ -1768,10 +1768,17 @@ function accuracyRuleHtml(market) {
   return `<div style="margin-top:8px;font-size:.68rem;color:var(--text-muted);text-align:center;line-height:1.4">${rule}</div>`;
 }
 
+function legacyAccuracyHtml(market) {
+  const old = state.signalTracker.filter(s => !isCurrentStrategy(s) && signalMarketOf(s) === market && s.result !== null);
+  if (!old.length) return '';
+  const hit = Math.round(old.filter(s => s.result).length / old.length * 100);
+  return `<div style="margin-top:6px;font-size:.68rem;color:var(--text-muted);text-align:center">Regra anterior (sem confirmação de virada): ${hit}% em ${old.length} sina${old.length > 1 ? 'is' : 'l'}</div>`;
+}
+
 function renderAccuracyFor(market) {
   const content = document.getElementById(`accuracy-content-${market}`);
   if (!content) return;
-  const signals = state.signalTracker.filter(s => signalMarketOf(s) === market);
+  const signals = state.signalTracker.filter(s => isCurrentStrategy(s) && signalMarketOf(s) === market);
   const acc = getSignalAccuracy(market);
   if (!acc) {
     const pendingSigs = signals.filter(s => s.result === null);
@@ -1783,7 +1790,7 @@ function renderAccuracyFor(market) {
       } else if (market === 'stock' && !state.watchlist.stocks.length) {
         html += '📈 Adicione ações no Painel pra começar a acompanhar sinais.';
       } else {
-        html += `📡 Nenhum sinal registrado ainda.<br>Cada sinal de compra/venda ≥55% é guardado e avaliado ${market === 'stock' ? '3 pregões' : '72h'} depois.`;
+        html += `📡 Nenhum sinal da regra nova ainda.<br>Cada sinal de compra/venda ≥55% com virada confirmada é guardado e avaliado ${market === 'stock' ? '3 pregões' : '72h'} depois.`;
       }
     } else {
       html += `✅ ${resolvedCount} de 3 sinais avaliados (mínimo pra mostrar a taxa de acerto)`;
@@ -1798,7 +1805,7 @@ function renderAccuracyFor(market) {
     if (signals.length) {
       html += resolvedSignalsHtml(signals.filter(s => s.result !== null)) + accuracyRuleHtml(market);
     }
-    content.innerHTML = html;
+    content.innerHTML = html + legacyAccuracyHtml(market);
     return;
   }
   const hitColor = acc.hitRate >= 65 ? 'var(--gain)' : acc.hitRate >= 45 ? 'var(--warn)' : 'var(--loss)';
@@ -1836,7 +1843,7 @@ function renderAccuracyFor(market) {
   if (pending > 0) {
     statsHtml += `<div style="text-align:center;margin-top:6px;font-size:.68rem;color:var(--text-muted)">⏳ ${pending} sinal${pending > 1 ? 'is' : ''} pendente${pending > 1 ? 's' : ''} (${market === 'stock' ? 'aguardando 3 pregões' : 'aguardando 72h'})</div>`;
   }
-  statsHtml += accuracyRuleHtml(market);
+  statsHtml += accuracyRuleHtml(market) + legacyAccuracyHtml(market);
   statsHtml += `<div style="text-align:center;margin-top:12px">
     <button onclick="resetAccuracy('${market}')"
       style="background:var(--bg-inset);border:1px solid var(--border);color:var(--text-body);font-size:.78rem;padding:8px 18px;border-radius:8px;cursor:pointer;font-weight:500">
@@ -3162,11 +3169,12 @@ function trackSignal(opp) {
   if (market === 'stock' && !isB3Open()) return;
   // Um sinal por janela de observação: enquanto o anterior do mesmo ativo/tipo
   // está pendente, o mesmo movimento não conta de novo
-  if (state.signalTracker.some(s => s.asset === assetId && s.type === type && s.result === null)) return;
+  if (state.signalTracker.some(s => isCurrentStrategy(s) && s.asset === assetId && s.type === type && s.result === null)) return;
   const today = new Date().toISOString().slice(0, 10);
   state.signalTracker.push({
     date: today,
     ts: Date.now(),
+    strategy: SIGNAL_STRATEGY,
     market,
     asset: assetId,
     symbol: p.symbol?.toUpperCase() || assetId,
@@ -3276,8 +3284,13 @@ function updateSignalTracker() {
   if (changed) saveSignalTracker();
 }
 
+// A taxa mostrada é só da regra atual; sinais da regra anterior aparecem à parte no painel
+function isCurrentStrategy(sig) {
+  return sig.strategy === SIGNAL_STRATEGY;
+}
+
 function getSignalAccuracy(market) {
-  const signals = market ? state.signalTracker.filter(s => signalMarketOf(s) === market) : state.signalTracker;
+  const signals = state.signalTracker.filter(s => isCurrentStrategy(s) && (!market || signalMarketOf(s) === market));
   const resolved = signals.filter(s => s.result !== null);
   if (resolved.length < 3) return null; // precisa de pelo menos 3 sinais pra mostrar stats
   const correct = resolved.filter(s => s.result === true);
@@ -3301,6 +3314,37 @@ function getSignalAccuracy(market) {
   };
 }
 
+/* ===== CONFIRMAÇÃO DE VIRADA =====
+   Comprar só porque caiu (ou vender só porque subiu) errou seguidamente quando a
+   tendência continuou. O sinal só sai quando o preço parou de ir contra ele:
+   compra = subindo na última hora e nas últimas 3h; venda = caindo nas duas.
+   Ações (dados diários): compra = dia no positivo e já fora da mínima; venda = o inverso. */
+const SIGNAL_STRATEGY = 2;
+
+function turnConfirmed(p, market, type) {
+  const dir = type === 'buy' ? 1 : -1;
+  if (market === 'stock') {
+    if (!p.price || !p.previousClose || !p.low || !p.high) return false;
+    const day = (p.price - p.previousClose) / p.previousClose * 100;
+    const offExtreme = type === 'buy' ? (p.price - p.low) / p.low * 100 : (p.high - p.price) / p.high * 100;
+    return day * dir > 0 && offExtreme >= 0.5;
+  }
+  const sp = p.sparkline || [];
+  // Sparkline do CoinGecko é horária: 1 ponto atrás ≈ 1h, 4 pontos ≈ 3h
+  const h1 = sp.length >= 2 ? (p.price - sp[sp.length - 2]) / sp[sp.length - 2] * 100 : p.change1h;
+  const h3 = sp.length >= 4 ? (p.price - sp[sp.length - 4]) / sp[sp.length - 4] * 100 : null;
+  if (h1 == null || h3 == null) return false;
+  return h1 * dir > 0 && h3 * dir > 0;
+}
+
+// Sem confirmação (ou sem dados pra confirmar) o sinal não sai: melhor perder um sinal que errar contra a tendência
+function applyTurnGate(score, p, market, type) {
+  if (!score.total) return score;
+  if (!turnConfirmed(p, market, type)) return { total: 0, reasons: [] };
+  score.reasons.unshift(type === 'buy' ? '↗️ Virada confirmada: preço parou de cair' : '↘️ Virada confirmada: preço parou de subir');
+  return score;
+}
+
 function detectOpportunities() {
   const opps = [];
   const dropThresh = state.settings.dropThreshold;
@@ -3322,7 +3366,7 @@ function detectOpportunities() {
     const tier = conv ? conv.tier : 'speculative';
     const isConviction = tier === 'high' || tier === 'satellite';
 
-    const buyScore = calcBuyScore(p, dropThresh, pos);
+    const buyScore = applyTurnGate(calcBuyScore(p, dropThresh, pos), p, 'crypto', 'buy');
     if (buyScore.total > 0) {
       const prob = buyScore.total;
       const targets = suggestTargets('crypto', coin.id);
@@ -3363,7 +3407,7 @@ function detectOpportunities() {
       if (!notifiedOpps.has(key)) newSignals.push(opp);
     }
 
-    const sellScore = calcSellScore(p, riseThresh, pos);
+    const sellScore = applyTurnGate(calcSellScore(p, riseThresh, pos), p, 'crypto', 'sell');
     if (sellScore.total > 0) {
       const prob = sellScore.total;
       const key = oppKey('sell', coin.id, 'score');
@@ -3451,7 +3495,7 @@ function detectOpportunities() {
     const tier = conv ? conv.tier : 'speculative';
     const isConviction = tier === 'high' || tier === 'satellite';
 
-    const buyScore = calcStockBuyScore(p, dropThresh, pos);
+    const buyScore = applyTurnGate(calcStockBuyScore(p, dropThresh, pos), p, 'stock', 'buy');
     if (buyScore.total > 0) {
       const prob = buyScore.total;
       const targets = suggestTargets('stock', ticker);
@@ -3490,7 +3534,7 @@ function detectOpportunities() {
       if (!notifiedOpps.has(key)) newSignals.push(opp);
     }
 
-    const sellScore = calcStockSellScore(p, riseThresh, pos);
+    const sellScore = applyTurnGate(calcStockSellScore(p, riseThresh, pos), p, 'stock', 'sell');
     if (sellScore.total > 0) {
       const prob = sellScore.total;
       const key = oppKey('sell', ticker, 'score');
@@ -3564,11 +3608,19 @@ function detectOpportunities() {
   // Registra no tracker de acurácia todo sinal ativo ≥55%, mesmo os já notificados
   // (trackSignal ignora duplicatas do mesmo ativo/tipo no dia)
   const trackedBefore = state.signalTracker.length;
-  for (const opp of opps) {
-    if (opp.probability >= 55 && (opp.type === 'buy' || opp.type === 'sell')) {
-      trackSignal(opp);
-    }
+  // 4+ criptos com o mesmo sinal ao mesmo tempo = um movimento do mercado inteiro:
+  // conta só o mais forte, senão uma única aposta vira vários acertos/erros
+  const trackable = opps.filter(o => o.probability >= 55 && (o.type === 'buy' || o.type === 'sell') && o.key.endsWith(':score'));
+  const isCryptoScore = o => o.key.endsWith(':score') && state.prices.crypto[o.key.split(':')[2]];
+  for (const type of ['buy', 'sell']) {
+    // O movimento é do mercado se 4+ criptos têm o sinal, mesmo as que não chegaram a 55%
+    if (opps.filter(o => o.type === type && isCryptoScore(o)).length < 4) continue;
+    const group = trackable.filter(o => o.type === type && isCryptoScore(o));
+    if (!group.length) continue;
+    const keep = group.reduce((a, b) => (b.probability > a.probability ? b : a));
+    for (const o of group) if (o !== keep) trackable.splice(trackable.indexOf(o), 1);
   }
+  for (const opp of trackable) trackSignal(opp);
   if (state.signalTracker.length !== trackedBefore) {
     try { renderAccuracy(); } catch (e) {}
   }

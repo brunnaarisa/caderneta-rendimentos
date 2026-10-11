@@ -1,4 +1,4 @@
-const CACHE_NAME = 'radar-v23';
+const CACHE_NAME = 'radar-v24';
 const SHELL_URLS = [
   './',
   './index.html',
@@ -218,6 +218,16 @@ async function claimNotification(keys) {
   return fresh;
 }
 
+// Confirmação de virada (mesma regra de radar.html → turnConfirmed): compra só se o preço
+// subiu na última hora e nas últimas 3h; venda só se caiu nas duas
+function bgTurnConfirmed(sp, price, type) {
+  if (!price || !sp || sp.length < 4) return false;
+  var dir = type === 'buy' ? 1 : -1;
+  var h1 = (price - sp[sp.length - 2]) / sp[sp.length - 2];
+  var h3 = (price - sp[sp.length - 4]) / sp[sp.length - 4];
+  return h1 * dir > 0 && h3 * dir > 0;
+}
+
 async function checkPricesInBackground() {
   try {
     // Busca com sparkline para RSI/Bollinger/MACD/EMA/Estocástico
@@ -349,7 +359,7 @@ async function checkPricesInBackground() {
       buyScore = Math.max(0, Math.min(95, buyScore));
 
       // Só notifica se ≥65% (sinal realmente forte)
-      if (buyScore >= 65) {
+      if (buyScore >= 65 && bgTurnConfirmed(sparkline, price, 'buy')) {
         var priceStr = price >= 1000
           ? 'R$ ' + price.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})
           : 'R$ ' + price.toFixed(2);
@@ -447,7 +457,7 @@ async function checkPricesInBackground() {
 
       sellScore = Math.max(0, Math.min(95, sellScore));
 
-      if (sellScore >= 65) {
+      if (sellScore >= 65 && bgTurnConfirmed(sparkline, price, 'sell')) {
         alerts.push({
           key: 'sell:' + coin.id, sym: sym, type: 'venda', score: sellScore,
           detail: sym + ' subiu ' + change24h.toFixed(1).replace('.', ',') + '% em 24h'
